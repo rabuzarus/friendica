@@ -16,6 +16,7 @@
 		<input type="hidden" name="post_id" value="{{$post_id}}" />
 		<input type="hidden" name="preview" id="jot-preview" value="0" />
 		<input type="hidden" name="post_id_random" value="{{$rand_num}}" />
+		<input type="hidden" id="jot-consensus" name="consensus" value="{{if $consensus}}{{$consensus}}{{else}}0{{/if}}" />
 		<div id="jot-title-wrap"><input name="title" id="jot-title" type="text" placeholder="{{$placeholdertitle|escape:'html'}}" value="{{$title|escape:'html'}}" class="jothidden" style="display:none"></div>
 		{{if $placeholdercategory}}
 		<div id="jot-category-wrap"><input name="category" id="jot-category" type="text" placeholder="{{$placeholdercategory|escape:'html'}}" value="{{$category|escape:'html'}}" class="jothidden" style="display:none" /></div>
@@ -50,6 +51,12 @@
 	<div id="profile-nolocation-wrapper" style="display: none;" >
 		<a id="profile-nolocation" class="icon noglobe" title="{{$noloc|escape:'html'}}" onclick="jotClearLocation();return false;"></a>
 	</div> 
+
+	{{if $feature_voting}}
+		<div id="profile-voting-wrapper" style="display: {{$visitor}};" >
+			<a id="profile-voting" class="icon icon-check-empty" title="{{$voting|escape:'html'}}" onclick="toggleVoting();return false;"></a>
+		</div>
+	{{/if}}
 
 	<div id="profile-jot-perms" class="profile-jot-perms" style="display: {{$pvisit}};" >
 		<a href="#profile-jot-acl-wrapper" id="jot-perms-icon" class="icon {{$lockstate}}"  title="{{$permset|escape:'html'}}" ></a>{{$bang}}
