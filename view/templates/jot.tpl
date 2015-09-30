@@ -16,6 +16,7 @@
 		<input type="hidden" name="post_id" value="{{$post_id}}" />
 		<input type="hidden" name="preview" id="jot-preview" value="0" />
 		<input type="hidden" name="post_id_random" value="{{$rand_num}}" />
+		<input type="hidden" id="jot-consensus" name="consensus" value="{{if $consensus}}{{$consensus}}{{else}}0{{/if}}" />
 		{{if $notes_cid}}
 		<input type="hidden" name="contact_allow[]" value="<{{$notes_cid}}>" />
 		{{/if}}
