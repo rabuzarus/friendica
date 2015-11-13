@@ -20,17 +20,19 @@ function create_user($arr) {
 	$num_invites   = get_config('system','number_invites');
 
 
-	$invite_id  = ((x($arr,'invite_id'))  ? notags(trim($arr['invite_id']))  : '');
-	$username   = ((x($arr,'username'))   ? notags(trim($arr['username']))   : '');
-	$nickname   = ((x($arr,'nickname'))   ? notags(trim($arr['nickname']))   : '');
-	$email      = ((x($arr,'email'))      ? notags(trim($arr['email']))      : '');
-	$openid_url = ((x($arr,'openid_url')) ? notags(trim($arr['openid_url'])) : '');
-	$photo      = ((x($arr,'photo'))      ? notags(trim($arr['photo']))      : '');
-	$password   = ((x($arr,'password'))   ? trim($arr['password'])           : '');
-	$password1  = ((x($arr,'password1'))  ? trim($arr['password1'])          : '');
-	$confirm    = ((x($arr,'confirm'))    ? trim($arr['confirm'])            : '');
-	$blocked    = ((x($arr,'blocked'))    ? intval($arr['blocked'])  : 0);
-	$verified   = ((x($arr,'verified'))   ? intval($arr['verified']) : 0);
+	$invite_id   = ((x($arr,'invite_id'))   ? notags(trim($arr['invite_id']))  : '');
+	$username    = ((x($arr,'username'))    ? notags(trim($arr['username']))   : '');
+	$nickname    = ((x($arr,'nickname'))    ? notags(trim($arr['nickname']))   : '');
+	$email       = ((x($arr,'email'))       ? notags(trim($arr['email']))      : '');
+	$openid_url  = ((x($arr,'openid_url'))  ? notags(trim($arr['openid_url'])) : '');
+	$photo       = ((x($arr,'photo'))       ? notags(trim($arr['photo']))      : '');
+	$password    = ((x($arr,'password'))    ? trim($arr['password'])           : '');
+	$password1   = ((x($arr,'password1'))   ? trim($arr['password1'])          : '');
+	$confirm     = ((x($arr,'confirm'))     ? trim($arr['confirm'])            : '');
+	$pageflags   = ((x($arr,'pageflags'))   ? intval($arr['pageflags']) : PAGE_NORMAL);
+	$blocked     = ((x($arr,'blocked'))     ? intval($arr['blocked'])   : 0);
+	$verified    = ((x($arr,'verified'))    ? intval($arr['verified'])  : 0);
+	$multireg    = ((x($arr,'multireg'))    ? intval($arr['multireg'])  : 0);
 
 	$publish    = ((x($arr,'profile_publish_reg') && intval($arr['profile_publish_reg'])) ? 1 : 0);
 	$netpublish = ((strlen(get_config('system','directory'))) ? $publish : 0);
@@ -159,8 +161,15 @@ function create_user($arr) {
 		return $result;
 	}
 
-	$new_password = ((strlen($password)) ? $password : autoname(6) . mt_rand(100,9999));
-	$new_password_encoded = hash('whirlpool',$new_password);
+	// if the account rest upon an already existent account use the existent passwords
+	// if it doesn't encrypt the transmitted password
+	if($multireg) {
+		$new_password_encoded = $password;
+	}
+	else {
+		$new_password = ((strlen($password)) ? $password : autoname(6) . mt_rand(100,9999));
+		$new_password_encoded = hash('whirlpool',$new_password);
+	}
 
 	$result['password'] = $new_password;
 
@@ -197,8 +206,8 @@ function create_user($arr) {
 	$spubkey = $sres['pubkey'];
 
 	$r = q("INSERT INTO `user` ( `guid`, `username`, `password`, `email`, `openid`, `nickname`,
-		`pubkey`, `prvkey`, `spubkey`, `sprvkey`, `register_date`, `verified`, `blocked`, `timezone`, `service_class`, `default-location` )
-		VALUES ( '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', %d, %d, 'UTC', '%s', '' )",
+		`pubkey`, `prvkey`, `spubkey`, `sprvkey`, `register_date`, `verified`, `blocked`, `timezone`, `service_class`, `default-location`,`page-flags` )
+		VALUES ( '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', %d, %d, 'UTC', '%s', '', %d )",
 		dbesc(generate_user_guid()),
 		dbesc($username),
 		dbesc($new_password_encoded),
@@ -212,7 +221,8 @@ function create_user($arr) {
 		dbesc(datetime_convert()),
 		intval($verified),
 		intval($blocked),
-		dbesc($default_service_class)
+		dbesc($default_service_class),
+		intval($pageflags)
 	);
 
 	if($r) {
@@ -422,3 +432,39 @@ function send_register_open_eml($email, $sitename, $siteurl, $username, $passwor
 			'preamble'=> $preamble,
 			'body' => $body));
 }
+
+function get_pagetypes() {
+	$arr = array(
+
+		'user' => array(
+			t('User Types'),
+			array('page-flags', t('Normal Account Page'), PAGE_NORMAL,
+							t('This account is a normal personal profile'),
+							($a->user['page-flags'] == PAGE_NORMAL)),
+
+			array('page-flags', t('Soapbox Page'), PAGE_SOAPBOX,
+							t('Automatically approve all connection/friend requests as read-only fans'),
+							($a->user['page-flags'] == PAGE_SOAPBOX)),
+
+			array('page-flags', t('Automatic Friend Page'), PAGE_FREELOVE,
+							t('Automatically approve all connection/friend requests as friends'),
+							($a->user['page-flags'] == PAGE_FREELOVE)),
+		),
+
+		'community' 	=> array(
+			t('Community Types'),
+			array('page-flags', t('Community Forum/Celebrity Account'), PAGE_COMMUNITY,
+							t('Automatically approve all connection/friend requests as read-write fans'),
+							($a->user['page-flags'] == PAGE_COMMUNITY)),
+
+
+
+			array('page-flags', t('Private Forum [Experimental]'), PAGE_PRVGROUP,
+							t('Private forum - approved members only'),
+							($a->user['page-flags'] == PAGE_PRVGROUP)),
+		),
+	);
+	return $arr;
+}
+
+
