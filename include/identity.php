@@ -751,3 +751,75 @@ function get_theme_uid() {
 
 	return $uid;
 }
+
+function identity_switch($uid, $mid, $orig_record) {
+	if((x($_SESSION,'submanage')) && intval($_SESSION['submanage'])) {
+		$r = q("SELECT * FROM `user` WHERE `uid` = %d LIMIT 1",
+			intval($_SESSION['submanage'])
+		);
+		if(count($r)) {
+			$uid = intval($r[0]['uid']);
+			$orig_record = $r[0];
+		}
+	}
+
+	$r = q("SELECT * FROM `manage` WHERE `uid` = %d",
+		intval($uid)
+	);
+
+	$submanage = $r;
+
+	$identity = $mid;
+	if(! $identity)
+		return;
+
+	$limited_id = 0;
+	$original_id = $uid;
+
+	if(count($submanage)) {
+		foreach($submanage as $m) {
+			if($identity == $m['mid']) {
+				$limited_id = $m['mid'];
+				break;
+			}
+		}
+	}
+
+	if($limited_id) {
+		$r = q("SELECT * FROM `user` WHERE `uid` = %d LIMIT 1",
+			intval($limited_id)
+		);
+	}
+	else {
+		$r = q("SELECT * FROM `user` WHERE `uid` = %d AND `email` = '%s' AND `password` = '%s' LIMIT 1",
+			intval($identity),
+			dbesc($orig_record['email']),
+			dbesc($orig_record['password'])
+		);
+	}
+
+	if(! count($r))
+		return;
+
+	unset($_SESSION['authenticated']);
+	unset($_SESSION['uid']);
+	unset($_SESSION['visitor_id']);
+	unset($_SESSION['administrator']);
+	unset($_SESSION['cid']);
+	unset($_SESSION['theme']);
+	unset($_SESSION['mobile-theme']);
+	unset($_SESSION['page_flags']);
+	unset($_SESSION['return_url']);
+	if(x($_SESSION,'submanage'))
+		unset($_SESSION['submanage']);
+	if(x($_SESSION,'sysmsg'))
+		unset($_SESSION['sysmsg']);
+	if(x($_SESSION,'sysmsg_info'))
+		unset($_SESSION['sysmsg_info']);
+
+	require_once('include/security.php');
+	authenticate_success($r[0],true,true);
+
+	if($limited_id)
+		$_SESSION['submanage'] = $original_id;
+}

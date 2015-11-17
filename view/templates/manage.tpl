@@ -1,5 +1,8 @@
 
 <h3>{{$title}}</h3>
+
+<a href="new_account">{{$new_account}}</a>
+
 <div id="identity-manage-desc">{{$desc}}</div>
 <div id="identity-manage-choose">{{$choose}}</div>
 

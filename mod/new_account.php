@@ -4,6 +4,13 @@ require_once('include/user.php');
 
 
 function new_account_post(&$a) {
+
+	$block = get_config('system','block_extended_register');
+
+	if(! local_user() || ($block)) {
+		return;
+	}
+
 	$arr = $_POST;
 
 	//use for email and password the values of the present user
@@ -16,8 +23,8 @@ function new_account_post(&$a) {
 	$result = create_user($arr);
 
 	if(! $result['success']) {
-	notice($result['message']);
-	return;
+		notice($result['message']);
+		return;
 	}
 
 	$user = $result['user'];
@@ -27,34 +34,32 @@ function new_account_post(&$a) {
 		proc_run('php',"include/directory.php","$url");
 	}
 
-	goaway(z_root() . '/' . manage);
+	$uid = local_user();
+	$orig_record = $a->user;
+	$mid = $user['uid'];
+
+	identity_switch($uid, $mid, $orig_record);
+
+	goaway(z_root() . 'profile_photo/new');
 }
 
 
 function new_account_content(&$a) {
 	$block = get_config('system','block_extended_register');
 
-	if(local_user() && ($block)) {
+	if(! local_user() || ($block)) {
 		notice("Permission denied." . EOL);
 		return;
 	}
 
-	if(local_user() && ($block)) {
-		notice("Permission denied." . EOL);
-		return;
-	}
-
-	$username     = ((x($_POST,'username'))     ? $_POST['username']     : ((x($_GET,'username'))     ? $_GET['username']              : ''));
-	$email        = ((x($_POST,'email'))        ? $_POST['email']        : ((x($_GET,'email'))        ? $_GET['email']                 : ''));
-	$nickname     = ((x($_POST,'nickname'))     ? $_POST['nickname']     : ((x($_GET,'nickname'))     ? $_GET['nickname']              : ''));
 	$photo        = ((x($_POST,'photo'))        ? $_POST['photo']        : ((x($_GET,'photo'))        ? hex2bin($_GET['photo'])        : ''));
-	$pageflags    = ((x($_POST,'page-flags'))   ? $_POST['page-flags']   : ((x($_GET,'page-flags'))   ? $_GET['page-flags']            : ''));
+	$page_flags   = ((x($_POST,'page-flags'))   ? $_POST['page-flags']   : ((x($_GET,'page-flags'))   ? $_GET['page-flags']            : 0));
 
 	if(get_config('system','publish_all')) {
 		$profile_publish_reg = '<input type="hidden" name="profile_publish_reg" value="1" />';
 	}
 	else {
-		$publish_tpl = get_markup_template("profile_publish.tpl");
+		$publish_tpl = get_markup_template('profile_publish.tpl');
 		$profile_publish = replace_macros($publish_tpl,array(
 			'$instance'     => 'reg',
 			'$pubdesc'      => t('Include your profile in member directory?'),
@@ -65,30 +70,41 @@ function new_account_content(&$a) {
 		));
 	}
 
-	$r = q("SELECT count(*) AS `contacts` FROM `contact`");
-	$passwords = !$r[0]["contacts"];
+	// Get available page types and format the array to make it useable for the template
+	$arr = array();
+	$pagetypes = get_pagetypes();
+	foreach($pagetypes as $pname => $pdata) {
+		$arr[$pname] = array();
+		$arr[$pname][0] = $pdata[0];
+		foreach(array_slice($pdata,1) as $f) {
+			$arr[$pname][1][] = $f;
+		}
+	}
 
-	$tpl = get_markup_template("account.tpl");
+	$new_account_desc = 'Create another identity or a community/group page. 
+		This identity or communit/group page would have the same account details (e-mail and password). 
+		It is posible to switch beetwen the identities with the "manage" menu.';
+	$pagetype_desc = 'Chose of what kind your identity should be.';
+
+	$tpl = get_markup_template('account.tpl');
 
 	$o = replace_macros(get_markup_template('new_account.tpl'), array(
-		'$title'        => t('Add an Account'),
-		'$registertext' =>((x($a->config,'register_text'))
-			? bbcode($a->config['register_text'])
-			: "" ),
-		'$fillwith'  => $fillwith,
-		'$fillext'   => $fillext,
-		'$oidlabel'  => $oidlabel,
-		'$namelabel' => t('Your Full Name ' . "\x28" . 'e.g. Joe Smith, real or real-looking' . "\x29" . ': '),
-		'$nickdesc'  => str_replace('$sitename',$a->get_hostname(),t('Choose a profile nickname. This must begin with a text character. Your profile address on this site will then be \'<strong>nickname@$sitename</strong>\'.')),
-		'$nicklabel' => t('Choose a nickname: '),
-		'$photo'     => $photo,
-		'$publish'   => $profile_publish,
-		'$username'  => $username,
-		'$nickname'  => $nickname,
-		'$sitename'  => $a->get_hostname(),
-		'$importh'   => t('Import'),
-		'$importt'   => t('Import your profile to this friendica instance'),
-		'$submit'       => t('Create')
+		'$title'            => t('Create New Identity'),
+		'$new_account_desc' => t($new_account_desc),
+		'$namelabel'        => t('Your Full Name'),
+		'$namedesc'         => t('Examples: Joe Smith, real or real-looking'),
+		'$nickdesc'         => str_replace('$sitename',$a->get_hostname(),t('Choose a profile nickname. This must begin with a text character. Your profile address on this site will then be \'<strong>nickname@$sitename</strong>\'.')),
+		'$nicklabel'        => t('Choose a nickname: '),
+		'$photo'            => $photo,
+		'$publish'          => $profile_publish,
+		'$pagetype'         => t('Page Type'),
+		'$pagetype_desc'    => t($pagetype_desc),
+		'$pagetypes'        => $arr,
+		'$username'         => $username,
+		'$nickname'         => $nickname,
+		'$sitename'         => $a->get_hostname(),
+		'$importt'          => t('Or <a href="uimport">import an existing profile</a> to this friendica instance'),
+		'$submit'           => t('Create')
 
 	));
 	return $o;

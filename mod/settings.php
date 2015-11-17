@@ -1,5 +1,7 @@
 <?php
 
+require_once('include/user.php');
+
 
 function get_theme_config_file($theme){
 	$a = get_app();
@@ -386,8 +388,6 @@ function settings_post(&$a) {
 	$username         = ((x($_POST,'username'))   ? notags(trim($_POST['username']))     : '');
 	$email            = ((x($_POST,'email'))      ? notags(trim($_POST['email']))        : '');
 	$timezone         = ((x($_POST,'timezone'))   ? notags(trim($_POST['timezone']))     : '');
-	$language         = ((x($_POST,'language'))   ? notags(trim($_POST['language']))     : '');
-
 	$defloc           = ((x($_POST,'defloc'))     ? notags(trim($_POST['defloc']))       : '');
 	$openid           = ((x($_POST,'openid_url')) ? notags(trim($_POST['openid_url']))   : '');
 	$maxreq           = ((x($_POST,'maxreq'))     ? intval($_POST['maxreq'])             : 0);
@@ -534,15 +534,7 @@ function settings_post(&$a) {
 		}
 	}
 
-
-	$r = q("UPDATE `user` SET `username` = '%s', `email` = '%s',
-				`openid` = '%s', `timezone` = '%s',
-				`allow_cid` = '%s', `allow_gid` = '%s', `deny_cid` = '%s', `deny_gid` = '%s',
-				`notify-flags` = %d, `page-flags` = %d, `default-location` = '%s',
-				`allow_location` = %d, `maxreq` = %d, `expire` = %d, `openidserver` = '%s',
-				`def_gid` = %d, `blockwall` = %d, `hidewall` = %d, `blocktags` = %d,
-				`unkmail` = %d, `cntunkmail` = %d, `language` = '%s'
-			WHERE `uid` = %d",
+	$r = q("UPDATE `user` SET `username` = '%s', `email` = '%s', `openid` = '%s', `timezone` = '%s',  `allow_cid` = '%s', `allow_gid` = '%s', `deny_cid` = '%s', `deny_gid` = '%s', `notify-flags` = %d, `page-flags` = %d, `default-location` = '%s', `allow_location` = %d, `maxreq` = %d, `expire` = %d, `openidserver` = '%s', `def_gid` = %d, `blockwall` = %d, `hidewall` = %d, `blocktags` = %d, `unkmail` = %d, `cntunkmail` = %d  WHERE `uid` = %d",
 			dbesc($username),
 			dbesc($email),
 			dbesc($openid),
@@ -564,14 +556,10 @@ function settings_post(&$a) {
 			intval($blocktags),
 			intval($unkmail),
 			intval($cntunkmail),
-			dbesc($language),
 			intval(local_user())
 	);
 	if($r)
 		info( t('Settings updated.') . EOL);
-
-	// clear session language
-	unset($_SESSION['language']);
 
 	$r = q("UPDATE `profile`
 		SET `publish` = %d,
@@ -999,7 +987,6 @@ function settings_content(&$a) {
 	$email      = $a->user['email'];
 	$nickname   = $a->user['nickname'];
 	$timezone   = $a->user['timezone'];
-	$language   = $a->user['language'];
 	$notify     = $a->user['notify-flags'];
 	$defloc     = $a->user['default-location'];
 	$openid     = $a->user['openid'];
@@ -1043,31 +1030,20 @@ function settings_content(&$a) {
 	if(! strlen($a->user['timezone']))
 		$timezone = date_default_timezone_get();
 
-
+	// Get available page types and format the array to make it useable for the template
+	$arr = array();
+	$pagetypes = get_pagetypes();
+	foreach($pagetypes as $pname => $pdata) {
+		$arr[$pname] = array();
+		$arr[$pname][0] = $pdata[0];
+		foreach(array_slice($pdata,1) as $f) {
+			$arr[$pname][1][] = $f;
+		}
+	}
 
 	$pageset_tpl = get_markup_template('pagetypes.tpl');
 	$pagetype = replace_macros($pageset_tpl, array(
-		'$user' 	=> t("User Types"),
-		'$community' 	=> t("Community Types"),
-		'$page_normal' 	=> array('page-flags', t('Normal Account Page'), PAGE_NORMAL,
-									t('This account is a normal personal profile'),
-									($a->user['page-flags'] == PAGE_NORMAL)),
-
-		'$page_soapbox' 	=> array('page-flags', t('Soapbox Page'), PAGE_SOAPBOX,
-									t('Automatically approve all connection/friend requests as read-only fans'),
-									($a->user['page-flags'] == PAGE_SOAPBOX)),
-
-		'$page_community'	=> array('page-flags', t('Community Forum/Celebrity Account'), PAGE_COMMUNITY,
-									t('Automatically approve all connection/friend requests as read-write fans'),
-									($a->user['page-flags'] == PAGE_COMMUNITY)),
-
-		'$page_freelove' 	=> array('page-flags', t('Automatic Friend Page'), PAGE_FREELOVE,
-									t('Automatically approve all connection/friend requests as friends'),
-									($a->user['page-flags'] == PAGE_FREELOVE)),
-
-		'$page_prvgroup' 	=> array('page-flags', t('Private Forum [Experimental]'), PAGE_PRVGROUP,
-									t('Private forum - approved members only'),
-									($a->user['page-flags'] == PAGE_PRVGROUP)),
+		'$pagetypes'		=> $arr,
 
 
 	));
@@ -1183,8 +1159,6 @@ function settings_content(&$a) {
 	else
 		$public_post_link = '&public=1';
 
-	/* Installed langs */
-	$lang_choices = get_avaiable_languages();
 
 	$o .= replace_macros($stpl, array(
 		'$ptitle' 	=> t('Account Settings'),
@@ -1207,7 +1181,6 @@ function settings_content(&$a) {
 		'$username' => array('username',  t('Full Name:'), $username,''),
 		'$email' 	=> array('email', t('Email Address:'), $email, '', '', '', 'email'),
 		'$timezone' => array('timezone_select' , t('Your Timezone:'), select_timezone($timezone), ''),
-		'$language' => array('language', t('Your Language:'), $language, t('Set the language we use to show you friendica interface and to send you emails'), $lang_choices),
 		'$defloc'	=> array('defloc', t('Default Post Location:'), $defloc, ''),
 		'$allowloc' => array('allow_location', t('Use Browser Location:'), ($a->user['allow_location'] == 1), ''),
 
@@ -1263,7 +1236,7 @@ function settings_content(&$a) {
 		'$notify8'  => array('notify8', t('You are poked/prodded/etc. in a post'), ($notify & NOTIFY_POKE), NOTIFY_POKE, ''),
 
         '$desktop_notifications' => array('desktop_notifications', t('Activate desktop notifications') , false, t('Show desktop popup on new notifications')),
-
+                
 		'$email_textonly' => array('email_textonly', t('Text-only notification emails'),
 									get_pconfig(local_user(),'system','email_textonly'),
 									t('Send text only notification emails, without the html part')),

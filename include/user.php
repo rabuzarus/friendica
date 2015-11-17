@@ -29,10 +29,10 @@ function create_user($arr) {
 	$password    = ((x($arr,'password'))    ? trim($arr['password'])           : '');
 	$password1   = ((x($arr,'password1'))   ? trim($arr['password1'])          : '');
 	$confirm     = ((x($arr,'confirm'))     ? trim($arr['confirm'])            : '');
-	$pageflags   = ((x($arr,'pageflags'))   ? intval($arr['pageflags']) : PAGE_NORMAL);
-	$blocked     = ((x($arr,'blocked'))     ? intval($arr['blocked'])   : 0);
-	$verified    = ((x($arr,'verified'))    ? intval($arr['verified'])  : 0);
-	$multireg    = ((x($arr,'multireg'))    ? intval($arr['multireg'])  : 0);
+	$page_flags  = ((x($arr,'page-flags'))  ? intval($arr['page-flags']) : PAGE_NORMAL);
+	$blocked     = ((x($arr,'blocked'))     ? intval($arr['blocked'])    : 0);
+	$verified    = ((x($arr,'verified'))    ? intval($arr['verified'])   : 0);
+	$multireg    = ((x($arr,'multireg'))    ? intval($arr['multireg'])   : 0);
 
 	$publish    = ((x($arr,'profile_publish_reg') && intval($arr['profile_publish_reg'])) ? 1 : 0);
 	$netpublish = ((strlen(get_config('system','directory'))) ? $publish : 0);
@@ -222,7 +222,7 @@ function create_user($arr) {
 		intval($verified),
 		intval($blocked),
 		dbesc($default_service_class),
-		intval($pageflags)
+		intval($page_flags)
 	);
 
 	if($r) {
@@ -440,31 +440,29 @@ function get_pagetypes() {
 			t('User Types'),
 			array('page-flags', t('Normal Account Page'), PAGE_NORMAL,
 							t('This account is a normal personal profile'),
-							($a->user['page-flags'] == PAGE_NORMAL)),
+							($_SESSION['page_flags'] == PAGE_NORMAL)),
 
 			array('page-flags', t('Soapbox Page'), PAGE_SOAPBOX,
 							t('Automatically approve all connection/friend requests as read-only fans'),
-							($a->user['page-flags'] == PAGE_SOAPBOX)),
+							($_SESSION['page_flags'] == PAGE_SOAPBOX)),
 
 			array('page-flags', t('Automatic Friend Page'), PAGE_FREELOVE,
 							t('Automatically approve all connection/friend requests as friends'),
-							($a->user['page-flags'] == PAGE_FREELOVE)),
+							($_SESSION['page_flags'] == PAGE_FREELOVE)),
 		),
 
 		'community' 	=> array(
 			t('Community Types'),
 			array('page-flags', t('Community Forum/Celebrity Account'), PAGE_COMMUNITY,
 							t('Automatically approve all connection/friend requests as read-write fans'),
-							($a->user['page-flags'] == PAGE_COMMUNITY)),
+							($_SESSION['page_flags'] == PAGE_COMMUNITY)),
 
 
 
 			array('page-flags', t('Private Forum [Experimental]'), PAGE_PRVGROUP,
 							t('Private forum - approved members only'),
-							($a->user['page-flags'] == PAGE_PRVGROUP)),
+							($_SESSION['page_flags'] == PAGE_PRVGROUP)),
 		),
 	);
 	return $arr;
 }
-
-

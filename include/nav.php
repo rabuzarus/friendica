@@ -173,7 +173,8 @@ function nav_info(&$a) {
 		$nav['messages']['outbox']= array('message/sent', t('Outbox'), "", t('Outbox'));
 		$nav['messages']['new'] = array('message/new', t('New Message'), "", t('New Message'));
 
-		if(is_array($a->identities) && count($a->identities) > 1) {
+		//show 'manage' only if there is more than one identity or if registering multiple accounts is activated globally
+		if((is_array($a->identities) && count($a->identities) > 1) || (! get_config('system','block_extended_register'))) {
 			$nav['manage'] = array('manage', t('Manage'), "", t('Manage other pages'));
 		}
 
