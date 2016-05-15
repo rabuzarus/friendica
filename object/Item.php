@@ -290,6 +290,7 @@ class Item extends BaseObject {
 		}
 
 		$body = prepare_body($item,true);
+		$prep = prepare_item($item, true);
 
 		list($categories, $folders) = get_cats_and_terms($item);
 
@@ -399,6 +400,9 @@ class Item extends BaseObject {
 			'edited' => $edited,
 			'network' => $item["item_network"],
 			'network_name' => network_to_name($item['item_network'], $profile_link),
+			//rabuzarus
+			'event' => $prep['event'],
+			'photo' => $prep['photo'],
 		);
 
 		$arr = array('item' => $item, 'output' => $tmp_item);

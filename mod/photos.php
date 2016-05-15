@@ -865,24 +865,54 @@ function photos_post(&$a) {
 
 	$photo_hash = photo_new_resource();
 
+	$p = array('uid' => $page_owner_uid, 'cid' => $visitor, 'photo_hash' => $photo_hash, 
+		'filename' => $filename, 'album' => $album, 'scale' => 0, 'profile' => 0, 
+		'allow_cid' => $str_contact_allow, 'allow_gid' => $str_group_allow, 
+		'deny_cid' => $str_contact_deny, 'deny_gid' => $str_group_deny);
+
 	$r = $ph->store($page_owner_uid, $visitor, $photo_hash, $filename, $album, 0 , 0, $str_contact_allow, $str_group_allow, $str_contact_deny, $str_group_deny);
+
+	//$r = $ph->save($p);
 
 	if(! $r) {
 		logger('mod/photos.php: photos_post(): image store failed' , LOGGER_DEBUG);
 		notice( t('Image upload failed.') . EOL );
 		killme();
 	}
+require_once("include/xml.php");
+	$link[0] = array(
+		'rel'  => 'alternate',
+		'type' => 'text/html',
+		'href' => app::get_baseurl() . '/photo/' . $photo_hash . '-0.' . $ph->getExt(),
+		'width' => $ph->getWidth(),
+		'height' => $ph->getHeight()
+	);
 
 	if($width > 640 || $height > 640) {
 		$ph->scaleImage(640);
-		$ph->store($page_owner_uid, $visitor, $photo_hash, $filename, $album, 1, 0, $str_contact_allow, $str_group_allow, $str_contact_deny, $str_group_deny);
+		$r = $ph->store($page_owner_uid, $visitor, $photo_hash, $filename, $album, 1 , 0, $str_contact_allow, $str_group_allow, $str_contact_deny, $str_group_deny);
 		$smallest = 1;
+		$link[1] = array(
+		'rel'  => 'alternate',
+		'type' => 'text/html',
+		'href' => app::get_baseurl() . '/photo/' . $photo_hash . '-1.' . $ph->getExt(),
+		'width' => $ph->getWidth(),
+		'height' => $ph->getHeight()
+		);
+
 	}
 
 	if($width > 320 || $height > 320) {
 		$ph->scaleImage(320);
-		$ph->store($page_owner_uid, $visitor, $photo_hash, $filename, $album, 2, 0, $str_contact_allow, $str_group_allow, $str_contact_deny, $str_group_deny);
+		$r = $ph->store($page_owner_uid, $visitor, $photo_hash, $filename, $album, 2 , 0, $str_contact_allow, $str_group_allow, $str_contact_deny, $str_group_deny);
 		$smallest = 2;
+		$link[2] = array(
+		'rel'  => 'alternate',
+		'type' => 'text/html',
+		'href' => app::get_baseurl() . '/photo/' . $photo_hash . '-2.' . $ph->getExt(),
+		'width' => $ph->getWidth(),
+		'height' => $ph->getHeight()
+		);
 	}
 
 	$basename = basename($filename);
@@ -899,6 +929,33 @@ function photos_post(&$a) {
 		}
 	}
 
+	$body = '[url=' . $a->get_baseurl() . '/photos/' . $owner_record['nickname'] . '/image/' . $photo_hash . ']'
+				. '[img]' . app::get_baseurl() . "/photo/{$photo_hash}-{$smallest}.".$ph->getExt() . '[/img]'
+				. '[/url]';
+
+
+	// Create item object
+	$objectdata = array(
+		'type'    => ACTIVITY_OBJ_PHOTO,
+		'title'   => $title,
+		//'created' => $p['created'],
+		//'edited'  => $p['edited'],
+		'id'      => app::get_baseurl() . '/photos/' . $owner_record['nickname'] . '/image/' . $photo_hash,
+		'link'    => $link,
+		'body'    => $body
+	);
+
+	$targetdata = array(
+		'type'    => ACTIVITY_OBJ_ALBUM,
+		'title'   => (($album) ? $album : '/'),
+		'id'      => app::get_baseurl() . '/photos/' . $owner_record['nickname'] . '/album/' . bin2hex($album)
+	);
+
+	//transform the array into xml
+	$object = construct_object($objectdata);
+	$target = array_to_xml($targetdata, 'target');
+
+
 	$arr = array();
 
 	if($lat && $lon)
@@ -909,6 +966,11 @@ function photos_post(&$a) {
 	$arr['uri']           = $uri;
 	$arr['parent-uri']    = $uri;
 	$arr['type']          = 'photo';
+	$arr['object-type']   = ACTIVITY_OBJ_PHOTO;
+	$arr['object']        = $object;
+	$arr['target-type']   = ACTIVITY_OBJ_ALBUM;
+	$arr['target']        = $target;
+	$arr['verb']            = ACTIVITY_POST;
 	$arr['wall']          = 1;
 	$arr['resource-id']   = $photo_hash;
 	$arr['contact-id']    = $owner_record['id'];
@@ -927,9 +989,7 @@ function photos_post(&$a) {
 	$arr['visible']       = $visible;
 	$arr['origin']        = 1;
 
-	$arr['body']          = '[url=' . $a->get_baseurl() . '/photos/' . $owner_record['nickname'] . '/image/' . $photo_hash . ']'
-				. '[img]' . $a->get_baseurl() . "/photo/{$photo_hash}-{$smallest}.".$ph->getExt() . '[/img]'
-				. '[/url]';
+	$arr['body']          = $body;
 
 	$item_id = item_store($arr);
 
@@ -1894,3 +1954,147 @@ function photos_content(&$a) {
 	return $o;
 }
 
+/**
+ * @brief Adds the activity elements
+ *
+ * @param object $doc XML document
+ * @param string $element Element name for the activity
+ * @param string $activity activity value
+ *
+ * @return object XML activity object
+ */
+//function create_object($doc, $element, $activity) {
+//    require_once("include/xml.php");
+//
+//	if($activity) {
+//		
+//
+//		//$doc = new SimpleXMLElement("<".$activity."/>");
+//		//$element = $doc->createElement($element, xmlify($activity));
+//		$doc = new DOMDocument;
+//		$entry = $doc->createElement($element);
+//		if(! count($activity))
+//			return false;
+//		if($activity["type"])
+//			xml::add_element($doc, $entry, "activity:object-type", $activity["type"]);
+//		if($activity["id"])
+//			xml::add_element($doc, $entry, "id", $activity["id"]);
+//		if($activity["title"])
+//			xml::add_element($doc, $entry, "title", ["title"]);
+//		if($activity["link"]) {
+//			if(is_array($activity["link"])) {
+//				foreach ($activity["link"] as $attributes) {
+//					xml::add_element($doc, $entry, "link", "", $attributes);
+//				}
+//			} else {
+//				$attributes = array("rel" => "alternate", "type" => "text/html", "href" => $activity["link"]);
+//				xml::add_element($doc, $entry, "link", "", $attributes);
+//			}
+//		}
+//		if($activity->content)
+//			xml::add_element($doc, $entry, "content", bbcode($activity->content), array("type" => "html"));
+//
+//		return $entry;
+//	}
+//
+//	return false;
+//}
+
+function create_object($array, $element) {
+	if($array) {
+		
+
+		$xml = new SimpleXMLElement("<".$element."/>");
+		//$element = $doc->createElement($element, xmlify($array));
+//		$doc = new DOMDocument;
+//		$entry = $doc->createElement($element);
+
+		if(! count($array))
+			return false;
+		if($array["type"])
+			$xml->addChild("type", $array["type"]);
+		if($array["id"])
+			$xml->addChild("id", $array["id"]);
+		if($array["title"])
+			$xml->addChild("title", $array["title"]);
+		if($array["link"]) {
+			if(is_array($array["link"])) {
+				foreach ($array["link"] as $links) {
+					$link = $xml->addChild(link);
+					$test1 = "test1";
+					foreach ($links as $key => $value) {
+						$link->addAttribute($key, $value);
+						$test2 = "test2";
+					}
+					$test3 = "test3";
+				}
+			} else {
+				//$attributes = array("rel" => "alternate", "type" => "text/html", "href" => $array["link"]);
+				//xml::add_element($doc, $entry, "link", "", $attributes);
+			}
+		}
+//		if($array->content)
+//			xml::add_element($doc, $entry, "content", bbcode($array->content), array("type" => "html"));
+
+		$domxml = dom_import_simplexml($xml);
+		$xmlstring = $domxml->ownerDocument->saveXML($domxml->ownerDocument->documentElement);
+
+		return $xmlstring;
+	}
+
+	return false;
+}
+
+function construct_object($array) {
+	$xmlstring = array_to_xml($array, 'object');
+	return $xmlstring;
+}
+
+function array_to_xml($array, $element) {
+	$xml = new SimpleXMLElement("<".$element."/>");
+
+	$xml = add_childs($xml, $array);
+	$domxml = dom_import_simplexml($xml);
+	$xmlstring = $domxml->ownerDocument->saveXML($domxml->ownerDocument->documentElement);
+
+	return $xmlstring;
+}
+
+function add_childs($xml, $array, $repeat = true) {
+	if($repeat = true) {
+		foreach($array as $child => $value) {
+			//we check if the $value is an array.
+			// If this is true the array could be attributes or
+			// deeper xml elements
+			if(is_array($value)) {
+				foreach ($value as $check => $attributes) {
+					// If $check is true, we now the the array contains
+					// atributes for $child
+					if(is_numeric($check)){
+						//$xml_child = $xml->addChild($child);
+						//$xml_child = add_attributes($xml, $xml_child, $attributes);
+						$xmlcontent = "";
+						foreach ($attributes as $k => $v) {
+							$xmlcontent .= ' ' . $k . '="' . $v . '" ';
+						}
+						$xml->addChild($child, xmlify($xmlcontent));
+					}
+				}
+				
+			} else {
+				// if there are no deeper xml elements or no attributes
+				// add a standard child xml element
+				$xml->addChild($child, xmlify($value));
+			}
+			$repeat = false;
+		}
+		
+	}
+	return $xml;
+}
+
+function add_attributes($xml, $xml_child, $attributes) {
+	foreach ($attributes as $k => $v) {
+		$xml_child->addAttribute($k, $v);
+	}
+} 
