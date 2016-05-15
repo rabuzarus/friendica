@@ -682,6 +682,9 @@ function conversation(&$a, $items, $mode, $update, $preview = false) {
 					'title' => $item['title_e'],
 					'body' => $body_e,
 					'tags' => $tags_e,
+					//rabuzarus
+					'event' => $item['event'],
+					'photo' => $item['photo'],
 					'hashtags' => $hashtags_e,
 					'mentions' => $mentions_e,
 					'txt_cats' => t('Categories:'),
@@ -1419,4 +1422,54 @@ function get_response_button_text($v,$count) {
 			return tt('Undecided','Undecided',$count,'noun');
 			break;
 	}
+}
+
+function prepare_item(&$item, $attach = false, $preview = false) {
+
+	call_hooks('prepare_item_init', $item); 
+
+	$s = '';
+	$photo = '';
+
+	$is_photo = ((($item['verb'] === ACTIVITY_POST) && ($item['object-type'] === ACTIVITY_OBJ_PHOTO)) ? true : false);
+
+	if($is_photo) {
+		$object = parse_xml_string($item['object'],false);
+		
+		$s .= '<div class="inline-photo-item-wrapper"><a href="' . rawurldecode($object['id']) . '" target="_blank"><img class="inline-photo-item" src="' . rawurldecode($object['link'][0]['href']) . '"></a></div>' . $s;
+	}
+
+	$s .= prepare_body($item, $attach, $preview);
+
+	$event = (($item['obj-type'] === ACTIVITY_OBJ_EVENT) ? format_event($item['object']) : false);
+
+	$prep_arr = array(
+		'item' => $item,
+		'html' => $event ? $event['content'] : $s,
+		'event' => $event['header'],
+		'photo' => $photo
+	);
+
+	call_hooks('prepare_item', $prep_arr);
+
+	$s = $prep_arr['html'];
+	$photo = $prep_arr['photo'];
+	$event = $prep_arr['event'];
+
+	
+	$prep_arr = array(
+		'item' => $item,
+		'photo' => $photo,
+		'html' => $s,
+		'event' => $event,
+		'categories' => $categories,
+		'folders' => $filer,
+		'tags' => $tags,
+		'mentions' => $mentions,
+		'attachments' => $attachments
+	);
+	call_hooks('prepare_body_final', $prep_arr);
+	unset($prep_arr['item']);
+
+	return $prep_arr;
 }
