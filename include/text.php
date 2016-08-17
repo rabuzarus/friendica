@@ -1495,14 +1495,14 @@ function get_cats_and_terms($item) {
 	return array($categories, $folders);
 }
 
-if(! function_exists('get_plink')) {
 /**
- * get private link for item
+ * @brief Get private link for item
  * @param array $item
- * @return boolean|array False if item has not plink, otherwise array('href'=>plink url, 'title'=>translated title)
+ * @return bool|array False if item has not plink, otherwise array('href'=>plink url, 'title'=>translated title)
  */
 function get_plink($item) {
 	$a = get_app();
+	$ret = array();
 
 	if ($a->user['nickname'] != "") {
 		$ret = array(
@@ -1518,19 +1518,30 @@ function get_plink($item) {
 			$ret["title"] = t('link to source');
 		}
 
-	} elseif (x($item,'plink') && ($item['private'] != 1))
+		// Check if the author of the post is connected to the local_user.
+		// If the author is a connected Friendica contact we can try to authenticate
+		// on the foreign Friendica instance through redir
+		if (local_user()) {
+			$clean_url = normalise_link($item['url']);
+
+			$r = q("SELECT `id` FROM `contact` WHERE `network` = '%s' AND `uid` = %d AND `nurl` = '%s' NOT `self` LIMIT 1",
+				dbesc(NETWORK_DFRN), intval(local_user()), dbesc(normalise_link($clean_url)));
+			if (dbm::is_result($r))
+				$ret["href"] = 'redir/'.$r[0]['id'].'?url='.$item['plink'];
+		}
+
+	} elseif (x($item,'plink') && ($item['private'] != 1)) {
 		$ret = array(
 				'href' => $item['plink'],
 				'orig' => $item['plink'],
 				'title' => t('link to source'),
 			);
-	else
-		$ret = array();
+	}
 
 	//if (x($item,'plink') && ($item['private'] != 1))
 
 	return($ret);
-}}
+}
 
 if(! function_exists('unamp')) {
 /**

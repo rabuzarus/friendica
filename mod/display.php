@@ -2,24 +2,110 @@
 
 function display_init(&$a) {
 
-	if((get_config('system','block_public')) && (! local_user()) && (! remote_user())) {
+	if ((get_config('system','block_public')) && (! local_user()) && (! remote_user())) {
 		return;
 	}
 
 	$nick = (($a->argc > 1) ? $a->argv[1] : '');
 	$profiledata = array();
+	$groups = array();
+
+	$contact = null;
+	$remote_contact = false;
+	$contact_id = 0;
+
+	$sql_extra = "";
 
 	// If there is only one parameter, then check if this parameter could be a guid
 	if ($a->argc == 2) {
 		$nick = "";
 		$itemuid = 0;
+		$item_guid = $a->argv[1];
+
+		// Query for the item by its item guid to look if it's present in the database.
+		$r = q("SELECT `id`, `parent`, `author-name`, `item`.`author-link` FROM `item`
+				WHERE `item`.`visible` AND NOT `item`.`deleted` AND NOT `item`.`moderated`
+				AND `item`.`guid` = '%s'", dbesc($item_guid));
+
+		// We want to find the orginal author of the top level post. So if the former item isn't the top-level post
+		// we will search for its parent.
+		// If it is remote authed connection we need to know the author of the top-level post because he/she
+		// is the one who has set the permissions
+		if (dbm::is_result($r) && $r[0]["id"] != $r[0]["parent"]) {
+			$r = q("SELECT `id`, `author-name`, `author-link` FROM `item`
+				WHERE `item`.`visible` AND NOT `item`.`deleted` AND NOT `item`.`moderated`
+				AND `id` = %d", intval($r[0]["parent"]));
+		}
+
+		if (!dbm::is_result($r)) {
+			$a->error = 404;
+			notice( t('Item not found.') . EOL);
+			return;
+		}
+
+		$author_link = normalise_link($r[0]['author-link']);
+
+		// We need to find the nickname of the author to search for it in the user table
+		$r = q("SELECT `nick` FROM `contact` WHERE `nurl` = '%s' AND `self` LIMIT 1", dbesc($author_link));
+		if (dbm::is_result($r))
+			$nick = $r[0]['nick'];
+
+	}
+
+	// Get the Permissions - To get the item permissions the orignal author has to be in the user table.
+	// (The item author has to be a registrated user on this friendica instance).
+	if ($nick != '') {
+		$user = q("SELECT * FROM `user` WHERE `nickname` = '%s' AND NOT `blocked` LIMIT 1", dbesc($nick));
+		if (! dbm::is_result($user))
+			return;
+
+		$a->data['user'] = $user[0];
+		$a->profile_uid = $user[0]['uid'];
+
+
+		// Get the Page Permissions
+		if (is_array($_SESSION['remote'])) {
+			foreach ($_SESSION['remote'] as $v) {
+				if ($v['uid'] == $a->profile_uid) {
+					$contact_id = $v['cid'];
+					break;
+				}
+			}
+		}
+
+		if ($contact_id) {
+			$groups = init_groups_visitor($contact_id);
+			$r = q("SELECT * FROM `contact` WHERE `id` = %d AND `uid` = %d LIMIT 1",
+				intval($contact_id),
+				intval($a->profile_uid)
+			);
+			if (dbm::is_result($r)) {
+				$contact = $r[0];
+				$remote_contact = true;
+			}
+		}
+
+		if (! $remote_contact) {
+			if (local_user()) {
+				$contact_id = $_SESSION['cid'];
+				$contact = $a->contact;
+			}
+		}
+
+	}
+
+	// If there is only one parameter, then check if this parameter could be a guid
+	if ($a->argc == 2) {
+		$nick ="";
+		$r = null;
+		$sql_extra = item_permissions_sql($a->data['user']['uid'],$remote_contact,$groups);
 
 		// Does the local user have this item?
 		if (local_user()) {
 			$r = q("SELECT `id`, `parent`, `author-name`, `author-link`, `author-avatar`, `network`, `body`, `uid`, `owner-link` FROM `item`
 				WHERE `item`.`visible` AND NOT `item`.`deleted` AND NOT `item`.`moderated`
 					AND `guid` = '%s' AND `uid` = %d", dbesc($a->argv[1]), local_user());
-			if (count($r)) {
+			if (dbm::is_result($r)) {
 				$nick = $a->user["nickname"];
 				$itemuid = local_user();
 			}
@@ -31,12 +117,11 @@ function display_init(&$a) {
 				`item`.`author-link`, `item`.`author-avatar`, `item`.`network`, `item`.`uid`, `item`.`owner-link`, `item`.`body`
 				FROM `item` INNER JOIN `user` ON `user`.`uid` = `item`.`uid`
 				WHERE `item`.`visible` AND NOT `item`.`deleted` AND NOT `item`.`moderated`
-					AND `item`.`allow_cid` = ''  AND `item`.`allow_gid` = ''
-					AND `item`.`deny_cid`  = '' AND `item`.`deny_gid`  = ''
-					AND NOT `item`.`private` AND NOT `user`.`hidewall`
-					AND `item`.`guid` = '%s'", dbesc($a->argv[1]));
+					$item_sql_extra
+					AND `item`.`guid` = '%s'",
+					dbesc($a->argv[1]));
 				//	AND NOT `item`.`private` AND `item`.`wall`
-			if (count($r)) {
+			if (dbm::is_result($r)) {
 				$nick = $r[0]["nickname"];
 				$itemuid = $r[0]["uid"];
 			}
@@ -53,11 +138,12 @@ function display_init(&$a) {
 					AND `item`.`guid` = '%s'", dbesc($a->argv[1]));
 				//	AND NOT `item`.`private` AND `item`.`wall`
 		}
-		if (count($r)) {
-			if ($r[0]["id"] != $r[0]["parent"])
+		if (dbm::is_result($r)) {
+			if ($r[0]["id"] != $r[0]["parent"]) {
 				$r = q("SELECT `id`, `author-name`, `author-link`, `author-avatar`, `network`, `body`, `uid`, `owner-link` FROM `item`
 					WHERE `item`.`visible` AND NOT `item`.`deleted` AND NOT `item`.`moderated`
 						AND `id` = %d", $r[0]["parent"]);
+			}
 
 			if (($itemuid != local_user()) AND local_user()) {
 				// Do we know this contact but we haven't got this item?
@@ -92,7 +178,7 @@ function display_init(&$a) {
 						WHERE `user`.`nickname` = '%s' AND `profile`.`is-default` AND `contact`.`self` LIMIT 1",
 						dbesc($nickname)
 					);
-					if (count($r))
+					if (dbm::is_result($r))
 						$profiledata = $r[0];
 
 					$profiledata["network"] = NETWORK_DFRN;
@@ -195,7 +281,7 @@ function display_fetchauthor($a, $item) {
 
 function display_content(&$a, $update = 0) {
 
-	if((get_config('system','block_public')) && (! local_user()) && (! remote_user())) {
+	if ((get_config('system','block_public')) && (! local_user()) && (! remote_user())) {
 		notice( t('Public access denied.') . EOL);
 		return;
 	}
@@ -209,19 +295,68 @@ function display_content(&$a, $update = 0) {
 
 	$a->page['htmlhead'] .= replace_macros(get_markup_template('display-head.tpl'), array());
 
-
-	if($update) {
-		$nick = $_REQUEST['nick'];
-	}
-	else {
-		$nick = (($a->argc > 1) ? $a->argv[1] : '');
-	}
-
-	if($update) {
+	if ($update) {
 		$item_id = $_REQUEST['item_id'];
+		// Note: Dow we need the following line or does $a->profile_uid is enough ?
 		$a->profile = array('uid' => intval($update), 'profile_uid' => intval($update));
+		$a->profile_uid = intval($update);
 	}
-	else {
+
+	//
+	// Setup permissions structures
+	//
+	$groups         = array();
+	$contact        = null;
+	$remote_contact = false;
+	$contact_id     = 0;
+
+	// Get the Page Permissions
+	if (is_array($_SESSION['remote'])) {
+		foreach ($_SESSION['remote'] as $v) {
+			if ($v['uid'] == $a->profile_uid) {
+				$contact_id = $v['cid'];
+				break;
+			}
+		}
+	}
+
+	if ($contact_id) {
+		$groups = init_groups_visitor($contact_id);
+		$r = q("SELECT * FROM `contact` WHERE `id` = %d AND `uid` = %d LIMIT 1",
+			intval($contact_id),
+			intval($a->profile_uid)
+		);
+		if (dbm::is_result($r)) {
+			$contact = $r[0];
+			$remote_contact = true;
+		}
+	}
+
+	if (! $remote_contact) {
+		if (local_user()) {
+			$contact_id = $_SESSION['cid'];
+			$contact = $a->contact;
+		}
+	}
+
+	$is_owner = ((local_user()) && (local_user() == $a->profile_uid) ? true : false);
+	$sql_extra = item_permissions_sql($a->profile_uid,$remote_contact,$groups);
+
+	if ($a->profile['hidewall'] && (! $is_owner) && (! $remote_contact)) {
+		notice( t('Access to this profile has been restricted.') . EOL);
+		return;
+	}
+
+	$r = q("SELECT * FROM `contact` WHERE `uid` = %d AND `self` LIMIT 1",
+		intval($a->profile_uid)
+	);
+	if (dbm::is_result($r))
+		$a->page_contact = $r[0];
+
+	if ($update) {
+		$nick = $_REQUEST['nick'];
+	} else {
+		$nick = (($a->argc > 1) ? $a->argv[1] : '');
 		$item_id = (($a->argc > 2) ? $a->argv[2] : 0);
 
 		if ($a->argc == 2) {
@@ -231,7 +366,7 @@ function display_content(&$a, $update = 0) {
 				$r = q("SELECT `id` FROM `item`
 					WHERE `item`.`visible` AND NOT `item`.`deleted` AND NOT `item`.`moderated`
 						AND `guid` = '%s' AND `uid` = %d", dbesc($a->argv[1]), local_user());
-				if (count($r)) {
+				if (dbm::is_result($r)) {
 					$item_id = $r[0]["id"];
 					$nick = $a->user["nickname"];
 				}
@@ -240,12 +375,10 @@ function display_content(&$a, $update = 0) {
 			if ($nick == "") {
 				$r = q("SELECT `user`.`nickname`, `item`.`id` FROM `item` INNER JOIN `user` ON `user`.`uid` = `item`.`uid`
 					WHERE `item`.`visible` AND NOT `item`.`deleted` AND NOT `item`.`moderated`
-						AND `item`.`allow_cid` = ''  AND `item`.`allow_gid` = ''
-						AND `item`.`deny_cid`  = '' AND `item`.`deny_gid`  = ''
-						AND NOT `item`.`private` AND NOT `user`.`hidewall`
+						$item_sql_extra
 						AND `item`.`guid` = '%s'", dbesc($a->argv[1]));
 					//	AND NOT `item`.`private` AND `item`.`wall`
-				if (count($r)) {
+				if (dbm::is_result($r)) {
 					$item_id = $r[0]["id"];
 					$nick = $r[0]["nickname"];
 				}
@@ -258,7 +391,7 @@ function display_content(&$a, $update = 0) {
 						AND NOT `item`.`private` AND `item`.`uid` = 0
 						AND `item`.`guid` = '%s'", dbesc($a->argv[1]));
 					//	AND NOT `item`.`private` AND `item`.`wall`
-				if (count($r)) {
+				if (dbm::is_result($r)) {
 					$item_id = $r[0]["id"];
 				}
 			}
@@ -268,7 +401,7 @@ function display_content(&$a, $update = 0) {
 	if ($item_id AND !is_numeric($item_id)) {
 		$r = q("SELECT `id` FROM `item` WHERE `uri` = '%s' AND `uid` = %d LIMIT 1",
 			dbesc($item_id), intval($a->profile['uid']));
-		if ($r)
+		if (dbm::is_result($r))
 			$item_id = $r[0]["id"];
 		else
 			$item_id = false;
@@ -280,54 +413,6 @@ function display_content(&$a, $update = 0) {
 		return;
 	}
 
-
-	$groups = array();
-
-	$contact = null;
-	$remote_contact = false;
-
-	$contact_id = 0;
-
-	if(is_array($_SESSION['remote'])) {
-		foreach($_SESSION['remote'] as $v) {
-			if($v['uid'] == $a->profile['uid']) {
-				$contact_id = $v['cid'];
-				break;
-			}
-		}
-	}
-
-	if($contact_id) {
-		$groups = init_groups_visitor($contact_id);
-		$r = q("SELECT * FROM `contact` WHERE `id` = %d AND `uid` = %d LIMIT 1",
-			intval($contact_id),
-			intval($a->profile['uid'])
-		);
-		if(count($r)) {
-			$contact = $r[0];
-			$remote_contact = true;
-		}
-	}
-
-	if(! $remote_contact) {
-		if(local_user()) {
-			$contact_id = $_SESSION['cid'];
-			$contact = $a->contact;
-		}
-	}
-
-	$r = q("SELECT * FROM `contact` WHERE `uid` = %d AND `self` LIMIT 1",
-		intval($a->profile['uid'])
-	);
-	if(count($r))
-		$a->page_contact = $r[0];
-
-	$is_owner = ((local_user()) && (local_user() == $a->profile['profile_uid']) ? true : false);
-
-	if($a->profile['hidewall'] && (! $is_owner) && (! $remote_contact)) {
-		notice( t('Access to this profile has been restricted.') . EOL);
-		return;
-	}
 
 	// We need the editor here to be able to reshare an item.
 
@@ -349,7 +434,7 @@ function display_content(&$a, $update = 0) {
 
 	$sql_extra = item_permissions_sql($a->profile['uid'],$remote_contact,$groups);
 
-	if($update) {
+	if ($update) {
 
 		$r = q("SELECT `id` FROM `item` WHERE `item`.`uid` = %d
 			AND `item`.`parent` = (SELECT `parent` FROM `item` WHERE `id` = %d)
@@ -358,7 +443,7 @@ function display_content(&$a, $update = 0) {
 			intval($item_id)
 		);
 
-		if(!$r)
+		if (!dbm::is_result($r))
 			return '';
 	}
 
@@ -371,7 +456,7 @@ function display_content(&$a, $update = 0) {
 	);
 
 
-	if(!$r && local_user()) {
+	if (!dbm::is_result($r) && local_user()) {
 		// Check if this is another person's link to a post that we have
 		$r = q("SELECT `item`.uri FROM `item`
 			WHERE (`item`.`id` = %d OR `item`.`uri` = '%s')
@@ -379,7 +464,7 @@ function display_content(&$a, $update = 0) {
 			intval($item_id),
 			dbesc($item_id)
 		);
-		if($r) {
+		if (dbm::is_result($r)) {
 			$item_uri = $r[0]['uri'];
 
 			$r = q(item_query()." AND `item`.`uid` = %d
@@ -392,9 +477,9 @@ function display_content(&$a, $update = 0) {
 		}
 	}
 
-	if($r) {
+	if (dbm::is_result($r)) {
 
-		if((local_user()) && (local_user() == $a->profile['uid'])) {
+		if ((local_user()) && (local_user() == $a->profile['uid'])) {
 			$unseen = q("SELECT `id` FROM `item` WHERE `unseen` AND `parent` = %d",
 					intval($r[0]['parent']));
 
@@ -466,18 +551,15 @@ function display_content(&$a, $update = 0) {
 		dbesc($item_id),
 		dbesc($item_id)
 	);
-	if($r) {
-		if($r[0]['deleted']) {
-			notice( t('Item has been removed.') . EOL );
-		}
-		else {
-			notice( t('Permission denied.') . EOL );
-		}
+	if (!dbm::is_result($r))
+		notice( t('Item not found.') . EOL );
+
+	if (dbm::is_result($r) && $r[0]['deleted']) {
+		notice( t('Item has been removed.') . EOL );
 	}
 	else {
-		notice( t('Item not found.') . EOL );
+		notice( t('Permission denied.') . EOL );
 	}
 
 	return $o;
 }
-

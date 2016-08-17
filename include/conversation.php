@@ -551,7 +551,7 @@ function conversation(&$a, $items, $mode, $update, $preview = false) {
 		$page_writeable = can_write_wall($a,$profile_owner);
 		if(!$update) {
 			$live_update_div = '<div id="live-display"></div>' . "\r\n"
-				. "<script> var profile_uid = " . $_SESSION['uid'] . ";"
+				. "<script> var profile_uid = " . $a->profile['profile_uid'] . ";"
 				. " var profile_page = 1; </script>";
 		}
 	}
