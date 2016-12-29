@@ -209,7 +209,7 @@ function photos_post(&$a) {
 				intval($page_owner_uid)
 			);
 			// Update the photo albums cache
-			photo_albums($page_owner_uid, true);
+			photo_albums_modify_cache($page_owner_uid, "rename_album", $album, $newalbum);
 
 			$newurl = str_replace(bin2hex($album),bin2hex($newalbum),$_SESSION['photo_return']);
 			goaway($newurl);
@@ -299,7 +299,7 @@ function photos_post(&$a) {
 			}
 
 			// Update the photo albums cache
-			photo_albums($page_owner_uid, true);
+			photo_albums_modify_cache($page_owner_uid, "delete_album", $album);
 		}
 
 		goaway('photos/' . $a->data['user']['nickname']);
@@ -367,7 +367,7 @@ function photos_post(&$a) {
 				$drop_id = intval($i[0]['id']);
 
 				// Update the photo albums cache
-				photo_albums($page_owner_uid, true);
+				photo_albums_modify_cache($page_owner_uid, "remove_photo", notags(trim($_POST['albname'])));
 
 				if ($i[0]['visible'])
 					proc_run(PRIORITY_HIGH, "include/notifier.php", "drop", $drop_id);
@@ -470,7 +470,7 @@ function photos_post(&$a) {
 			);
 			// Update the photo albums cache if album name was changed
 			if ($albname !== $origaname) {
-				photo_albums($page_owner_uid, true);
+				photo_albums_modify_cache($page_owner_uid, "move_photo", $origaname, $albname);
 			}
 		}
 
@@ -928,8 +928,6 @@ function photos_post(&$a) {
 				. '[/url]';
 
 	$item_id = item_store($arr);
-	// Update the photo albums cache
-	photo_albums($page_owner_uid, true);
 
 	if ($visible)
 		proc_run(PRIORITY_HIGH, "include/notifier.php", 'wall-new', $item_id);

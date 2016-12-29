@@ -706,6 +706,10 @@ class Photo {
 				dbesc($deny_gid)
 			);
 		}
+		// Update the photo albums cache only for the biggest photo
+		if ($scale === 0) {
+			photo_albums_modify_cache($uid, "new_photo", $album);
+		}
 
 		return $r;
 	}

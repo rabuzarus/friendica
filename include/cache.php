@@ -207,4 +207,17 @@ class Cache {
 			set_config("system", "cache_cleared_minute", time());
 		}
 	}
+
+	public static function getUpdateValue($key) {
+
+		$date = q("SELECT `updated` FROM `cache` WHERE `k`='%s' LIMIT 1",
+			dbesc($key)
+		);
+
+		if (dbm::is_result($date)) {
+			return $date[0]['updated'];
+		}
+
+		return null;
+	}
 }
