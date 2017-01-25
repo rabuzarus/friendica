@@ -173,7 +173,7 @@
 
 							<div id="settings-activity-desc"><h4>{{$activity_options}}</h4></div>
 
-							<div class="group">
+							<div class="field-group">
 								{{include file="field_checkbox.tpl" field=$post_newfriend}}
 								{{include file="field_checkbox.tpl" field=$post_joingroup}}
 								{{include file="field_checkbox.tpl" field=$post_profilechange}}
@@ -182,7 +182,7 @@
 
 							<div id="settings-notify-desc"><h4>{{$lbl_not}}</h4></div>
 
-							<div class="group">
+							<div class="field-group">
 								{{include file="field_intcheckbox.tpl" field=$notify1}}
 								{{include file="field_intcheckbox.tpl" field=$notify2}}
 								{{include file="field_intcheckbox.tpl" field=$notify3}}

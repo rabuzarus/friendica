@@ -104,7 +104,10 @@ function photos_init(App $a) {
 
 		$tpl = get_markup_template("photos_head.tpl");
 		$a->page['htmlhead'] .= replace_macros($tpl,array(
-			'$ispublic' => t('everybody')
+			'$owner_uid' => $a->profile_uid,
+			'$ispublic' => t('everybody'),
+			'$can_post' => $can_post,
+			'$can_write_wall' => can_write_wall($a, $a->profile_uid)
 		));
 
 	}
@@ -991,10 +994,15 @@ function photos_content(App $a) {
 	else
 		$datatype = 'summary';
 
-	if ($a->argc > 4)
+	if ($a->argc > 4) {
 		$cmd = $a->argv[4];
-	else
+	} else {
 		$cmd = 'view';
+	}
+
+	if (isset($_GET['format']) && $_GET['format'] == 'json') {
+		$format = 'json';
+	}
 
 	//
 	// Setup permissions structures
@@ -1202,15 +1210,19 @@ function photos_content(App $a) {
 	if ($datatype === 'album') {
 
 		$album = hex2bin($datum);
+		$sql_limit = '';
 
-		$r = q("SELECT `resource-id`, max(`scale`) AS `scale` FROM `photo` WHERE `uid` = %d AND `album` = '%s'
-			AND `scale` <= 4 $sql_extra GROUP BY `resource-id`",
-			intval($owner_uid),
-			dbesc($album)
-		);
-		if (dbm::is_result($r)) {
-			$a->set_pager_total(count($r));
-			$a->set_pager_itemspage(20);
+		if ($format != 'json') {
+			$r = q("SELECT `resource-id`, max(`scale`) AS `scale` FROM `photo` WHERE `uid` = %d AND `album` = '%s'
+				AND `scale` <= 4 $sql_extra GROUP BY `resource-id`",
+				intval($owner_uid),
+				dbesc($album)
+			);
+			if (dbm::is_result($r)) {
+				$a->set_pager_total(count($r));
+				$a->set_pager_itemspage(20);
+				$sql_limit = sprintf('LIMIT %d , %d', intval($a->pager['start']), intval($a->pager['itemspage']));
+			}
 		}
 
 		if ($_GET['order'] === 'posted')
@@ -1219,11 +1231,9 @@ function photos_content(App $a) {
 			$order = 'DESC';
 
 		$r = q("SELECT `resource-id`, `id`, `filename`, type, max(`scale`) AS `scale`, `desc` FROM `photo` WHERE `uid` = %d AND `album` = '%s'
-			AND `scale` <= 4 $sql_extra GROUP BY `resource-id` ORDER BY `created` $order LIMIT %d , %d",
+			AND `scale` <= 4 $sql_extra GROUP BY `resource-id` ORDER BY `created` $order $sql_limit",
 			intval($owner_uid),
-			dbesc($album),
-			intval($a->pager['start']),
-			intval($a->pager['itemspage'])
+			dbesc($album)
 		);
 
 		//edit album name
@@ -1265,6 +1275,8 @@ function photos_content(App $a) {
 
 		if (dbm::is_result($r))
 			$twist = 'rotright';
+			$index = 0;
+
 			foreach ($r as $rr) {
 				if ($twist == 'rotright')
 					$twist = 'rotleft';
@@ -1281,18 +1293,36 @@ function photos_content(App $a) {
 					$desc_e = $rr['desc'];
 				}
 
-				$photos[] = array(
-					'id' => $rr['id'],
-					'twist' => ' ' . $twist . rand(2,4),
-					'link' => 'photos/' . $a->data['user']['nickname'] . '/image/' . $rr['resource-id']
-						. (($_GET['order'] === 'posted') ? '?f=&order=posted' : ''),
-					'title' => t('View Photo'),
-					'src' => 'photo/' . $rr['resource-id'] . '-' . $rr['scale'] . '.' .$ext,
-					'alt' => $imgalt_e,
-					'desc'=> $desc_e,
-					'ext' => $ext,
-					'hash'=> $rr['resource_id'],
-				);
+				if ($format == 'json') {
+					$photos[] = array (
+						'id' => $rr['id'],
+						'src' => 'photo/' . $rr['resource-id'] .'.' . $ext,
+						'thumb' => 'photo/' . $rr['resource-id'] . '-' . $rr['scale'] . '.' .$ext,
+						//'subHtml' => $desc_e,
+						'desc' => $desc_e,
+//						'downloadUrl' => 'photo/' . $rr['resource-id'] .'.' . $ext,
+						'link' => 'photos/' . $a->data['user']['nickname'] . '/image/' . $rr['resource-id']
+					);
+				} else {
+					$photos[] = array(
+						'id' => $rr['id'],
+						'twist' => ' ' . $twist . rand(2,4),
+						'link' => 'photos/' . $a->data['user']['nickname'] . '/image/' . $rr['resource-id']
+							. (($_GET['order'] === 'posted') ? '?f=&order=posted' : ''),
+						'title' => t('View Photo'),
+						'src' => 'photo/' . $rr['resource-id'] . '.' . $ext,
+						'thumb' => 'photo/' . $rr['resource-id'] . '-' . $rr['scale'] . '.' .$ext,
+						'alt' => $imgalt_e,
+						'desc'=> $desc_e,
+						'ext' => $ext,
+						'hash'=> $rr['resource_id'],
+						'index' => $index++
+					);
+				};
+		}
+
+		if ($format == 'json') {
+			json_return_and_die($photos);
 		}
 
 		$tpl = get_markup_template('photo_album.tpl');
@@ -1859,7 +1889,8 @@ function photos_content(App $a) {
 				'twist'		=> ' ' . $twist . rand(2,4),
 				'link'  	=> 'photos/' . $a->data['user']['nickname'] . '/image/' . $rr['resource-id'],
 				'title' 	=> t('View Photo'),
-				'src'     	=> 'photo/' . $rr['resource-id'] . '-' . ((($rr['scale']) == 6) ? 4 : $rr['scale']) . '.' . $ext,
+				'src' 		=> 'photo/' . $rr['resource-id'] . '.' . $ext,
+				'thumb' 	=> 'photo/' . $rr['resource-id'] . '-' . ((($rr['scale']) == 6) ? 4 : $rr['scale']) . '.' . $ext,
 				'alt'     	=> $alt_e,
 				'album'	=> array(
 					'link'  => 'photos/' . $a->data['user']['nickname'] . '/album/' . bin2hex($rr['album']),

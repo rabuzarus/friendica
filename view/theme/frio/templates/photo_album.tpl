@@ -1,4 +1,8 @@
 
+<script type="text/javascript">
+	var albumname = "{{$album|escape:'quotes'}}";
+</script>
+
 <div class="generic-page-wrapper">
 
 	<h3 id="photo-album-title">{{$album}}</h3>
@@ -15,7 +19,7 @@
 	</div>
 	<div class="clear"></div>
 
-	<div class="photo-album-wrapper" id="photo-album-contents">
+	<div class="photo-album-wrapper photo-gallery" id="photo-album-contents">
 	{{foreach $photos as $photo}}
 		{{include file="photo_top.tpl"}}
 	{{/foreach}}
@@ -25,4 +29,3 @@
 	{{$paginate}}
 </div>
 
-<script>$(document).ready(function() { loadingPage = false; justifyPhotos('photo-album-contents-{{$album_id}}'); });</script>

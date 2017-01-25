@@ -7,7 +7,7 @@
 	<a id="photo-top-upload-link" href="{{$upload.1}}">{{$upload.0}}</a>
 	{{/if}}
 
-	<div id="photo-album-contents" class="photos">
+	<div id="photo-album-contents" class="photos photo-gallery">
 	{{foreach $photos as $photo}}
 		{{include file="photo_top.tpl"}}
 	{{/foreach}}
@@ -17,4 +17,3 @@
 	{{$paginate}}
 </div>
 
-<script>$(document).ready(function() { loadingPage = false; justifyPhotos(); });</script>
