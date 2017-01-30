@@ -15,7 +15,7 @@
 ?>
 
 <html>
-<head>
+<head prefix="prefix="og: http://ogp.me/ns#">
 	<title><?php if(x($page,'title')) echo $page['title'] ?></title>
 	<meta request="<?php echo htmlspecialchars($_REQUEST['pagename']) ?> ">
 	<script>var baseurl="<?php echo App::get_baseurl() ?>";</script>

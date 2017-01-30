@@ -33,6 +33,7 @@ require_once('include/identity.php');
 require_once('include/pidfile.php');
 require_once('update.php');
 require_once('include/dbstructure.php');
+require_once('include/SocialMetaTags.php');
 
 define ( 'FRIENDICA_PLATFORM',     'Friendica');
 define ( 'FRIENDICA_CODENAME',     'Asparagus');
@@ -978,6 +979,7 @@ class App {
 			'$shortcut_icon' => $shortcut_icon,
 			'$touch_icon' => $touch_icon,
 			'$stylesheet' => $stylesheet,
+			'$social_meta' => SocialMetaTags::get(),
 			'$infinite_scroll' => $invinite_scroll,
 		)) . $this->page['htmlhead'];
 	}

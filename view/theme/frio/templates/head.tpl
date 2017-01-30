@@ -97,3 +97,5 @@
 {{* Include the strings which are needed for some js functions (e.g. translation)
 They are loaded into the html <head> so that js functions can use them *}}
 {{include file="js_strings.tpl"}}
+
+{{$social_meta}}

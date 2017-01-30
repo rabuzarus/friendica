@@ -2,6 +2,7 @@
 
 require_once('include/contact_widgets.php');
 require_once('include/redir.php');
+require_once('include/SocialMetaTags.php');
 
 
 function profile_init(App $a) {
@@ -52,8 +53,20 @@ function profile_init(App $a) {
 	if ((! $blocked) && (! $userblock)) {
 		$keywords = ((x($a->profile,'pub_keywords')) ? $a->profile['pub_keywords'] : '');
 		$keywords = str_replace(array('#',',',' ',',,'),array('',' ',',',','),$keywords);
-		if(strlen($keywords))
+		if(strlen($keywords)) {
 			$a->page['htmlhead'] .= '<meta name="keywords" content="' . $keywords . '" />' . "\r\n" ;
+		}
+
+		$ptitle = (($a->profile['addr']) ? ($a->profile['username'] . ' (' . $a->profile['addr'] . ')') : $a->profile['username']);
+		$pdesc = (($a->profile['pdesc'] != "" ? $a->profile['pdesc'] : $a->profile['about']));
+		$pdesc .= (($pdesc == "") ? t("Friendica Profile") : "");
+
+		SocialMetaTags::set('type', 'profile');
+		SocialMetaTags::set('title', $ptitle);
+		SocialMetaTags::set('url', App::get_baseurl() . '/profile/' . $a->profile['nickname']);
+		SocialMetaTags::set('image', $a->profile['thumb']);
+		SocialMetaTags::set('description', $pdesc);
+		SocialMetaTags::set('username', $ptitle);
 	}
 
 	$a->page['htmlhead'] .= '<meta name="dfrn-global-visibility" content="' . (($a->profile['net-publish']) ? 'true' : 'false') . '" />' . "\r\n" ;
