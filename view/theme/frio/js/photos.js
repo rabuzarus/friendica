@@ -18,17 +18,39 @@ $(document).ready(function() {
 			albumname = $(this).children('img').attr('alt');
 		}
 
+
 		var url = window.location.href; 
+		var parts = parseUrl(url);
+
+		// get a clean url which points to the album
+		// we use this url in lightGallery to load further content
+		var cleanurl = '';
+		if (typeof parts.scheme != 'undefined') {
+			cleanurl += parts.scheme + '://';
+		}
+		if (typeof parts.host != 'undefined') {
+			cleanurl += parts.host;
+		}
+		if (typeof parts.path != 'undefined') {
+			cleanurl += parts.path;
+		}
 
 		getPhotosByAlbumAddress(url, function(data){
 			$(this).lightGallery({
 				index: parseInt(slideID, 10),
 				dynamic: true,
-				dynamicEl: data,
+				dynamicEl: data.results,
+				total: data.total,
+				page: data.page,
+				itemspage: data.items_page,
+				start: data.start,
+				albumUrl: cleanurl,
 				friendica: true,
+				preload: 0,
 				closable: false,
 				thumbnail: false,
-				showThumbByDefault: false
+				showThumbByDefault: false,
+				enableDrag: false
 			});
 		});
 	});

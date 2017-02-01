@@ -1212,7 +1212,7 @@ function photos_content(App $a) {
 		$album = hex2bin($datum);
 		$sql_limit = '';
 
-		if ($format != 'json') {
+		//if ($format != 'json') {
 			$r = q("SELECT `resource-id`, max(`scale`) AS `scale` FROM `photo` WHERE `uid` = %d AND `album` = '%s'
 				AND `scale` <= 4 $sql_extra GROUP BY `resource-id`",
 				intval($owner_uid),
@@ -1223,7 +1223,7 @@ function photos_content(App $a) {
 				$a->set_pager_itemspage(20);
 				$sql_limit = sprintf('LIMIT %d , %d', intval($a->pager['start']), intval($a->pager['itemspage']));
 			}
-		}
+		//}
 
 		if ($_GET['order'] === 'posted')
 			$order = 'ASC';
@@ -1322,7 +1322,14 @@ function photos_content(App $a) {
 		}
 
 		if ($format == 'json') {
-			json_return_and_die($photos);
+			$json = array(
+				'total' => $a->pager['total'],
+				'page' => $a->pager['page'],
+				'items_page' => $a->pager['itemspage'],
+				'start' => $a->pager['start'],
+				'results' => $photos
+			);
+			json_return_and_die($json);
 		}
 
 		$tpl = get_markup_template('photo_album.tpl');

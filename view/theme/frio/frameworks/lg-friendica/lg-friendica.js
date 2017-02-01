@@ -83,7 +83,12 @@
 
 			_this.core.$el.on("onBeforeSlide.lg.tm", function() {
 				isopen = false;
-				
+
+				var lglength = _this.core.s.dynamicEl.length
+				if (_this.core.index >= (lglength - 1)) {
+					_this.addNextContent();
+				}
+
 				// Put some core values into the cache, so we can make
 				// use of this in other js files
 				var index = _this.core.index;
@@ -92,6 +97,7 @@
 				slideCache.index = _this.core.index;
 
 				_this.rewriteSubHtml();
+
 				$(".lg-commentloader").removeClass("comment_loaded");
 				_this.core.$outer.removeClass('lg-comment-active');
 				$('.fb-comments .photo-comment-wrapper').remove();
@@ -171,6 +177,47 @@
 			if (this.core.s.dynamic) {
 				this.core.s.dynamicEl[index].subHtml = this.core.s.dynamicEl[index].desc;
 				this.core.$items[index].subHtml = this.core.$items[index].desc;
+			}
+		};
+
+		Friendica.prototype.addNextContent = function() {
+			var query = '?page=' + (this.core.s.page + 1);
+			var url = this.core.s.albumUrl + query;
+
+			postdata = {
+					format: 'json'
+				};
+
+			var req = $.ajax({
+					url: url,
+					data: postdata,
+					context: this
+				});
+
+			req.success(function(data) {
+				this.addNextElements(data);
+			});
+	
+		};
+
+		Friendica.prototype.addNextElements = function(data) {
+			if (typeof data.results && data.results.length > 0) {
+				for (var i = 0; i < data.results.length; i++) {
+					this.core.$items.push(data.results[i]);
+				}
+
+				this.core.s.total = data.total;
+				this.core.s.page = data.page;
+	//			this.core.s.start = data.start;
+
+				// Append new elements to outer html
+				var elementsToAdd = this.core.$items.length - this.core.$outer.find(".lg-inner").find(".lg-item").length;
+				while (elementsToAdd > 0) {
+					var newSlide = jQuery('<div class="lg-item"></div>');
+					this.core.$outer.find(".lg-inner").append(newSlide);
+					this.core.$slide = this.core.$outer.find(".lg-item");
+					elementsToAdd--;
+				}
 			}
 		};
 
