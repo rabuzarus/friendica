@@ -105,9 +105,10 @@
 				$('.fb-comments .photo-comment-wrapper').remove();
 			});
 
-			_this.core.$el.on("onCloseAfter.lg", function() {
+			_this.core.$el.on("onBeforeClose.lg", function() {
 				// Clear the slideCache on exit
 				slideCache = {};
+				_this.core.destroy(true);
 			});
 
 //			_this.core.$el.on('onAfterSlide.lg.tm', function(event, prevIndex, index) {
@@ -161,7 +162,7 @@
 		};
 
 		/**
-		 *  @desc add sub-html into the slide
+		 *  @brief add sub-html into the slide
 		 *  @param {Number} index - index of the slide
 		 */
 		Friendica.prototype.rewriteSubHtml = function() {

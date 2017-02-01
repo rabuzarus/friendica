@@ -7,7 +7,7 @@ $(document).ready(function() {
 	// Initialize justifiedGallery
 	justifyPhotos();
 
-	$('.photo-view-wrapper').lightGallery();
+//	$('.photo-view-wrapper').lightGallery();
 
 	$('.photo-gallery a').on('click', function(e) {
 		e.preventDefault();
@@ -18,14 +18,16 @@ $(document).ready(function() {
 			albumname = $(this).children('img').attr('alt');
 		}
 
-		getPhotosByAlbmuname(albumname, function(data){
+		var url = window.location.href; 
+
+		getPhotosByAlbumAddress(url, function(data){
 			$(this).lightGallery({
 				index: parseInt(slideID, 10),
 				dynamic: true,
 				dynamicEl: data,
 				friendica: true,
 				closable: false,
-				thumbnail: true,
+				thumbnail: false,
 				showThumbByDefault: false
 			});
 		});
@@ -54,26 +56,50 @@ function justifyPhotosAjax() {
 	$('.photo-gallery').justifiedGallery('norewind').on('jg.complete', function(e){ justifiedGalleryActive = false; });
 }
 
-function getPhotosByAlbmuname(album, callback) {
-	albumhex = bin2hex(album);
-	url = baseurl + '/photos/trebor/album/' + albumhex;
+//function getPhotosByAlbmuname(album, callback) {
+//	albumhex = bin2hex(album);
+//	url = baseurl + '/photos/trebor/album/' + albumhex;
+//
+//	postdata = {
+//		format: 'json'
+//	};
+//
+//	// If we have this album already in the cache take this one
+//	if(albumname in albumCache) {
+//		setTimeout(function() { callback(albumCache[albumname]); } , 1);
+//		return;
+//	}
+//
+//	$.ajax({
+//		url: url,
+//		data: postdata,
+//		success: function(data, textStatus) {
+//			// Store data in the cache
+//			albumCache[albumname] = data;
+//			callback(data);
+//		}
+//	}).fail(function () {callback([]); });
+//}
+
+function getPhotosByAlbumAddress(url, callback) {
 
 	postdata = {
 		format: 'json'
 	};
 
 	// If we have this album already in the cache take this one
-	if(albumname in albumCache) {
-		setTimeout(function() { callback(albumCache[albumname]); } , 1);
-		return;
-	}
+// uncommented - we need a new cache
+//	if(albumname in albumCache) {
+//		setTimeout(function() { callback(albumCache[albumname]); } , 1);
+//		return;
+//	}
 
 	$.ajax({
 		url: url,
 		data: postdata,
 		success: function(data, textStatus) {
 			// Store data in the cache
-			albumCache[albumname] = data;
+//			albumCache[albumname] = data;
 			callback(data);
 		}
 	}).fail(function () {callback([]); });
