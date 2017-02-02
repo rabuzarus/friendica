@@ -1210,20 +1210,18 @@ function photos_content(App $a) {
 	if ($datatype === 'album') {
 
 		$album = hex2bin($datum);
-		$sql_limit = '';
 
-		//if ($format != 'json') {
-			$r = q("SELECT `resource-id`, max(`scale`) AS `scale` FROM `photo` WHERE `uid` = %d AND `album` = '%s'
-				AND `scale` <= 4 $sql_extra GROUP BY `resource-id`",
-				intval($owner_uid),
-				dbesc($album)
-			);
-			if (dbm::is_result($r)) {
-				$a->set_pager_total(count($r));
-				$a->set_pager_itemspage(20);
-				$sql_limit = sprintf('LIMIT %d , %d', intval($a->pager['start']), intval($a->pager['itemspage']));
-			}
-		//}
+
+		$r = q("SELECT `resource-id`, max(`scale`) AS `scale` FROM `photo` WHERE `uid` = %d AND `album` = '%s'
+			AND `scale` <= 4 $sql_extra GROUP BY `resource-id`",
+			intval($owner_uid),
+			dbesc($album)
+		);
+		if (dbm::is_result($r)) {
+			$a->set_pager_total(count($r));
+			$a->set_pager_itemspage(20);
+			$sql_limit = sprintf('LIMIT %d , %d', intval($a->pager['start']), intval($a->pager['itemspage']));
+		}
 
 		if ($_GET['order'] === 'posted') {
 			$order = 'ASC';
@@ -1233,9 +1231,11 @@ function photos_content(App $a) {
 
 		$r = q("SELECT `resource-id`, `id`, `uid`, `filename`, type, max(`scale`) AS `scale`, `desc`, `allow_cid`, `allow_gid`, `deny_cid`, `deny_gid`
 			FROM `photo` WHERE `uid` = %d AND `album` = '%s'
-			AND `scale` <= 4 $sql_extra GROUP BY `resource-id` ORDER BY `created` $order $sql_limit",
+			AND `scale` <= 4 $sql_extra GROUP BY `resource-id` ORDER BY `created` $order LIMIT %d , %d",
 			intval($owner_uid),
-			dbesc($album)
+			dbesc($album),
+			intval($a->pager['start']),
+			intval($a->pager['itemspage'])
 		);
 
 		//edit album name
