@@ -50,7 +50,9 @@ $(document).ready(function() {
 				closable: false,
 				thumbnail: false,
 				showThumbByDefault: false,
-				enableDrag: false
+				enableDrag: false,
+				loop: false,
+				counter: false
 			});
 		});
 	});

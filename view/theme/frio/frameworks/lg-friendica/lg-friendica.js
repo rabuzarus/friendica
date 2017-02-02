@@ -24,6 +24,7 @@
 
 		var defaults = {
 			friendica: true,
+			counter: false,
 		};
 
 		var Friendica = function(element) {
@@ -42,12 +43,17 @@
 		Friendica.prototype.init = function() {
 			var _this = this;
 			var commentButton = '<span id="lg-comment" class="lg-icon"><i class="fa fa-commenting"></i></span>';
-			
+
+			_this.core.s.initPage = _this.core.s.page;
+			_this.core.s.countvar = _this.core.s.start;
+
 			var cache;
 			var isopen = false;
+	
 
 			this.core.$outer.find('.lg-toolbar').append(commentButton);
-			this.core.$outer.find('.lg-toolbar').append('<span id="lg-album">' + albumname + '</span>');
+			//this.core.$outer.find('.lg-toolbar').append('<span id="lg-album">' + albumname + '</span>');
+			$('.lg-toolbar').append('<div id="lg-album"><span id="lg-albumname">' + albumname + '     </span><span id="lg-counter-current">' + albumname + '</span> (<span id="lg-counter-all">' + this.core.s.total + ')</span></div>');
 
 			_this.commentbox();
 
@@ -56,7 +62,7 @@
 					isopen = false;
 				} else {
 					isopen = true;
-					_this.loadContent();
+					_this.loadCommentContent();
 				}
 				_this.core.$outer.toggleClass('lg-comment-active');
 			});
@@ -81,23 +87,36 @@
 				_this.core.$outer.removeClass("lg-comment-active");
 			});
 
+
 			_this.core.$el.on("onBeforeSlide.lg.tm", function() {
 				isopen = false;
 
+				var index = _this.core.index;
 				var lglength = _this.core.s.dynamicEl.length
+
+				// Load next content from the friendica instance
+				// To limit the ressources we don't load the whole
+				// album into the gallery. Instead load every single 
+				// photo album page into the gallery. If we are at
+				// the end of the present gallery content we will look
+				// if more pages are available and add it to the gallery
 				if (_this.core.index >= (lglength - 1)) {
-					_this.addNextContent();
+					_this.core.s.loadcontent = 'next';
+					_this.addFurtherContent();
 				}
+
+
 
 				// Put some core values into the cache, so we can make
 				// use of this in other js files
-				var index = _this.core.index;
+				
 				slideCache.id = _this.core.s.dynamicEl[index].id;
 				slideCache.link = _this.core.s.dynamicEl[index].link;
 				slideCache.index = _this.core.index;
 
 				_this.rewriteSubHtml();
 
+				// Reset the comment sidebar
 				$(".lg-commentloader").removeClass("comment_loaded");
 				_this.core.$outer.removeClass('lg-comment-active');
 				$('.fb-comments .photo-comment-wrapper').remove();
@@ -106,9 +125,21 @@
 			_this.core.$el.on("onAfterSlide.lg.tm", function(event) {
 				//Friendica().done(r())
 				isopen = false;
+
 				_this.core.$outer.removeClass('lg-comment-active');
 				$(".lg-commentloader").removeClass("comment_loaded");
 				$('.fb-comments .photo-comment-wrapper').remove();
+			});
+			
+			_this.core.$el.on("onSlideItemLoad.lg", function(index) {
+				var index = _this.core.index;
+
+				if ((_this.core.s.page !== 1) && (index == 0)) {
+					_this.core.s.loadcontent = 'previous';
+					_this.addFurtherContent();
+				}
+				$('#lg-counter-current').text(_this.core.s.countvar + index + 1);
+
 			});
 
 			_this.core.$el.on("onBeforeClose.lg", function() {
@@ -152,7 +183,7 @@
 			_this.core.$outer.find('.lg').append(commentbox);
 		};
 
-		Friendica.prototype.loadContent = function() {
+		Friendica.prototype.loadCommentContent = function() {
 			var _this = this;
 			var commentURL = null;
 			var index = this.core.index;
@@ -175,13 +206,19 @@
 			var index = this.core.index;
 
 			if (this.core.s.dynamic) {
-				this.core.s.dynamicEl[index].subHtml = this.core.s.dynamicEl[index].desc;
-				this.core.$items[index].subHtml = this.core.$items[index].desc;
+//				this.core.s.dynamicEl[index].subHtml = this.core.s.dynamicEl[index].desc;
+				var desc = '<div class="username">' + this.core.$items[index].username + '</div>';
+				if (this.core.$items[index].desc) {
+					desc += '<div class="photo-desc">'+ this.core.$items[index].desc + '</div>';
+				}
+
+				this.core.$items[index].subHtml = desc;
 			}
 		};
 
-		Friendica.prototype.addNextContent = function() {
-			var query = '?page=' + (this.core.s.page + 1);
+		Friendica.prototype.addFurtherContent = function() {
+			var query = this.query();
+
 			var url = this.core.s.albumUrl + query;
 
 			postdata = {
@@ -195,13 +232,19 @@
 				});
 
 			req.success(function(data) {
-				this.addNextElements(data);
+				if (this.core.s.loadcontent == 'next') {
+					this.addNextElements(data);
+				} else if (this.core.s.loadcontent == 'previous') {
+					this.addPrevElements(data);
+				}
 			});
 	
 		};
 
 		Friendica.prototype.addNextElements = function(data) {
-			if (typeof data.results && data.results.length > 0) {
+			if (typeof data.results !== 'undefined' && data.results.length > 0) {
+				// Loop through the results and add its elements to
+				// the gallery array
 				for (var i = 0; i < data.results.length; i++) {
 					this.core.$items.push(data.results[i]);
 				}
@@ -218,7 +261,55 @@
 					this.core.$slide = this.core.$outer.find(".lg-item");
 					elementsToAdd--;
 				}
+
+				// Reset the loading direction
+				this.core.s.loadcontent = null;
 			}
+		};
+
+		Friendica.prototype.addPrevElements = function(data) {
+			if (typeof data.results !== 'undefined' && data.results.length > 0) {
+
+				// Loop backwards through the results and add its elements right ahead
+				// of the existing gallery elements
+				for (var i = data.results.length -1 ; i >= 0; i--) {
+					this.core.$items.unshift(data.results[i]);
+				}
+
+				var newIndex = this.core.index + data.results.length;
+
+				this.core.index = newIndex;
+				this.core.s.total = data.total;
+				this.core.s.page = data.page;
+//				this.core.s.start = data.start;
+
+				// Append new elements to outer html
+				var elementsToAdd = this.core.$items.length - this.core.$outer.find(".lg-inner").find(".lg-item").length;
+				while (elementsToAdd > 0) {
+					var newSlide = jQuery('<div class="lg-item"></div>');
+					this.core.$outer.find(".lg-inner").prepend(newSlide);
+					this.core.$slide = this.core.$outer.find(".lg-item");
+					elementsToAdd--;
+				}
+
+				this.core.s.countvar = data.start;
+				// Reset the loading direction
+				this.core.s.loadcontent = null;
+			}
+		};
+
+		Friendica.prototype.query = function() {
+			var query;
+
+			if (this.core.s.loadcontent == 'next') {
+				query = '?page=' + (this.core.s.page + 1);
+			}
+
+			if (this.core.s.loadcontent == 'previous') {
+				query = '?page=' + (this.core.s.page - 1);
+			}
+
+			return query;
 		};
 
 		Friendica.prototype.destroy = function() {

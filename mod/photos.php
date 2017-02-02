@@ -1225,12 +1225,14 @@ function photos_content(App $a) {
 			}
 		//}
 
-		if ($_GET['order'] === 'posted')
+		if ($_GET['order'] === 'posted') {
 			$order = 'ASC';
-		else
+		} else {
 			$order = 'DESC';
+		}
 
-		$r = q("SELECT `resource-id`, `id`, `filename`, type, max(`scale`) AS `scale`, `desc` FROM `photo` WHERE `uid` = %d AND `album` = '%s'
+		$r = q("SELECT `resource-id`, `id`, `uid`, `filename`, type, max(`scale`) AS `scale`, `desc`, `allow_cid`, `allow_gid`, `deny_cid`, `deny_gid`
+			FROM `photo` WHERE `uid` = %d AND `album` = '%s'
 			AND `scale` <= 4 $sql_extra GROUP BY `resource-id` ORDER BY `created` $order $sql_limit",
 			intval($owner_uid),
 			dbesc($album)
@@ -1294,6 +1296,23 @@ function photos_content(App $a) {
 				}
 
 				if ($format == 'json') {
+					$tools = null;
+					$lock = null;
+
+					if ($can_post && ($rr['uid'] == $owner_uid)) {
+						$tools = array(
+							'edit'	=> array('photos/' . $a->data['user']['nickname'] . '/image/' . $datum . (($cmd === 'edit') ? '' : '/edit'), (($cmd === 'edit') ? t('View photo') : t('Edit photo'))),
+							'profile'=>array('profile_photo/use/'.$rr['resource-id'], t('Use as profile photo')),
+						);
+
+						// lock
+						$lock = ( ( ($rr['uid'] == local_user()) && (strlen($rr['allow_cid']) || strlen($rr['allow_gid'])
+								|| strlen($rr['deny_cid']) || strlen($rr['deny_gid'])) )
+								? t('Private Message')
+								: null);
+
+
+					}
 					$photos[] = array (
 						'id' => $rr['id'],
 						'src' => 'photo/' . $rr['resource-id'] .'.' . $ext,
@@ -1301,7 +1320,11 @@ function photos_content(App $a) {
 						//'subHtml' => $desc_e,
 						'desc' => $desc_e,
 //						'downloadUrl' => 'photo/' . $rr['resource-id'] .'.' . $ext,
-						'link' => 'photos/' . $a->data['user']['nickname'] . '/image/' . $rr['resource-id']
+						'link' => 'photos/' . $a->data['user']['nickname'] . '/image/' . $rr['resource-id'],
+						'tools' => $tools,
+						'lock' => $lock,
+						// The username needs a rework (forum accounts are not the owner - look at cid in the table
+						'username' => $a->data['user']['username'],
 					);
 				} else {
 					$photos[] = array(
