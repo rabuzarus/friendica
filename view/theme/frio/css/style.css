@@ -1222,6 +1222,10 @@ section #jotOpen {
     overflow-y: auto;
     max-height: calc(100vh - 330px);
     height: auto !important;
+    transition: max-height 0.25s ease-in;
+}
+.acl-show-networks #acl-list-content {
+    max-height: calc(100vh - 530px);
 }
 .acl-list-item {
     width: 48%;
@@ -1270,6 +1274,15 @@ section #jotOpen {
 .acl-button-hide.selected {
     background-color: #F44336;
     color: #fff;
+}
+#acl-networks {
+    max-height: 0px;
+    overflow: hidden;
+    transition: max-height 0.25s ease-in;
+}
+.acl-show-networks #acl-networks {
+    max-height: calc(100vh - 390px);
+    overflow: auto;
 }
 
 /*

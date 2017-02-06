@@ -16,17 +16,22 @@
 	<button class='acl-button-show btn btn-sm btn-default'>{{$show}}</button>
 </div>
 
-{{if $networks}}
-<hr style="clear:both"/>
-<div class="form-group">
-	<label for="profile-jot-email" id="profile-jot-email-label">{{$emailcc}}</label>
-	<input type="text" name="emailcc" id="profile-jot-email" class="form-control" title="{{$emtitle|escape:'html'}}" />
-</div>
-<div id="profile-jot-email-end"></div>
 
-{{if $jotnets}}
-{{$jotnets}}
-{{/if}}{{/if}}
+{{if $networks}}
+<a id="acl-network-toggle" onclick="aclNetworkToggle(this);">Show/Hide Networks</a>
+<div id="acl-networks">
+	<hr style="clear:both"/>
+	<div class="form-group">
+		<label for="profile-jot-email" id="profile-jot-email-label">{{$emailcc}}</label>
+		<input type="text" name="emailcc" id="profile-jot-email" class="form-control" title="{{$emtitle|escape:'html'}}" />
+	</div>
+	<div id="profile-jot-email-end"></div>
+
+	{{if $jotnets}}
+	{{$jotnets}}
+	{{/if}}
+</div>
+{{/if}}
 
 <script>
 $(document).ready(function() {
@@ -39,4 +44,10 @@ $(document).ready(function() {
 		);
 	}
 });
+
+function aclNetworkToggle(obj) {
+	 if ( $( obj ).parent().is( "#profile-jot-acl-wrapper" ) ) {
+		$( obj ).parent().toggleClass('acl-show-networks');
+	}
+}
 </script>
