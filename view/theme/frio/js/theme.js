@@ -10,7 +10,7 @@ $(document).ready(function(){
 			$("#back-to-top").fadeOut();
 		}
 	});
- 
+
 	// scroll body to 0px on click
 	$("#back-to-top").click(function () {
 		$("body,html").animate({
@@ -40,9 +40,7 @@ $(document).ready(function(){
 	$(".field.select > select, .field.custom > select").addClass("form-control");
 
 	// move the tabbar to the second nav bar
-	if( $("ul.tabbar").length ) {
-		$("ul.tabbar").appendTo("#topbar-second > .container > #tabmenu");
-	}
+	$("section .tabbar-wrapper").first().appendTo("#topbar-second > .container > #tabmenu");
 
 	// add mask css url to the logo-img container
 	//
@@ -56,7 +54,7 @@ $(document).ready(function(){
 	}
 
 	// make responsive tabmenu with flexmenu.js
-	// the menupoints which doesn't fit in the second nav bar will moved to a 
+	// the menupoints which doesn't fit in the second nav bar will moved to a
 	// dropdown menu. Look at common_tabs.tpl
 	$("ul.tabs.flex-nav").flexMenu({
 		'cutoff': 2,
@@ -84,17 +82,17 @@ $(document).ready(function(){
 				return false;
 			}
 		});
-		
-		if(checked == true) {
-			$("a#item-delete-selected").fadeTo(400, 1);
-			$("a#item-delete-selected").show();
+
+		if(checked) {
+			$("#item-delete-selected").fadeTo(400, 1);
+			$("#item-delete-selected").show();
 		} else {
-			$("a#item-delete-selected").fadeTo(400, 0, function(){
-				$("a#item-delete-selected").hide();
-			});	
+			$("#item-delete-selected").fadeTo(400, 0, function(){
+				$("#item-delete-selected").hide();
+			});
 		}
 	});
-		
+
 	//$('ul.flex-nav').flexMenu();
 
 	// initialize the bootstrap tooltips
@@ -130,7 +128,7 @@ $(document).ready(function(){
 		// append the new heading to the navbar
 		$("#topbar-second > .container > #tabmenu").append(newText);
 
-		// try to get the value of the original search input to insert it 
+		// try to get the value of the original search input to insert it
 		// as value in the nav-search-input
 		var searchValue = $("#search-wrapper .form-group-search input").val();
 
@@ -210,11 +208,8 @@ $(document).ready(function(){
 
 	// Dropdown menus with the class "dropdown-head" will display the active tab
 	// as button text
-	$("body").on('click', '.dropdown-head .dropdown-menu li a', function(){
-		$(this).closest(".dropdown").find('.btn').html($(this).text() + ' <span class="caret"></span>');
-		$(this).closest(".dropdown").find('.btn').val($(this).data('value'));
-		$(this).closest("ul").children("li").show();
-		$(this).parent("li").hide();
+	$("body").on('click', '.dropdown-head .dropdown-menu li a, .dropdown-head .dropdown-menu li button', function(){
+		toggleDropdownText(this);
 	});
 
 	/* setup onoff widgets */
@@ -258,40 +253,30 @@ $(document).ready(function(){
 		input.val(val);
 	});
 
+	// Set the padding for input elements with inline buttons
+	//
+	// In Frio we use some input elements where the submit button is visually
+	// inside the the input field (through css). We need to set a padding-right
+	// to the input element where the padding value would be at least the width
+	// of the button. Otherwise long user input would be invisible because it is
+	// behind the button.
+	$("body").on('click', '.form-group-search > input', function() {
+		// Get the width of the button (if the button isn't available
+		// buttonWidth will be null
+		var buttonWidth = $(this).next('.form-button-search').outerWidth();
+
+		if (buttonWidth) {
+			// Take the width of the button and ad 5px
+			var newWidth = buttonWidth + 5;
+			// Set the padding of the input element according
+			// to the width of the button
+			$(this).css('padding-right', newWidth);
+		}
+
+	});
+
+
 });
-//function commentOpenUI(obj, id) {
-//	$(document).unbind( "click.commentOpen", handler );
-//
-//	var handler = function() {
-//		if(obj.value == '{{$comment}}') {
-//			obj.value = '';
-//			$("#comment-edit-text-" + id).addClass("comment-edit-text-full").removeClass("comment-edit-text-empty");
-//			// Choose an arbitrary tab index that's greater than what we're using in jot (3 of them)
-//			// The submit button gets tabindex + 1
-//			$("#comment-edit-text-" + id).attr('tabindex','9');
-//			$("#comment-edit-submit-" + id).attr('tabindex','10');
-//			$("#comment-edit-submit-wrapper-" + id).show();
-//		}
-//	};
-//
-//	$(document).bind( "click.commentOpen", handler );
-//}
-//
-//function commentCloseUI(obj, id) {
-//	$(document).unbind( "click.commentClose", handler );
-//
-//	var handler = function() {
-//		if(obj.value === '') {
-//		obj.value = '{{$comment}}';
-//			$("#comment-edit-text-" + id).removeClass("comment-edit-text-full").addClass("comment-edit-text-empty");
-//			$("#comment-edit-text-" + id).removeAttr('tabindex');
-//			$("#comment-edit-submit-" + id).removeAttr('tabindex');
-//			$("#comment-edit-submit-wrapper-" + id).hide();
-//		}
-//	};
-//
-//	$(document).bind( "click.commentClose", handler );
-//}
 
 function openClose(theID) {
 	var elem = document.getElementById(theID);
@@ -563,31 +548,38 @@ String.prototype.rtrim = function() {
 	return trimmed;
 };
 
-// Scroll to a specific item and highlight it
-// Note: jquery.color.js is needed
-function scrollToItem(itemID) {
-	if( typeof itemID === "undefined")
+/**
+ * Scroll the screen to the item element whose id is provided, then highlights it
+ *
+ * Note: jquery.color.js is required
+ *
+ * @param {string} elementId The item element id
+ * @returns {undefined}
+ */
+function scrollToItem(elementId) {
+	if (typeof elementId === "undefined") {
 		return;
+	}
 
-	var elm = $('#'+itemID);
+	var $el = $(document.getElementById(elementId));
 	// Test if the Item exists
-	if(!elm.length)
+	if (!$el.length) {
 		return;
+	}
 
 	// Define the colors which are used for highlighting
 	var colWhite = {backgroundColor:'#F5F5F5'};
 	var colShiny = {backgroundColor:'#FFF176'};
 
-	// Get the Item Position (we need to substract 100 to match
-	// correct position
-	var itemPos = $(elm).offset().top - 100;
+	// Get the Item Position (we need to substract 100 to match correct position
+	var itemPos = $el.offset().top - 100;
 
 	// Scroll to the DIV with the ID (GUID)
 	$('html, body').animate({
 		scrollTop: itemPos
 	}, 400, function() {
 		// Highlight post/commenent with ID  (GUID)
-		$(elm).animate(colWhite, 1000).animate(colShiny).animate(colWhite, 600);
+		$el.animate(colWhite, 1000).animate(colShiny).animate(colWhite, 600);
 	});
 }
 
@@ -599,4 +591,89 @@ function htmlToText(htmlString) {
 	text = text.replace(/<[^>]*>/g, '');
 
 	return text;
+}
+
+/**
+ * Sends a /like API call and updates the display of the relevant action button
+ * before the update reloads the item.
+ *
+ * @param {string} ident The id of the relevant item
+ * @param {string} verb The verb of the action
+ * @returns {undefined}
+ */
+function doLikeAction(ident, verb) {
+	unpause();
+
+	if (verb.indexOf('attend') === 0) {
+		$('.item-' + ident + ' .button-event:not(#' + verb + '-' + ident + ')').removeClass('active');
+	}
+	$('#' + verb + '-' + ident).toggleClass('active');
+	$('#like-rotator-' + ident.toString()).show();
+	$.get('like/' + ident.toString() + '?verb=' + verb, NavUpdate );
+	liking = 1;
+	force_update = true;
+}
+
+// Decodes a hexadecimally encoded binary string
+function hex2bin (s) {
+	//  discuss at: http://locutus.io/php/hex2bin/
+	// original by: Dumitru Uzun (http://duzun.me)
+	//   example 1: hex2bin('44696d61')
+	//   returns 1: 'Dima'
+	//   example 2: hex2bin('00')
+	//   returns 2: '\x00'
+	//   example 3: hex2bin('2f1q')
+	//   returns 3: false
+	var ret = [];
+	var i = 0;
+	var l;
+	s += '';
+
+	for (l = s.length; i < l; i += 2) {
+		var c = parseInt(s.substr(i, 1), 16);
+		var k = parseInt(s.substr(i + 1, 1), 16);
+		if (isNaN(c) || isNaN(k)) {
+			return false;
+		}
+		ret.push((c << 4) | k);
+	}
+	return String.fromCharCode.apply(String, ret);
+}
+
+// Convert binary data into hexadecimal representation
+function bin2hex (s) {
+	// From: http://phpjs.org/functions
+	// +   original by: Kevin van Zonneveld (http://kevin.vanzonneveld.net)
+	// +   bugfixed by: Onno Marsman
+	// +   bugfixed by: Linuxworld
+	// +   improved by: ntoniazzi (http://phpjs.org/functions/bin2hex:361#comment_177616)
+	// *     example 1: bin2hex('Kev');
+	// *     returns 1: '4b6576'
+	// *     example 2: bin2hex(String.fromCharCode(0x00));
+	// *     returns 2: '00'
+
+	var i, l, o = "", n;
+
+	s += "";
+
+	for (i = 0, l = s.length; i < l; i++) {
+		n = s.charCodeAt(i).toString(16);
+		o += n.length < 2 ? "0" + n : n;
+	}
+
+	return o;
+}
+
+// Dropdown menus with the class "dropdown-head" will display the active tab
+// as button text
+function toggleDropdownText(elm) {
+		$(elm).closest(".dropdown").find('.btn').html($(elm).text() + ' <span class="caret"></span>');
+		$(elm).closest(".dropdown").find('.btn').val($(elm).data('value'));
+		$(elm).closest("ul").children("li").show();
+		$(elm).parent("li").hide();
+}
+
+// Check if element does have a specific class
+function hasClass(elem, cls) {
+	return (" " + elem.className + " " ).indexOf( " "+cls+" " ) > -1;
 }
