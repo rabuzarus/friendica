@@ -32,8 +32,9 @@ function profile_photo_post(App $a) {
 				intval($_REQUEST['profile']),
 				intval(local_user())
 			);
-			if (dbm::is_result($r) && (! intval($r[0]['is-default'])))
+			if (dbm::is_result($r) && (! intval($r[0]['is-default']))) {
 				$is_default_profile = 0;
+			}
 		}
 
 
@@ -173,7 +174,7 @@ function profile_photo_post(App $a) {
 }
 
 
-if(! function_exists('profile_photo_content')) {
+
 function profile_photo_content(App $a) {
 
 	if (! local_user()) {
@@ -280,10 +281,10 @@ function profile_photo_content(App $a) {
 	}
 
 	return; // NOTREACHED
-}}
+}
 
 
-if(! function_exists('profile_photo_crop_ui_head')) {
+
 function profile_photo_crop_ui_head(App $a, $ph) {
 	$max_length = get_config('system','max_image_length');
 	if (! $max_length) {
@@ -332,5 +333,4 @@ function profile_photo_crop_ui_head(App $a, $ph) {
 	$a->page['htmlhead'] .= replace_macros(get_markup_template("crophead.tpl"), array());
 	$a->page['end'] .= replace_macros(get_markup_template("cropend.tpl"), array());
 	return;
-}}
-
+}
