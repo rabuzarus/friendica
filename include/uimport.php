@@ -1,19 +1,16 @@
 <?php
 
-/**
- * import account file exported from mod/uexport
- * args:
- *  $a       App     Friendica App Class
- *  $file   Array   array from $_FILES
- */
+use Friendica\App;
+
 require_once("include/Photo.php");
 define("IMPORT_DEBUG", False);
 
 function last_insert_id() {
 	global $db;
 
-	if (IMPORT_DEBUG)
+	if (IMPORT_DEBUG) {
 		return 1;
+	}
 
 	return $db->insert_id();
 }
@@ -60,21 +57,18 @@ function db_import_assoc($table, $arr) {
 	$vals = implode("','", array_map('dbesc', array_values($arr)));
 	$query = "INSERT INTO `$table` (`$cols`) VALUES ('$vals')";
 	logger("uimport: $query", LOGGER_TRACE);
-	if (IMPORT_DEBUG)
+	if (IMPORT_DEBUG) {
 		return true;
+	}
 	return q($query);
 }
 
-function import_cleanup($newuid) {
-	q("DELETE FROM `user` WHERE uid = %d", $newuid);
-	q("DELETE FROM `contact` WHERE uid = %d", $newuid);
-	q("DELETE FROM `profile` WHERE uid = %d", $newuid);
-	q("DELETE FROM `photo` WHERE uid = %d", $newuid);
-	q("DELETE FROM `group` WHERE uid = %d", $newuid);
-	q("DELETE FROM `group_member` WHERE uid = %d", $newuid);
-	q("DELETE FROM `pconfig` WHERE uid = %d", $newuid);
-}
-
+/**
+ * @brief Import account file exported from mod/uexport
+ *
+ * @param App $a Friendica App Class
+ * @param array $file array from $_FILES
+ */
 function import_account(App $a, $file) {
 	logger("Start user import from " . $file['tmp_name']);
 	/*
@@ -99,6 +93,7 @@ function import_account(App $a, $file) {
 	}
 
 	/*
+	 * @TODO Old-lost code?
 	// this is not required as we remove columns in json not in current db schema
 	if ($account['schema'] != DB_UPDATE_VERSION) {
 		notice(t("Error! I can't import this file: DB schema version is not compatible."));
@@ -133,14 +128,14 @@ function import_account(App $a, $file) {
 	$newbaseurl = App::get_baseurl();
 	$olduid = $account['user']['uid'];
 
-        unset($account['user']['uid']);
-        unset($account['user']['account_expired']);
-        unset($account['user']['account_expires_on']);
-        unset($account['user']['expire_notification_sent']);
+	unset($account['user']['uid']);
+	unset($account['user']['account_expired']);
+	unset($account['user']['account_expires_on']);
+	unset($account['user']['expire_notification_sent']);
+
 	foreach ($account['user'] as $k => &$v) {
 		$v = str_replace($oldbaseurl, $newbaseurl, $v);
 	}
-
 
 	// import user
 	$r = db_import_assoc('user', $account['user']);
@@ -160,15 +155,16 @@ function import_account(App $a, $file) {
 	foreach ($account['profile'] as &$profile) {
 		foreach ($profile as $k => &$v) {
 			$v = str_replace($oldbaseurl, $newbaseurl, $v);
-			foreach (array("profile", "avatar") as $k)
+			foreach (array("profile", "avatar") as $k) {
 				$v = str_replace($oldbaseurl . "/photo/" . $k . "/" . $olduid . ".jpg", $newbaseurl . "/photo/" . $k . "/" . $newuid . ".jpg", $v);
+			}
 		}
 		$profile['uid'] = $newuid;
 		$r = db_import_assoc('profile', $profile);
 		if ($r === false) {
 			logger("uimport:insert profile " . $profile['profile-name'] . " : ERROR : " . last_error(), LOGGER_NORMAL);
 			info(t("User profile creation error"));
-			import_cleanup($newuid);
+			dba::delete('user', array('uid' => $newuid));
 			return;
 		}
 	}
@@ -178,14 +174,14 @@ function import_account(App $a, $file) {
 		if ($contact['uid'] == $olduid && $contact['self'] == '1') {
 			foreach ($contact as $k => &$v) {
 				$v = str_replace($oldbaseurl, $newbaseurl, $v);
-				foreach (array("profile", "avatar", "micro") as $k)
+				foreach (array("profile", "avatar", "micro") as $k) {
 					$v = str_replace($oldbaseurl . "/photo/" . $k . "/" . $olduid . ".jpg", $newbaseurl . "/photo/" . $k . "/" . $newuid . ".jpg", $v);
+				}
 			}
 		}
 		if ($contact['uid'] == $olduid && $contact['self'] == '0') {
 			// set contacts 'avatar-date' to NULL_DATE to let poller to update urls
 			$contact["avatar-date"] = NULL_DATE;
-
 
 			switch ($contact['network']) {
 				case NETWORK_DFRN:
@@ -254,10 +250,6 @@ function import_account(App $a, $file) {
 			}
 		}
 	}
-
-
-
-
 
 	foreach ($account['photo'] as &$photo) {
 		$photo['uid'] = $newuid;

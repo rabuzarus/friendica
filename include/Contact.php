@@ -1,5 +1,8 @@
 <?php
 
+use Friendica\App;
+use Friendica\Network\Probe;
+
 // Included here for completeness, but this is a very dangerous operation.
 // It is the caller's responsibility to confirm the requestor's intent and
 // authorisation to do this.
@@ -20,29 +23,7 @@ function user_remove($uid) {
 		$r[0]['nickname']
 	);
 
-	/// @todo Should be done in a background job since this likely will run into a time out
-	// don't delete yet, will be done later when contacts have deleted my stuff
-	// q("DELETE FROM `contact` WHERE `uid` = %d", intval($uid));
-	q("DELETE FROM `gcign` WHERE `uid` = %d", intval($uid));
-	q("DELETE FROM `group` WHERE `uid` = %d", intval($uid));
-	q("DELETE FROM `group_member` WHERE `uid` = %d", intval($uid));
-	q("DELETE FROM `intro` WHERE `uid` = %d", intval($uid));
-	q("DELETE FROM `event` WHERE `uid` = %d", intval($uid));
-	q("DELETE FROM `item` WHERE `uid` = %d", intval($uid));
-	q("DELETE FROM `item_id` WHERE `uid` = %d", intval($uid));
-	q("DELETE FROM `mail` WHERE `uid` = %d", intval($uid));
-	q("DELETE FROM `mailacct` WHERE `uid` = %d", intval($uid));
-	q("DELETE FROM `manage` WHERE `uid` = %d", intval($uid));
-	q("DELETE FROM `notify` WHERE `uid` = %d", intval($uid));
-	q("DELETE FROM `photo` WHERE `uid` = %d", intval($uid));
-	q("DELETE FROM `attach` WHERE `uid` = %d", intval($uid));
-	q("DELETE FROM `profile` WHERE `uid` = %d", intval($uid));
-	q("DELETE FROM `profile_check` WHERE `uid` = %d", intval($uid));
-	q("DELETE FROM `pconfig` WHERE `uid` = %d", intval($uid));
-	q("DELETE FROM `search` WHERE `uid` = %d", intval($uid));
-	q("DELETE FROM `spam` WHERE `uid` = %d", intval($uid));
-	// don't delete yet, will be done later when contacts have deleted my stuff
-	// q("DELETE FROM `user` WHERE `uid` = %d", intval($uid));
+	// The user and related data will be deleted in "cron_expire_and_remove_users" (cronjobs.php)
 	q("UPDATE `user` SET `account_removed` = 1, `account_expires_on` = UTC_TIMESTAMP() WHERE `uid` = %d", intval($uid));
 	proc_run(PRIORITY_HIGH, "include/notifier.php", "removeme", $uid);
 
@@ -89,11 +70,11 @@ function terminate_friendship($user,$self,$contact) {
 	/// @TODO Get rid of this, include/datetime.php should care about it by itself
 	$a = get_app();
 
-	require_once('include/datetime.php');
+	require_once 'include/datetime.php';
 
 	if ($contact['network'] === NETWORK_OSTATUS) {
 
-		require_once('include/ostatus.php');
+		require_once 'include/ostatus.php';
 
 		// create an unfollow slap
 		$item = array();
@@ -102,14 +83,14 @@ function terminate_friendship($user,$self,$contact) {
 		$slap = ostatus::salmon($item, $user);
 
 		if ((x($contact,'notify')) && (strlen($contact['notify']))) {
-			require_once('include/salmon.php');
+			require_once 'include/salmon.php';
 			slapper($user,$contact['notify'],$slap);
 		}
 	} elseif ($contact['network'] === NETWORK_DIASPORA) {
-		require_once('include/diaspora.php');
+		require_once 'include/diaspora.php';
 		Diaspora::send_unshare($user,$contact);
 	} elseif ($contact['network'] === NETWORK_DFRN) {
-		require_once('include/dfrn.php');
+		require_once 'include/dfrn.php';
 		dfrn::deliver($user,$contact,'placeholder', 1);
 	}
 
@@ -361,7 +342,6 @@ function get_contact_details_by_addr($addr, $uid = -1) {
 				dbesc($addr));
 
 	if (!dbm::is_result($r)) {
-		require_once('include/Probe.php');
 		$data = Probe::uri($addr);
 
 		$profile = get_contact_details_by_url($data['url'], $uid);
@@ -587,7 +567,6 @@ function get_contact($url, $uid = 0, $no_update = false) {
 		return 0;
 	}
 
-	require_once('include/Probe.php');
 	$data = Probe::uri($url);
 
 	// Last try in gcontact for unsupported networks
@@ -704,7 +683,7 @@ function get_contact($url, $uid = 0, $no_update = false) {
  */
 function posts_from_gcontact(App $a, $gcontact_id) {
 
-	require_once('include/conversation.php');
+	require_once 'include/conversation.php';
 
 	// There are no posts with "uid = 0" with connector networks
 	// This speeds up the query a lot
@@ -743,7 +722,7 @@ function posts_from_gcontact(App $a, $gcontact_id) {
  */
 function posts_from_contact_url(App $a, $contact_url) {
 
-	require_once('include/conversation.php');
+	require_once 'include/conversation.php';
 
 	// There are no posts with "uid = 0" with connector networks
 	// This speeds up the query a lot
@@ -852,4 +831,3 @@ function account_type($contact) {
 
 	return $account_type;
 }
-?>

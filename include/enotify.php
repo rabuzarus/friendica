@@ -1,4 +1,7 @@
 <?php
+
+use Friendica\App;
+
 require_once('include/Emailer.php');
 require_once('include/email.php');
 require_once('include/bbcode.php');
@@ -482,9 +485,7 @@ function notification($params) {
 		);
 		if ($p && (count($p) > 1)) {
 			for ($d = 1; $d < count($p); $d ++) {
-				q("DELETE FROM `notify` WHERE `id` = %d",
-					intval($p[$d]['id'])
-				);
+				dba::delete('notify', array('id' => $p[$d]['id']));
 			}
 
 			// only continue on if we stored the first one

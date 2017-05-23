@@ -7,7 +7,12 @@
 
 namespace Friendica;
 
-use \Friendica\Core\Config;
+use Friendica\Core\Config;
+
+use xml;
+
+use DomXPath;
+use DOMDocument;
 
 require_once("include/network.php");
 require_once("include/Photo.php");
@@ -150,6 +155,12 @@ class ParseUrl {
 			@curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
 		}
 
+		$range = intval(Config::get('system', 'curl_range_bytes', 0));
+
+		if ($range > 0) {
+			curl_setopt($ch, CURLOPT_RANGE, '0-' . $range);
+		}
+
 		$header = curl_exec($ch);
 		$curl_info = @curl_getinfo($ch);
 		curl_close($ch);
@@ -223,22 +234,22 @@ class ParseUrl {
 
 		$body = mb_convert_encoding($body, 'HTML-ENTITIES', "UTF-8");
 
-		$doc = new \DOMDocument();
+		$doc = new DOMDocument();
 		@$doc->loadHTML($body);
 
-		\xml::deleteNode($doc, "style");
-		\xml::deleteNode($doc, "script");
-		\xml::deleteNode($doc, "option");
-		\xml::deleteNode($doc, "h1");
-		\xml::deleteNode($doc, "h2");
-		\xml::deleteNode($doc, "h3");
-		\xml::deleteNode($doc, "h4");
-		\xml::deleteNode($doc, "h5");
-		\xml::deleteNode($doc, "h6");
-		\xml::deleteNode($doc, "ol");
-		\xml::deleteNode($doc, "ul");
+		xml::deleteNode($doc, "style");
+		xml::deleteNode($doc, "script");
+		xml::deleteNode($doc, "option");
+		xml::deleteNode($doc, "h1");
+		xml::deleteNode($doc, "h2");
+		xml::deleteNode($doc, "h3");
+		xml::deleteNode($doc, "h4");
+		xml::deleteNode($doc, "h5");
+		xml::deleteNode($doc, "h6");
+		xml::deleteNode($doc, "ol");
+		xml::deleteNode($doc, "ul");
 
-		$xpath = new \DomXPath($doc);
+		$xpath = new DomXPath($doc);
 
 		$list = $xpath->query("//meta[@content]");
 		foreach ($list as $node) {

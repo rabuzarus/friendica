@@ -15,6 +15,8 @@
  * posting categories go through item_store() instead of this function.
  */
 
+use Friendica\App;
+
 require_once 'include/crypto.php';
 require_once 'include/enotify.php';
 require_once 'include/email.php';
@@ -23,7 +25,7 @@ require_once 'include/files.php';
 require_once 'include/threads.php';
 require_once 'include/text.php';
 require_once 'include/items.php';
-require_once 'include/Scrape.php';
+require_once 'include/probe.php';
 require_once 'include/diaspora.php';
 require_once 'include/Contact.php';
 
@@ -142,7 +144,6 @@ function item_post(App $a) {
 				$parent_contact = get_contact_details_by_url($thrparent[0]["author-link"]);
 
 				if (!isset($parent_contact["nick"])) {
-					require_once 'include/Scrape.php';
 					$probed_contact = probe_url($thrparent[0]["author-link"]);
 					if ($probed_contact["network"] != NETWORK_FEED) {
 						$parent_contact = $probed_contact;
@@ -723,6 +724,18 @@ function item_post(App $a) {
 	$datarray['last-child'] = 1;
 	$datarray['visible'] = 1;
 
+	$datarray['protocol'] = PROTOCOL_DFRN;
+
+	$r = dba::fetch_first("SELECT `conversation-uri`, `conversation-href` FROM `conversation` WHERE `item-uri` = ?", $datarray['parent-uri']);
+	if (dbm::is_result($r)) {
+		if ($r['conversation-uri'] != '') {
+			$datarray['conversation-uri'] = $r['conversation-uri'];
+		}
+		if ($r['conversation-href'] != '') {
+			$datarray['conversation-href'] = $r['conversation-href'];
+		}
+	}
+
 	if ($orig_post) {
 		$datarray['edit'] = true;
 	}
@@ -762,6 +775,8 @@ function item_post(App $a) {
 	// Fill the cache field
 	put_item_in_cache($datarray);
 
+	$datarray = store_conversation($datarray);
+
 	if ($orig_post) {
 		$r = q("UPDATE `item` SET `title` = '%s', `body` = '%s', `tag` = '%s', `attach` = '%s', `file` = '%s', `rendered-html` = '%s', `rendered-hash` = '%s', `edited` = '%s', `changed` = '%s' WHERE `id` = %d AND `uid` = %d",
 			dbesc($datarray['title']),
@@ -794,8 +809,7 @@ function item_post(App $a) {
 		$post_id = 0;
 	}
 
-	q("COMMIT");
-	q("START TRANSACTION;");
+	dba::transaction();
 
 	$r = q("INSERT INTO `item` (`guid`, `extid`, `uid`,`type`,`wall`,`gravity`, `network`, `contact-id`,
 					`owner-name`,`owner-link`,`owner-avatar`, `owner-id`,
@@ -885,7 +899,7 @@ function item_post(App $a) {
 	}
 
 	if ($post_id == 0) {
-		q("COMMIT");
+		dba::commit();
 		logger('mod_item: unable to retrieve post that was just stored.');
 		notice(t('System error. Post not saved.') . EOL);
 		goaway($return_path);
@@ -1011,7 +1025,7 @@ function item_post(App $a) {
 		update_thread($parent, true);
 	}
 
-	q("COMMIT");
+	dba::commit();
 
 	create_tags_from_item($post_id);
 	create_files_from_item($post_id);
@@ -1090,7 +1104,6 @@ function item_content(App $a) {
  * @return boolean true if replaced, false if not replaced
  */
 function handle_tag(App $a, &$body, &$inform, &$str_tags, $profile_uid, $tag, $network = "") {
-	require_once 'include/Scrape.php';
 	require_once 'include/socgraph.php';
 
 	$replaced = false;

@@ -1,4 +1,7 @@
 <?php
+
+use Friendica\App;
+
 function add_thread($itemid, $onlyshadow = false) {
 	$items = q("SELECT `uid`, `created`, `edited`, `commented`, `received`, `changed`, `wall`, `private`, `pubmail`,
 			`moderated`, `visible`, `spam`, `starred`, `bookmark`, `contact-id`, `gcontact-id`,
@@ -242,9 +245,7 @@ function delete_thread($itemid, $itemuri = "") {
 				intval($item["uid"])
 			);
 		if (!dbm::is_result($r)) {
-			$r = q("DELETE FROM `item` WHERE `uri` = '%s' AND `uid` = 0",
-				dbesc($itemuri)
-			);
+			dba::delete('item', array('uri' => $itemuri, 'uid' => 0));
 			logger("delete_thread: Deleted shadow for item ".$itemuri." - ".print_r($result, true), LOGGER_DEBUG);
 		}
 	}
@@ -293,4 +294,3 @@ function update_shadow_copy() {
 
 	dba::close($messages);
 }
-?>

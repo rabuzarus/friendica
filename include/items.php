@@ -4,7 +4,8 @@
  * @file include/items.php
  */
 
-use \Friendica\ParseUrl;
+use Friendica\App;
+use Friendica\ParseUrl;
 
 require_once 'include/bbcode.php';
 require_once 'include/oembed.php';
@@ -339,7 +340,7 @@ function add_page_info_to_body($body, $texturl = false, $no_photos = false) {
  * Adds a "lang" specification in a "postopts" element of given $arr,
  * if possible and not already present.
  * Expects "body" element to exist in $arr.
- * 
+ *
  * @todo Add a parameter to request forcing override
  */
 function item_add_language_opt(&$arr) {
@@ -410,7 +411,70 @@ function uri_to_guid($uri, $host = "") {
 	return $guid_prefix.$host_hash;
 }
 
-/// @TODO Maybe $arr must be called-by-reference? This function modifies it
+/**
+ * @brief Store the conversation data
+ *
+ * @param array $arr Item array with conversation data
+ * @return array Item array with removed conversation data
+ */
+function store_conversation($arr) {
+	if (in_array($arr['network'], array(NETWORK_DFRN, NETWORK_DIASPORA, NETWORK_OSTATUS))) {
+		$conversation = array('item-uri' => $arr['uri'], 'received' => dbm::date());
+
+		if (isset($arr['parent-uri']) AND ($arr['parent-uri'] != $arr['uri'])) {
+			$conversation['reply-to-uri'] = $arr['parent-uri'];
+		}
+		if (isset($arr['thr-parent']) AND ($arr['thr-parent'] != $arr['uri'])) {
+			$conversation['reply-to-uri'] = $arr['thr-parent'];
+		}
+
+		if (isset($arr['conversation-uri'])) {
+			$conversation['conversation-uri'] = $arr['conversation-uri'];
+		}
+
+		if (isset($arr['conversation-href'])) {
+			$conversation['conversation-href'] = $arr['conversation-href'];
+		}
+
+		if (isset($arr['protocol'])) {
+			$conversation['protocol'] = $arr['protocol'];
+		}
+
+		if (isset($arr['source'])) {
+			$conversation['source'] = $arr['source'];
+		}
+
+		$old_conv = dba::fetch_first("SELECT `item-uri`, `reply-to-uri`, `conversation-uri`, `conversation-href`, `protocol`, `source`
+				FROM `conversation` WHERE `item-uri` = ?", $conversation['item-uri']);
+		if (dbm::is_result($old_conv)) {
+			// Don't update when only the source has changed.
+			// Only do this when there had been no source before.
+			if ($old_conv['source'] != '') {
+				unset($old_conv['source']);
+			}
+			// Update structure data all the time but the source only when its from a better protocol.
+			if (($old_conv['protocol'] < $conversation['protocol']) AND ($old_conv['protocol'] != 0)) {
+				unset($conversation['protocol']);
+				unset($conversation['source']);
+			}
+			if (!dba::update('conversation', $conversation, array('item-uri' => $conversation['item-uri']), $old_conv)) {
+				logger('Conversation: update for '.$conversation['item-uri'].' from '.$conv['protocol'].' to '.$conversation['protocol'].' failed', LOGGER_DEBUG);
+			}
+		} else {
+			if (!dba::insert('conversation', $conversation)) {
+				logger('Conversation: insert for '.$conversation['item-uri'].' (protocol '.$conversation['protocol'].') failed', LOGGER_DEBUG);
+			}
+		}
+	}
+
+	unset($arr['conversation-uri']);
+	unset($arr['conversation-href']);
+	unset($arr['protocol']);
+	unset($arr['source']);
+
+	return $arr;
+}
+
 /// @TODO add type-hint array
 function item_store($arr, $force_parent = false, $notify = false, $dontcache = false) {
 
@@ -423,6 +487,7 @@ function item_store($arr, $force_parent = false, $notify = false, $dontcache = f
 		$arr['origin'] = 1;
 		$arr['last-child'] = 1;
 		$arr['network'] = NETWORK_DFRN;
+		$arr['protocol'] = PROTOCOL_DFRN;
 
 		// We have to avoid duplicates. So we create the GUID in form of a hash of the plink or uri.
 		// In difference to the call to "uri_to_guid" several lines below we add the hash of our own host.
@@ -435,6 +500,23 @@ function item_store($arr, $force_parent = false, $notify = false, $dontcache = f
 			}
 		}
 	}
+
+	if ($notify) {
+		$guid_prefix = "";
+	} elseif ((trim($arr['guid']) == "") AND (trim($arr['plink']) != "")) {
+		$arr['guid'] = uri_to_guid($arr['plink']);
+	} elseif ((trim($arr['guid']) == "") AND (trim($arr['uri']) != "")) {
+		$arr['guid'] = uri_to_guid($arr['uri']);
+	} else {
+		$parsed = parse_url($arr["author-link"]);
+		$guid_prefix = hash("crc32", $parsed["host"]);
+	}
+
+	$arr['guid']          = ((x($arr, 'guid'))          ? notags(trim($arr['guid']))          : get_guid(32, $guid_prefix));
+	$arr['uri']           = ((x($arr, 'uri'))           ? notags(trim($arr['uri']))           : item_new_uri($a->get_hostname(), $uid, $arr['guid']));
+
+	// Store conversation data
+	$arr = store_conversation($arr);
 
 	/*
 	 * If a Diaspora signature structure was passed in, pull it out of the
@@ -517,20 +599,7 @@ function item_store($arr, $force_parent = false, $notify = false, $dontcache = f
 
 	item_add_language_opt($arr);
 
-	if ($notify) {
-		$guid_prefix = "";
-	} elseif ((trim($arr['guid']) == "") AND (trim($arr['plink']) != "")) {
-		$arr['guid'] = uri_to_guid($arr['plink']);
-	} elseif ((trim($arr['guid']) == "") AND (trim($arr['uri']) != "")) {
-		$arr['guid'] = uri_to_guid($arr['uri']);
-	} else {
-		$parsed = parse_url($arr["author-link"]);
-		$guid_prefix = hash("crc32", $parsed["host"]);
-	}
-
 	$arr['wall']          = ((x($arr, 'wall'))          ? intval($arr['wall'])                : 0);
-	$arr['guid']          = ((x($arr, 'guid'))          ? notags(trim($arr['guid']))          : get_guid(32, $guid_prefix));
-	$arr['uri']           = ((x($arr, 'uri'))           ? notags(trim($arr['uri']))           : item_new_uri($a->get_hostname(), $uid, $arr['guid']));
 	$arr['extid']         = ((x($arr, 'extid'))         ? notags(trim($arr['extid']))         : '');
 	$arr['author-name']   = ((x($arr, 'author-name'))   ? trim($arr['author-name'])   : '');
 	$arr['author-link']   = ((x($arr, 'author-link'))   ? notags(trim($arr['author-link']))   : '');
@@ -690,6 +759,7 @@ function item_store($arr, $force_parent = false, $notify = false, $dontcache = f
 	item_body_set_hashtags($arr);
 
 	$arr['thr-parent'] = $arr['parent-uri'];
+
 	if ($arr['parent-uri'] === $arr['uri']) {
 		$parent_id = 0;
 		$parent_deleted = 0;
@@ -882,8 +952,7 @@ function item_store($arr, $force_parent = false, $notify = false, $dontcache = f
 
 	logger('item_store: ' . print_r($arr,true), LOGGER_DATA);
 
-	q("COMMIT");
-	q("START TRANSACTION;");
+	dba::transaction();
 
 	$r = dbq("INSERT INTO `item` (`"
 			. implode("`, `", array_keys($arr))
@@ -905,7 +974,7 @@ function item_store($arr, $force_parent = false, $notify = false, $dontcache = f
 		}
 	} else {
 		// This can happen - for example - if there are locking timeouts.
-		q("ROLLBACK");
+		dba::rollback();
 
 		// Store the data into a spool file so that we can try again later.
 
@@ -930,7 +999,7 @@ function item_store($arr, $force_parent = false, $notify = false, $dontcache = f
 	if ($current_post == 0) {
 		// This is one of these error messages that never should occur.
 		logger("couldn't find created item - we better quit now.");
-		q("ROLLBACK");
+		dba::rollback();
 		return 0;
 	}
 
@@ -945,7 +1014,7 @@ function item_store($arr, $force_parent = false, $notify = false, $dontcache = f
 	if (!dbm::is_result($r)) {
 		// This shouldn't happen, since COUNT always works when the database connection is there.
 		logger("We couldn't count the stored entries. Very strange ...");
-		q("ROLLBACK");
+		dba::rollback();
 		return 0;
 	}
 
@@ -954,13 +1023,13 @@ function item_store($arr, $force_parent = false, $notify = false, $dontcache = f
 		logger('Duplicated post occurred. uri = ' . $arr['uri'] . ' uid = ' . $arr['uid']);
 
 		// Yes, we could do a rollback here - but we are having many users with MyISAM.
-		q("DELETE FROM `item` WHERE `id` = %d", intval($current_post));
-		q("COMMIT");
+		dba::delete('item', array('id' => $current_post));
+		dba::commit();
 		return 0;
 	} elseif ($r[0]["entries"] == 0) {
 		// This really should never happen since we quit earlier if there were problems.
 		logger("Something is terribly wrong. We haven't found our created entry.");
-		q("ROLLBACK");
+		dba::rollback();
 		return 0;
 	}
 
@@ -1040,7 +1109,7 @@ function item_store($arr, $force_parent = false, $notify = false, $dontcache = f
 		update_thread($parent_id);
 	}
 
-	q("COMMIT");
+	dba::commit();
 
 	/*
 	 * Due to deadlock issues with the "term" table we are doing these steps after the commit.
@@ -1309,10 +1378,7 @@ function tag_deliver($uid, $item_id) {
 			// mmh.. no mention.. community page or private group... no wall.. no origin.. top-post (not a comment)
 			// delete it!
 			logger("tag_deliver: no-mention top-level post to communuty or private group. delete.");
-			q("DELETE FROM item WHERE id = %d and uid = %d",
-				intval($item_id),
-				intval($uid)
-			);
+			dba::delete('item', array('id' => $item_id));
 			return true;
 		}
 		return;
@@ -2167,23 +2233,6 @@ function drop_item($id, $interactive = true) {
 			);
 			// ignore the result
 		}
-
-
-		// clean up item_id and sign meta-data tables
-
-		/*
-		/// @TODO Old code - caused very long queries and warning entries in the mysql logfiles:
-
-		$r = q("DELETE FROM item_id where iid in (select id from item where parent = %d and uid = %d)",
-			intval($item['id']),
-			intval($item['uid'])
-		);
-
-		$r = q("DELETE FROM sign where iid in (select id from item where parent = %d and uid = %d)",
-			intval($item['id']),
-			intval($item['uid'])
-		);
-		*/
 
 		// The new code splits the queries since the mysql optimizer really has bad problems with subqueries
 

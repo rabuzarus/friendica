@@ -4,8 +4,9 @@
  * @file include/oembed.php
  */
 
-use \Friendica\ParseUrl;
-use \Friendica\Core\Config;
+use Friendica\App;
+use Friendica\ParseUrl;
+use Friendica\Core\Config;
 
 function oembed_replacecb($matches){
 	$embedurl=$matches[1];
@@ -303,9 +304,11 @@ function oembed_html2bbcode($text) {
 		$entries = $xpath->query("//span[$xattr]");
 
 		$xattr = "@rel='oembed'";//oe_build_xpath("rel","oembed");
-		foreach($entries as $e) {
+		foreach ($entries as $e) {
 			$href = $xpath->evaluate("a[$xattr]/@href", $e)->item(0)->nodeValue;
-			if(!is_null($href)) $e->parentNode->replaceChild(new DOMText("[embed]".$href."[/embed]"), $e);
+			if (!is_null($href)) {
+				$e->parentNode->replaceChild(new DOMText("[embed]".$href."[/embed]"), $e);
+			}
 		}
 		return oe_get_inner_html( $dom->getElementsByTagName("body")->item(0) );
 	} else {
