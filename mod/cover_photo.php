@@ -3,6 +3,10 @@
    @brief Module-file with functions for handling of profile-photos
 */
 
+
+/*
+ * Fertig: Post, init, cover_photo_crop_ui
+ */
 require_once "include/Photo.php";
 require_once 'include/identity.php';
 
@@ -27,23 +31,25 @@ function cover_photo_init(&$a) {
  */
 function cover_photo_post(&$a) {
 	if (! local_user()) {
-		notice ( t('Permission denied.') . EOL );
+		notice (t('Permission denied.') . EOL);
 	}
-	
+
 	check_form_security_token_redirectOnErr('/cover_photo', 'cover_photo');
 
 	if ((x($_POST,'cropfinal')) && ($_POST['cropfinal'] == 1)) {
 		// phase 2 - we have finished cropping
 		if ($a->argc != 2) {
-			notice( t('Image uploaded but image cropping failed.') . EOL );
+			notice(t('Image uploaded but image cropping failed.') . EOL);
 			return;
 		}
+
 		$image_id = $a->argv[1];
+
 		if(substr($image_id,-2,1) == '-') {
 			$scale = substr($image_id,-1,1);
 			$image_id = substr($image_id,0,-2);
 		}
-			
+
 		$srcX = $_POST['xstart'];
 		$srcY = $_POST['ystart'];
 		$srcW = $_POST['xfinal'] - $srcX;
@@ -52,16 +58,16 @@ function cover_photo_post(&$a) {
 		$r = q("SELECT * FROM `photo` WHERE `resource-id` = '%s' AND `uid` = %d AND `scale` = %d LIMIT 1",
 			dbesc($image_id),
 			dbesc(local_user()),
-			intval($scale));
+			intval($scale)); // Note: scale muss vielleicht raus - siehe hubzilla
 
 		if (dbm::is_result($r)) {
 			$base_image = $r[0];
 
 			$im = new Photo($base_image['data'], $base_image['type']);
 			if($im->is_valid()) {
-				$g = q("select width, height from photo where resource_id = '%s' and uid = %d and scale = 3",
+				$g = q("SELECT `width`, `heigh`t FROM `photo` WHERE `resource_id` = '%s' AND `uid` = %d AND `scale` = 3",
 					dbesc($image_id),
-					intval(local_channel())
+					intval(local_user())
 				);
 				// scale these numbers to the original photo instead of the scaled photo we operated on
 				$scaled_width = $g[0]['width'];
@@ -70,104 +76,108 @@ function cover_photo_post(&$a) {
 					logger('potential divide by zero scaling cover photo');
 					return;
 				}
-				$orig_srcx = ( $r[0]['width'] / $scaled_width ) * $srcX;
-				$orig_srcy = ( $r[0]['height'] / $scaled_height ) * $srcY;
- 				$orig_srcw = ( $srcW / $scaled_width ) * $r[0]['width'];
- 				$orig_srch = ( $srcH / $scaled_height ) * $r[0]['height'];
+				$orig_srcx = ($r[0]['width'] / $scaled_width) * $srcX;
+				$orig_srcy = ($r[0]['height'] / $scaled_height) * $srcY;
+ 				$orig_srcw = ($srcW / $scaled_width) * $r[0]['width'];
+ 				$orig_srch = ($srcH / $scaled_height) * $r[0]['height'];
+
 				$im->cropImageRect(1200,435,$orig_srcx, $orig_srcy, $orig_srcw, $orig_srch);
 				$aid = get_account_id();
 				$p = array('aid' => $aid, 'uid' => local_channel(), 'resource_id' => $base_image['resource_id'],
 					'filename' => $base_image['filename'], 'album' => t('Profile Photos'));
 				$p['scale'] = 7;
 				$p['photo_usage'] = PHOTO_COVER;
-				$r1 = $im->save($p);
+				
+				//$r1 = $im->save($p);  //ist noch nicht implementiert in Photo Klasse
+				$r1 = $im->store(local_user(), 0, $base_image['resource-id'],$base_image['filename'], t('Cover Photos'), 7, PHOTO_COVER);
+
 				$im->doScaleImage(850,310);
-				$p['scale'] = 8;
-				$r2 = $im->save($p);
+				$p['scale'] = 8; // braucht cleanup -> entweder save Methode oder $p array löschen
+				$r2 = $im->store(local_user(), 0, $base_image['resource-id'],$base_image['filename'], t('Cover Photos'), 8, PHOTO_COVER);
 			
 				if($r1 === false || $r2 === false) {
 					// if one failed, delete them all so we can start over.
-					notice( t('Image resize failed.') . EOL );
-					$x = q("delete from photo where resource_id = '%s' and uid = %d and scale >= 7 ",
+					notice(t('Image resize failed.') . EOL );
+					$x = q("DELETE FROM `photo` WHERE `resource_id` = '%s' AND `uid` = %d AND `scale` >= 7 ",
 						dbesc($base_image['resource_id']),
-						local_channel()
+						local_user()
 					);
 					return;
 				}
-				$channel = $a->get_channel();
-			}
-			else
+				//$channel = $a->get_channel(); // was ist das? Wir brauchen das Profil
+				//hier wird noch eine Activity gesendet -> mal schauen, ob wir das implementieren können
+			} else {
 				notice( t('Unable to process image') . EOL);
+			}
 		}
 		goaway($a->get_baseurl() . '/profiles');
 		return; // NOTREACHED
 	}
-	$hash = photo_new_resource();
-	$smallest = 0;
-	require_once('include/attach.php');
-	$res = attach_store($a->get_channel(), get_observer_hash(), '', array('album' => t('Profile Photos'), 'hash' => $hash));
-	logger('attach_store: ' . print_r($res,true));
-	if($res && intval($res['data']['is_photo'])) {
-		$i = q("select * from photo where resource_id = '%s' and uid = %d and scale = 0",
-			dbesc($hash),
-			intval(local_channel())
-		);
-		if(! $i) {
-			notice( t('Image upload failed.') . EOL );
-			return;
-		}
-		$os_storage = false;
-		foreach($i as $ii) {
-			$smallest = intval($ii['scale']);
-			$os_storage = intval($ii['os_storage']);
-			$imagedata = $ii['data'];
-			$filetype = $ii['type'];
-		}
+
+	$src      = $_FILES['userfile']['tmp_name'];
+	$filename = basename($_FILES['userfile']['name']);
+	$filesize = intval($_FILES['userfile']['size']);
+	$filetype = $_FILES['userfile']['type'];
+	if ($filetype == "") {
+		$filetype = guess_image_type($filename);
 	}
-	$imagedata = (($os_storage) ? @file_get_contents($imagedata) : $imagedata);
-	$ph = photo_factory($imagedata, $filetype);
-	if(! $ph->is_valid()) {
-		notice( t('Unable to process image.') . EOL );
+
+	$maximagesize = get_config('system','maximagesize');
+
+	if (($maximagesize) && ($filesize > $maximagesize)) {
+		notice( sprintf(t('Image exceeds size limit of %s'), formatBytes($maximagesize)) . EOL);
+		@unlink($src);
 		return;
 	}
-	return cover_photo_crop_ui_head($a, $ph, $hash, $smallest);
-	
+
+	$imagedata = @file_get_contents($src);
+	$ph = new Photo($imagedata, $filetype);
+
+	if (! $ph->is_valid()) {
+		notice( t('Unable to process image.') . EOL );
+		@unlink($src);
+		return;
+	}
+
+	$ph->orient($src);
+	@unlink($src);
+	return profile_photo_crop_ui_head($a, $ph);
 }
 function send_cover_photo_activity($channel,$photo,$profile) {
 	// for now only create activities for the default profile
-	if(! intval($profile['is_default']))
-		return;
-	$arr = array();
-	$arr['item_thread_top'] = 1;
-	$arr['item_origin'] = 1;
-	$arr['item_wall'] = 1;
-	$arr['obj_type'] = ACTIVITY_OBJ_PHOTO;
-	$arr['verb'] = ACTIVITY_UPDATE;
-	$arr['object'] = json_encode(array(
-		'type' => $arr['obj_type'],
-		'id' => z_root() . '/photo/profile/l/' . $channel['channel_id'],
-		'link' => array('rel' => 'photo', 'type' => $photo['type'], 'href' => z_root() . '/photo/profile/l/' . $channel['channel_id'])
-	));
-	if(stripos($profile['gender'],t('female')) !== false)
-		$t = t('%1$s updated her %2$s');
-	elseif(stripos($profile['gender'],t('male')) !== false)
-		$t = t('%1$s updated his %2$s');
-	else
-		$t = t('%1$s updated their %2$s');
-	$ptext = '[zrl=' . z_root() . '/photos/' . $channel['channel_address'] . '/image/' . $photo['resource_id'] . ']' . t('profile photo') . '[/zrl]';
-	$ltext = '[zrl=' . z_root() . '/profile/' . $channel['channel_address'] . ']' . '[zmg=150x150]' . z_root() . '/photo/' . $photo['resource_id'] . '-4[/zmg][/zrl]'; 
-	$arr['body'] = sprintf($t,$channel['channel_name'],$ptext) . "\n\n" . $ltext;
-	$acl = new AccessList($channel);
-	$x = $acl->get();
-	$arr['allow_cid'] = $x['allow_cid'];
-	$arr['allow_gid'] = $x['allow_gid'];
-	$arr['deny_cid'] = $x['deny_cid'];
-	$arr['deny_gid'] = $x['deny_gid'];
-	$arr['uid'] = $channel['channel_id'];
-	$arr['aid'] = $channel['channel_account_id'];
-	$arr['owner_xchan'] = $channel['channel_hash'];
-	$arr['author_xchan'] = $channel['channel_hash'];
-	post_activity_item($arr);
+//	if(! intval($profile['is_default']))
+//		return;
+//	$arr = array();
+//	$arr['item_thread_top'] = 1;
+//	$arr['item_origin'] = 1;
+//	$arr['item_wall'] = 1;
+//	$arr['obj_type'] = ACTIVITY_OBJ_PHOTO;
+//	$arr['verb'] = ACTIVITY_UPDATE;
+//	$arr['object'] = json_encode(array(
+//		'type' => $arr['obj_type'],
+//		'id' => z_root() . '/photo/profile/l/' . $channel['channel_id'],
+//		'link' => array('rel' => 'photo', 'type' => $photo['type'], 'href' => z_root() . '/photo/profile/l/' . $channel['channel_id'])
+//	));
+//	if(stripos($profile['gender'],t('female')) !== false)
+//		$t = t('%1$s updated her %2$s');
+//	elseif(stripos($profile['gender'],t('male')) !== false)
+//		$t = t('%1$s updated his %2$s');
+//	else
+//		$t = t('%1$s updated their %2$s');
+//	$ptext = '[zrl=' . z_root() . '/photos/' . $channel['channel_address'] . '/image/' . $photo['resource_id'] . ']' . t('profile photo') . '[/zrl]';
+//	$ltext = '[zrl=' . z_root() . '/profile/' . $channel['channel_address'] . ']' . '[zmg=150x150]' . z_root() . '/photo/' . $photo['resource_id'] . '-4[/zmg][/zrl]'; 
+//	$arr['body'] = sprintf($t,$channel['channel_name'],$ptext) . "\n\n" . $ltext;
+//	$acl = new AccessList($channel);
+//	$x = $acl->get();
+//	$arr['allow_cid'] = $x['allow_cid'];
+//	$arr['allow_gid'] = $x['allow_gid'];
+//	$arr['deny_cid'] = $x['deny_cid'];
+//	$arr['deny_gid'] = $x['deny_gid'];
+//	$arr['uid'] = $channel['channel_id'];
+//	$arr['aid'] = $channel['channel_account_id'];
+//	$arr['owner_xchan'] = $channel['channel_hash'];
+//	$arr['author_xchan'] = $channel['channel_hash'];
+//	post_activity_item($arr);
 }
 /* @brief Generate content of profile-photo view
  *
@@ -176,70 +186,77 @@ function send_cover_photo_activity($channel,$photo,$profile) {
  *
  */
 function cover_photo_content(&$a) {
-	if(! local_channel()) {
+	if(! local_user()) {
 		notice( t('Permission denied.') . EOL );
 		return;
 	}
-	$channel = $a->get_channel();
+
+	// $channel = $a->get_channel(); // gibts bei
 	$newuser = false;
-	if(argc() == 2 && argv(1) === 'new')
+	if($a->argc == 2 && $a->argv[1] === 'new') {
 		$newuser = true;
-	if(argv(1) === 'use') {
-		if (argc() < 3) {
-			notice( t('Permission denied.') . EOL );
+	}
+
+	if($a->argv[1] === 'use') {
+		if ($a->arg < 3) {
+			notice(t('Permission denied.') . EOL);
 			return;
 		};
 		
 //		check_form_security_token_redirectOnErr('/cover_photo', 'cover_photo');
 
-		$resource_id = argv(2);
-		$r = q("SELECT id, album, scale FROM photo WHERE uid = %d AND resource_id = '%s' ORDER BY scale ASC",
-			intval(local_channel()),
+		$resource_id = $a->argv[2];
+		$r = q("SELECT `id`, `album`, `scale` FROM `photo` WHERE `uid` = %d AND `resource_id` = '%s' ORDER BY `scale` ASC",
+			intval(local_user()),
 			dbesc($resource_id)
 		);
-		if(! $r) {
-			notice( t('Photo not available.') . EOL );
+		if(! dbm::is_result($r)) {
+			notice(t('Photo not available.') . EOL);
 			return;
 		}
+
 		$havescale = false;
 		foreach($r as $rr) {
-			if($rr['scale'] == 7)
+			if($rr['scale'] == 7) {
 				$havescale = true;
+			}
 		}
-		$r = q("SELECT `data`, `type`, resource_id, os_storage FROM photo WHERE id = %d and uid = %d limit 1",
+		$r = q("SELECT `data`, `type`, `resource_id`, FROM `photo` WHERE `id` = %d AND `uid` = %d LIMIT 1",
 			intval($r[0]['id']),
-			intval(local_channel())
+			intval(local_user())
 		);
-		if(! $r) {
-			notice( t('Photo not available.') . EOL );
+		if(! dbm::is_result($r)) {
+			notice(t('Photo not available.') . EOL);
 			return;
 		}
-		if(intval($r[0]['os_storage']))
-			$data = @file_get_contents($r[0]['data']);
-		else
-			$data = dbunescbin($r[0]['data']); 
-		$ph = photo_factory($data, $r[0]['type']);
-		$smallest = 0;
-		if($ph->is_valid()) {
-			// go ahead as if we have just uploaded a new photo to crop
-			$i = q("select resource_id, scale from photo where resource_id = '%s' and uid = %d and scale = 0",
-				dbesc($r[0]['resource_id']),
-				intval(local_channel())
-			);
-			if($i) {
-				$hash = $i[0]['resource_id'];
-				foreach($i as $ii) {
-					$smallest = intval($ii['scale']);
-				}
-            }
-        }
+		$ph = new Photo($r[0]['data'], $r[0]['type']);
+
+// deaktiviert, scheinen wir nicht zu brauchen
+//		$smallest = 0;
+//		if($ph->is_valid()) {
+//			// go ahead as if we have just uploaded a new photo to crop
+//			$i = q("select resource_id, scale from photo where resource_id = '%s' and uid = %d and scale = 0",
+//				dbesc($r[0]['resource_id']),
+//				intval(local_channel())
+//			);
+//			if($i) {
+//				$hash = $i[0]['resource_id'];
+//				foreach($i as $ii) {
+//					$smallest = intval($ii['scale']);
+//				}
+//			}
+//		}
  
-		cover_photo_crop_ui_head($a, $ph, $hash, $smallest);
+		cover_photo_crop_ui_head($a, $ph);
 	}
+
+	$profiles = q("SELECT `id`,`profile-name` AS `name`,`is-default` AS `default` FROM profile WHERE uid = %d",
+		intval(local_user())
+	);
 	if(! x($a->data,'imagecrop')) {
 		$tpl = get_markup_template('cover_photo.tpl');
 		$o .= replace_macros($tpl,array(
-			'$user' => $a->channel['channel_address'],
+			'$user' => $a->user['nickname'],
 			'$lbl_upfile' => t('Upload File:'),
 			'$lbl_profiles' => t('Select a profile:'),
 			'$title' => t('Upload Cover Photo'),
@@ -247,21 +264,20 @@ function cover_photo_content(&$a) {
 			'$profiles' => $profiles,
 			'$form_security_token' => get_form_security_token("cover_photo"),
 // FIXME - yuk  
-			'$select' => sprintf('%s %s', t('or'), ($newuser) ? '<a href="' . $a->get_baseurl() . '">' . t('skip this step') . '</a>' : '<a href="'. $a->get_baseurl() . '/photos/' . $a->channel['channel_address'] . '">' . t('select a photo from your photo albums') . '</a>')
+			'$select' => sprintf('%s %s', t('or'), ($newuser) ? '<a href="' . $a->get_baseurl() . '">' . t('skip this step') . '</a>' : '<a href="'. $a->get_baseurl() . '/photos/' . $a->user['nickname'] . '">' . t('select a photo from your photo albums') . '</a>')
 		));
-		
+
 		call_hooks('cover_photo_content_end', $o);
-		
+
 		return $o;
-	}
-	else {
-		$filename = $a->data['imagecrop'] . '-3';
+	} else {
+		$filename = $a->data['imagecrop'] . '-3'; // mal schauen, ob das richtig ist
 		$resolution = 3;
 		$tpl = get_markup_template("cropcover.tpl");
 		$o .= replace_macros($tpl,array(
 			'$filename' => $filename,
 			'$profile' => intval($_REQUEST['profile']),
-			'$resource' => $a->data['imagecrop'] . '-3',
+			'$resource' => $a->data['imagecrop'] . '-3', // mal schauen, ob das richtig ist
 			'$image_url' => $a->get_baseurl() . '/photo/' . $filename,
 			'$title' => t('Crop Image'),
 			'$desc' => t('Please adjust the image cropping for optimum viewing.'),
@@ -270,6 +286,7 @@ function cover_photo_content(&$a) {
 		));
 		return $o;
 	}
+
 	return; // NOTREACHED
 }
 /* @brief Generate the UI for photo-cropping
@@ -279,21 +296,39 @@ function cover_photo_content(&$a) {
  * @return void
  *
  */
-function cover_photo_crop_ui_head(&$a, $ph, $hash, $smallest){
+function cover_photo_crop_ui_head(&$a, $ph) {
 	$max_length = get_config('system','max_image_length');
-	if(! $max_length)
+	if(! $max_length) {
 		$max_length = MAX_IMAGE_LENGTH;
-	if($max_length > 0)
+	}
+	if($max_length > 0) {
 		$ph->scaleImage($max_length);
+	}
+
 	$width  = $ph->getWidth();
 	$height = $ph->getHeight();
+
 	if($width < 300 || $height < 300) {
 		$ph->scaleImageUp(240);
 		$width  = $ph->getWidth();
 		$height = $ph->getHeight();
 	}
+
+	$hash = photo_new_resource();
+
+	$smallest = 0;
+
+	$r = $ph->store(local_user(), 0 , $hash, $filename, t('Cover Photos'), 0, PHOTO_COVER);
+
+	if ($r) {
+		info( t('Image uploaded successfully.') . EOL );
+	} else {
+		notice( t('Image upload failed.') . EOL );
+	}
+
 	$a->data['imagecrop'] = $hash;
 	$a->data['imagecrop_resolution'] = $smallest;
 	$a->page['htmlhead'] .= replace_macros(get_markup_template("crophead.tpl"), array());
+	$a->page['end'] .= replace_macros(get_markup_template("cropend.tpl"), array());
 	return;
 }
