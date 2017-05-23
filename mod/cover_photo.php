@@ -5,7 +5,7 @@
 
 
 /*
- * Fertig: Post, init, cover_photo_crop_ui
+ * Fertig: Post, init, content, cover_photo_crop_ui
  */
 require_once "include/Photo.php";
 require_once 'include/identity.php';
