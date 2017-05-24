@@ -141,7 +141,7 @@ function cover_photo_post(&$a) {
 
 	$ph->orient($src);
 	@unlink($src);
-	return profile_photo_crop_ui_head($a, $ph);
+	return cover_photo_crop_ui_head($a, $ph);
 }
 function send_cover_photo_activity($channel,$photo,$profile) {
 	// for now only create activities for the default profile
