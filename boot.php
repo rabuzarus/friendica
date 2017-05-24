@@ -40,7 +40,7 @@ define ( 'FRIENDICA_PLATFORM',     'Friendica');
 define ( 'FRIENDICA_CODENAME',     'Asparagus');
 define ( 'FRIENDICA_VERSION',      '3.5.2-rc' );
 define ( 'DFRN_PROTOCOL_VERSION',  '2.23'    );
-define ( 'DB_UPDATE_VERSION',      1225      );
+define ( 'DB_UPDATE_VERSION',      1226      );
 
 /**
  * @brief Constant with a HTML line break.
@@ -214,6 +214,19 @@ define ( 'ACCOUNT_TYPE_COMMUNITY',   3 );
 define ( 'CP_NO_COMMUNITY_PAGE',   -1 );
 define ( 'CP_USERS_ON_SERVER',     0 );
 define ( 'CP_GLOBAL_COMMUNITY',    1 );
+/** @}*/
+
+
+/**
+ * @name Photo usage types
+ * 
+ * Different types of photo usage
+ * 
+ * @{
+ */
+define ( 'PHOTO_NORMAL',           0x0000 );
+define ( 'PHOTO_PROFILE',          0x0001 );
+define ( 'PHOTO_COVER',            0x0010 );
 /** @}*/
 
 /**

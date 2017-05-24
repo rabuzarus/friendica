@@ -1357,6 +1357,7 @@ function db_definition() {
 					"datasize" => array("type" => "int(10) unsigned", "not null" => "1", "default" => "0"),
 					"data" => array("type" => "mediumblob", "not null" => "1"),
 					"scale" => array("type" => "tinyint(3)", "not null" => "1", "default" => "0"),
+					"photo_usage" => array("type" => "smallint(6)", "not null" => "1", "default" => "0"),
 					"profile" => array("type" => "tinyint(1)", "not null" => "1", "default" => "0"),
 					"allow_cid" => array("type" => "mediumtext"),
 					"allow_gid" => array("type" => "mediumtext"),
