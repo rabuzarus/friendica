@@ -44,7 +44,7 @@ function cover_photo_post(&$a) {
 		}
 
 		$image_id = $a->argv[1];
-
+logger('image id first'.print_r($image_id, true));
 		if(substr($image_id,-2,1) == '-') {
 			$scale = substr($image_id,-1,1);
 			$image_id = substr($image_id,0,-2);
@@ -58,14 +58,14 @@ function cover_photo_post(&$a) {
 		$r = q("SELECT * FROM `photo` WHERE `resource-id` = '%s' AND `uid` = %d AND `scale` = %d LIMIT 1",
 			dbesc($image_id),
 			dbesc(local_user()),
-			intval($scale)); // Note: scale muss vielleicht raus - siehe hubzilla
-
+			intval(0)); // Note: scale muss vielleicht raus - siehe hubzilla
+logger('SCALE: '.$sale);
 		if (dbm::is_result($r)) {
 			$base_image = $r[0];
-
+logger('image id'.print_r($image_id, true));
 			$im = new Photo($base_image['data'], $base_image['type']);
 			if($im->is_valid()) {
-				$g = q("SELECT `width`, `heigh`t FROM `photo` WHERE `resource_id` = '%s' AND `uid` = %d AND `scale` = 3",
+				$g = q("SELECT `width`, `height` FROM `photo` WHERE `resource-id` = '%s' AND `uid` = %d AND `scale` = 2",
 					dbesc($image_id),
 					intval(local_user())
 				);
@@ -82,11 +82,11 @@ function cover_photo_post(&$a) {
  				$orig_srch = ($srcH / $scaled_height) * $r[0]['height'];
 
 				$im->cropImageRect(1200,435,$orig_srcx, $orig_srcy, $orig_srcw, $orig_srch);
-				$aid = get_account_id();
-				$p = array('aid' => $aid, 'uid' => local_channel(), 'resource_id' => $base_image['resource_id'],
-					'filename' => $base_image['filename'], 'album' => t('Profile Photos'));
-				$p['scale'] = 7;
-				$p['photo_usage'] = PHOTO_COVER;
+//				$aid = get_account_id();
+//				$p = array('aid' => $aid, 'uid' => local_user(), 'resource-id' => $base_image['resource_id'],
+//					'filename' => $base_image['filename'], 'album' => t('Profile Photos'));
+//				$p['scale'] = 7;
+//				$p['photo_usage'] = PHOTO_COVER;
 				
 				//$r1 = $im->save($p);  //ist noch nicht implementiert in Photo Klasse
 				$r1 = $im->store(local_user(), 0, $base_image['resource-id'],$base_image['filename'], t('Cover Photos'), 7, PHOTO_COVER);
@@ -98,7 +98,7 @@ function cover_photo_post(&$a) {
 				if($r1 === false || $r2 === false) {
 					// if one failed, delete them all so we can start over.
 					notice(t('Image resize failed.') . EOL );
-					$x = q("DELETE FROM `photo` WHERE `resource_id` = '%s' AND `uid` = %d AND `scale` >= 7 ",
+					$x = q("DELETE FROM `photo` WHERE `resource-id` = '%s' AND `uid` = %d AND `scale` >= 7 ",
 						dbesc($base_image['resource_id']),
 						local_user()
 					);
@@ -206,7 +206,7 @@ function cover_photo_content(&$a) {
 //		check_form_security_token_redirectOnErr('/cover_photo', 'cover_photo');
 
 		$resource_id = $a->argv[2];
-		$r = q("SELECT `id`, `album`, `scale` FROM `photo` WHERE `uid` = %d AND `resource_id` = '%s' ORDER BY `scale` ASC",
+		$r = q("SELECT `id`, `album`, `scale` FROM `photo` WHERE `uid` = %d AND `resource-id` = '%s' ORDER BY `scale` ASC",
 			intval(local_user()),
 			dbesc($resource_id)
 		);
@@ -221,7 +221,7 @@ function cover_photo_content(&$a) {
 				$havescale = true;
 			}
 		}
-		$r = q("SELECT `data`, `type`, `resource_id`, FROM `photo` WHERE `id` = %d AND `uid` = %d LIMIT 1",
+		$r = q("SELECT `data`, `type`, `resource-id`, FROM `photo` WHERE `id` = %d AND `uid` = %d LIMIT 1",
 			intval($r[0]['id']),
 			intval(local_user())
 		);
@@ -324,6 +324,17 @@ function cover_photo_crop_ui_head(&$a, $ph) {
 		info( t('Image uploaded successfully.') . EOL );
 	} else {
 		notice( t('Image upload failed.') . EOL );
+	}
+
+	if ($width > 320 || $height > 320) {
+		$ph->scaleImage(320);
+		$r = $ph->store(local_user(), 0 , $hash, $filename, t('Cover Photos'), 2, PHOTO_COVER);
+
+		if ($r === false) {
+			notice( sprintf(t('Image size reduction [%s] failed.'),"640") . EOL );
+		} else {
+			$smallest = 1;
+		}
 	}
 
 	$a->data['imagecrop'] = $hash;

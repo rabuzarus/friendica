@@ -315,6 +315,44 @@ class Photo {
 		$this->height = imagesy($this->image);
 	}
 
+	public function doScaleImage($dest_width,$dest_height) {
+		if (!$this->is_valid()) {
+			return false;
+		}
+		$width = imagesx($this->image);
+		$height = imagesy($this->image);
+
+		if ($this->is_imagick()) {
+			/*
+			 * If it is not animated, there will be only one iteration here,
+			 * so don't bother checking
+			 */
+			// Don't forget to go back to the first frame
+			$this->image->setFirstIterator();
+			do {
+				$this->image->scaleImage($dest_width, $dest_height);
+			} while ($this->image->nextImage());
+
+			$this->width  = $this->image->getImageWidth();
+			$this->height = $this->image->getImageHeight();
+
+			return;
+		}
+
+		$dest = imagecreatetruecolor($dest_width, $dest_height);
+		imagealphablending($dest, false);
+		imagesavealpha($dest, true);
+		if ($this->type=='image/png') {
+			imagefill($dest, 0, 0, imagecolorallocatealpha($dest, 0, 0, 0, 127)); // fill with alpha
+		}
+		imagecopyresampled($dest, $this->image, 0, 0, 0, 0, $dest_width, $dest_height, $width, $height);
+		if($this->image) {
+			imagedestroy($this->image);
+		}
+		$this->width  = imagesx($this->image);
+		$this->height = imagesy($this->image);
+	}
+
 	public function rotate($degrees) {
 		if (!$this->is_valid()) {
 			return false;
@@ -601,7 +639,8 @@ class Photo {
 			imagedestroy($this->image);
 		}
 		$this->image = $dest;
-		$this->setDimensions();
+		$this->width  = imagesx($this->image);
+		$this->height = imagesy($this->image);
 	}
 
 	public function saveImage($path) {
@@ -660,7 +699,7 @@ class Photo {
 
 
 
-	public function store($uid, $cid, $rid, $filename, $album, $scale, $profile = 0, $allow_cid = '', $allow_gid = '', $deny_cid = '', $deny_gid = '', $desc = '') {
+	public function store($uid, $cid, $rid, $filename, $album, $scale, $photo_usage = PHOTO_NORMAL, $allow_cid = '', $allow_gid = '', $deny_cid = '', $deny_gid = '', $desc = '') {
 
 		$r = q("SELECT `guid` FROM `photo` WHERE `resource-id` = '%s' AND `guid` != '' LIMIT 1",
 			dbesc($rid)
@@ -693,7 +732,7 @@ class Photo {
 				`datasize` = %d,
 				`data` = '%s',
 				`scale` = %d,
-				`profile` = %d,
+				`photo_usage` = %d,
 				`allow_cid` = '%s',
 				`allow_gid` = '%s',
 				`deny_cid` = '%s',
@@ -715,7 +754,7 @@ class Photo {
 				dbesc(strlen($this->imageString())),
 				dbesc($this->imageString()),
 				intval($scale),
-				intval($profile),
+				intval($photo_usage),
 				dbesc($allow_cid),
 				dbesc($allow_gid),
 				dbesc($deny_cid),
@@ -725,7 +764,7 @@ class Photo {
 			);
 		} else {
 			$r = q("INSERT INTO `photo`
-				(`uid`, `contact-id`, `guid`, `resource-id`, `created`, `edited`, `filename`, type, `album`, `height`, `width`, `datasize`, `data`, `scale`, `profile`, `allow_cid`, `allow_gid`, `deny_cid`, `deny_gid`, `desc`)
+				(`uid`, `contact-id`, `guid`, `resource-id`, `created`, `edited`, `filename`, type, `album`, `height`, `width`, `datasize`, `data`, `scale`, `photo_usage`, `allow_cid`, `allow_gid`, `deny_cid`, `deny_gid`, `desc`)
 				VALUES (%d, %d, '%s', '%s', '%s', '%s', '%s', '%s', '%s', %d, %d, %d, '%s', %d, %d, '%s', '%s', '%s', '%s', '%s')",
 				intval($uid),
 				intval($cid),
@@ -741,7 +780,7 @@ class Photo {
 				dbesc(strlen($this->imageString())),
 				dbesc($this->imageString()),
 				intval($scale),
-				intval($profile),
+				intval($photo_usage),
 				dbesc($allow_cid),
 				dbesc($allow_gid),
 				dbesc($deny_cid),
