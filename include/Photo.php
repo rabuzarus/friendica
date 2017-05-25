@@ -349,6 +349,7 @@ class Photo {
 		if($this->image) {
 			imagedestroy($this->image);
 		}
+		$this->image = $dest;
 		$this->width  = imagesx($this->image);
 		$this->height = imagesy($this->image);
 	}

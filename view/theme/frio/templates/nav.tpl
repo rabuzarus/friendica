@@ -263,6 +263,9 @@
 	</form>
 </div>
 
+{{* Insert a cover photo for the profile page *}}
+{{$nav.cover_photo}}
+			
 {{* The second navbar which contains nav points of the actual page - (nav points are actual handled by this theme throug js *}}
 <div id="topbar-second" class="topbar">
 	<div class="container">

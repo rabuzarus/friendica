@@ -44,7 +44,6 @@ function cover_photo_post(&$a) {
 		}
 
 		$image_id = $a->argv[1];
-logger('image id first'.print_r($image_id, true));
 		if(substr($image_id,-2,1) == '-') {
 			$scale = substr($image_id,-1,1);
 			$image_id = substr($image_id,0,-2);
@@ -59,10 +58,10 @@ logger('image id first'.print_r($image_id, true));
 			dbesc($image_id),
 			dbesc(local_user()),
 			intval(0)); // Note: scale muss vielleicht raus - siehe hubzilla
-logger('SCALE: '.$sale);
+
 		if (dbm::is_result($r)) {
 			$base_image = $r[0];
-logger('image id'.print_r($image_id, true));
+
 			$im = new Photo($base_image['data'], $base_image['type']);
 			if($im->is_valid()) {
 				$g = q("SELECT `width`, `height` FROM `photo` WHERE `resource-id` = '%s' AND `uid` = %d AND `scale` = 2",
@@ -82,6 +81,7 @@ logger('image id'.print_r($image_id, true));
  				$orig_srch = ($srcH / $scaled_height) * $r[0]['height'];
 
 				$im->cropImageRect(1200,435,$orig_srcx, $orig_srcy, $orig_srcw, $orig_srch);
+
 //				$aid = get_account_id();
 //				$p = array('aid' => $aid, 'uid' => local_user(), 'resource-id' => $base_image['resource_id'],
 //					'filename' => $base_image['filename'], 'album' => t('Profile Photos'));
@@ -271,13 +271,13 @@ function cover_photo_content(&$a) {
 
 		return $o;
 	} else {
-		$filename = $a->data['imagecrop'] . '-3'; // mal schauen, ob das richtig ist
-		$resolution = 3;
+		$filename = $a->data['imagecrop'] . '-2'; // mal schauen, ob das richtig ist
+		$resolution = 2;
 		$tpl = get_markup_template("cropcover.tpl");
 		$o .= replace_macros($tpl,array(
 			'$filename' => $filename,
 			'$profile' => intval($_REQUEST['profile']),
-			'$resource' => $a->data['imagecrop'] . '-3', // mal schauen, ob das richtig ist
+			'$resource' => $a->data['imagecrop'] . '-2', // mal schauen, ob das richtig ist
 			'$image_url' => $a->get_baseurl() . '/photo/' . $filename,
 			'$title' => t('Crop Image'),
 			'$desc' => t('Please adjust the image cropping for optimum viewing.'),
@@ -331,7 +331,7 @@ function cover_photo_crop_ui_head(&$a, $ph) {
 		$r = $ph->store(local_user(), 0 , $hash, $filename, t('Cover Photos'), 2, PHOTO_COVER);
 
 		if ($r === false) {
-			notice( sprintf(t('Image size reduction [%s] failed.'),"640") . EOL );
+			notice( sprintf(t('Image size reduction [%s] failed.'),"320") . EOL );
 		} else {
 			$smallest = 1;
 		}

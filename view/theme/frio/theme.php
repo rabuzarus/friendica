@@ -259,6 +259,11 @@ function frio_remote_nav($a,&$nav) {
 		$nav['contacts'] = array($server_url . '/contacts', t('Contacts'),"", t('Manage/edit friends and contacts'));
 		$nav['sitename'] = $a->config['sitename'];
 	}
+
+	// insert a cover photo
+	if ($a->argc > 1 && $a->module == 'profile') {
+		$nav['cover_photo'] = cover_photo_widget($a->profile);
+	}
 }
 /**
  * @brief: Search for contacts
@@ -320,4 +325,106 @@ function frio_acl_lookup(App $a, &$results) {
 		$results["items"] = $contacts;
 		$results["tot"] = $total;
 	}
+}
+
+function cover_photo_widget($arr) {
+	//require_once('include/channel.php');
+	
+	$o = '';
+	$a = get_app();
+
+	if($a->module != 'profile' || $_REQUEST['mid']) {
+		return '';
+	}
+
+	$profile_uid = 0;
+
+	if(array_key_exists('profile_uid', $arr) && intval($arr['profile_uid'])) {
+		$profile_uid = intval($arr['profile_uid']);
+		$profile = $arr;
+	}
+	if(! profile_uid) {
+		$profile_uid = $a->profile_uid;
+		$profile = $a->profile;
+	}
+	if(! profile_uid && $a->argc > 1) {
+		$nick = $a->argv[1];
+		$user = qu("SELECT * FROM `user` WHERE `nickname` = '%s' AND `blocked` = 0 LIMIT 1",
+			dbesc($nick)
+		);
+
+		if (! dbm::is_result($user)) {
+			return;
+		}
+		$profile = get_profiledata_by_nick($nick, $user[0]['uid']);
+		$profile_uid = $user[0]['uid'];;
+	}
+	if(! $profile_uid) {
+		return '';
+	}
+
+	//$channel = channelx_by_n($profile_uid);
+
+	if(array_key_exists('style', $arr) && isset($arr['style'])) {
+		$style = $arr['style'];
+	} else {
+		$style = 'width:100%; height: auto;';
+	}
+
+	// ensure they can't sneak in an eval(js) function
+	if(strpbrk($style,'(\'"<>') !== false) {
+		$style = '';
+	}
+	if(array_key_exists('title', $arr) && isset($arr['title'])) {
+		$title = $arr['title'];
+	} else {
+		$title = $profile['name'];
+	}
+	if(array_key_exists('subtitle', $arr) && isset($arr['subtitle'])) {
+		$subtitle = $arr['subtitle'];
+	} else {
+		$subtitle = str_replace('@','&#x40;',$profile['addr']);
+	}
+
+	$c = get_cover_photo($profile_uid,'html');
+	if($c) {
+		$photo_html = (($style) ? str_replace('alt=',' style="' . $style . '" alt=',$c) : $c);
+		$o = replace_macros(get_markup_template('cover_photo_widget.tpl'),array(
+			'$photo_html'	=> $photo_html,
+			'$title'	=> $title,
+			'$subtitle'	=> $subtitle,
+			'$hovertitle' => t('Click to show more'),
+		));
+	}
+	return $o;
+}
+
+function get_cover_photo($uid,$format = 'bbcode', $res = 7) {
+	$r = q("SELECT `height`, `width`, `resource-id`, `type` FROM `photo` WHERE `uid` = %d AND `scale` = %d AND `photo_usage` = %d",
+		intval($uid),
+		intval($res),
+		intval(PHOTO_COVER)
+	);
+	if(! $r)
+		return false;
+	$output = false;
+	$url = App::get_baseurl() . '/photo/' . $r[0]['resource-id'] . '-' . $res ;
+	switch($format) {
+		case 'bbcode':
+			$output = '[url=' . $r[0]['width'] . 'x' . $r[0]['height'] . ']' . $url . '[/url]';
+			break;
+		case 'html':
+ 			$output = '<img class="cover" width="' . $r[0]['width'] . '" height="' . $r[0]['height'] . '" src="' . $url . '" alt="' . t('cover photo') . '" />';
+			break;
+		case 'array':
+		default:
+			$output = array(
+				'width' => $r[0]['width'],
+				'height' => $r[0]['height'],
+				'type' => $r[0]['type'],
+				'url' => $url
+			);
+			break;
+	}
+	return $output;
 }
