@@ -23,13 +23,7 @@ and open the template in the editor.
 
 
 body {
-    padding-top: 110px;
-    background-color: $bgcolor;
-    background-image: url("$background_image");
-    background-size: $background_size_img;
-    background-attachment: fixed;
     color: #777;
-    /*color: #555;*/
     font-family: 'Open Sans',sans-serif;
 }
 body a {
@@ -47,7 +41,6 @@ body a {
 body a[name]:not([href]) {
     display: block;
     position: relative;
-    top: -110px;
     visibility: hidden;
 }
 
@@ -84,6 +77,9 @@ blockquote {
 }
 .no-padding {
     padding: 0;
+}
+.no-margin {
+    margin: 0;
 }
 .fakelink {
     cursor: pointer;
@@ -972,6 +968,19 @@ nav.navbar a, nav.navbar .btn-link {
     padding: 2px 10px;
 }
 
+/*
+ * Main
+ */
+main {
+    background-color: $bgcolor;
+    background-image: url("$background_image");
+    background-size: $background_size_img;
+    background-attachment: fixed;
+    color: #777;
+    position: relative;
+    margin-top: 90px;
+    padding-top: 40px;
+}
 
 /*
  * Aside
@@ -1124,7 +1133,7 @@ aside .vcard #wallmessage-link {
 #vcard-short-info,
 #nav-short-info .contact-wrapper {
     margin-top: 2px;
-    height: 40px;
+    height: 38px;
     white-space: nowrap;
     overflow: hidden;
     padding-right: 20px;

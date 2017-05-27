@@ -30,6 +30,7 @@
 <link rel="stylesheet" type="text/css" href="{{$stylesheet}}" media="all" />
 
 {{* own css files *}}
+<link rel="stylesheet" href="view/theme/frio/css/cover_photo_widget.css" type="text/css" media="screen"/>
 <link rel="stylesheet" href="view/theme/frio/css/hovercard.css" type="text/css" media="screen"/>
 <link rel="stylesheet" href="view/theme/frio/css/font-awesome.custom.css" type="text/css" media="screen"/>
 
@@ -83,8 +84,10 @@
 <script type="text/javascript" src="view/theme/frio/frameworks/jquery-scrollspy/jquery-scrollspy.js"></script>
 <script type="text/javascript" src="view/theme/frio/frameworks/autosize/autosize.min.js"></script>
 <script type="text/javascript" src="view/theme/frio/frameworks/sticky-kit/jquery.sticky-kit.min.js"></script>
+<script type="text/javascript" src="view/theme/frio/frameworks/rellax/rellax.min.js"></script>
 
 {{* own js files *}}
+<script type="text/javascript" src="view/theme/frio/js/cover_photo_widget.js"></script>
 <script type="text/javascript" src="view/theme/frio/js/theme.js"></script>
 <script type="text/javascript" src="view/theme/frio/js/modal.js"></script>
 <script type="text/javascript" src="view/theme/frio/js/hovercard.js"></script>

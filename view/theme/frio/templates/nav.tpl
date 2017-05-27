@@ -16,6 +16,7 @@
 		{{/if}}
 	</div>
 </header>
+
 <nav id="topbar-first" class="topbar">
 	<div class="container">
 		<div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 no-padding"><!-- div for navbar width-->
@@ -264,8 +265,12 @@
 </div>
 
 {{* Insert a cover photo for the profile page *}}
-{{$nav.cover_photo}}
-			
+{{if $nav.cover_photo}}
+<div id="nav-cover" class="rellax hidden" data-rellax-speed="-7">
+	{{$nav.cover_photo}}
+</div>
+{{/if}}
+
 {{* The second navbar which contains nav points of the actual page - (nav points are actual handled by this theme throug js *}}
 <div id="topbar-second" class="topbar">
 	<div class="container">
@@ -289,13 +294,16 @@
 	</li>
 </ul>
 {{/if}}
+<div class="clearfix"></div>
 
 {{* This is the mask of the firefox logo. We set the background of #logo-img to the user icon color and apply this mask to it
 The result is a friendica logo in the user icon color.*}}
-<svg id="friendica-logo-mask" x="0px" y="0px" width="0px" height="0px" viewBox="0 0 250 250">
-	<defs>
-		<mask id="logo-mask" maskUnits="objectBoundingBox" maskContentUnits="objectBoundingBox">
-			<path style="fill-rule:evenodd;clip-rule:evenodd;fill:#ffffff;" d="M0.796,0L0.172,0.004C0.068,0.008,0.008,0.068,0,0.172V0.824c0,0.076,0.06,0.16,0.168,0.172h0.652c0.072,0,0.148-0.06,0.172-0.144V0.14C1,0.06,0.908,0,0.796,0zM0.812,0.968H0.36v-0.224h0.312v-0.24H0.36V0.3h0.316l0-0.264l0.116-0c0.088,0,0.164,0.044,0.164,0.096l0,0.696C0.96,0.912,0.876,0.968,0.812,0.968z"/>
-		</mask>
-	</defs>
-</svg>
+<div id="friendica-logo-mask-container" style="height: 0;">
+	<svg id="friendica-logo-mask" x="0px" y="0px" width="0px" height="0px" viewBox="0 0 250 250">
+		<defs>
+			<mask id="logo-mask" maskUnits="objectBoundingBox" maskContentUnits="objectBoundingBox">
+				<path style="fill-rule:evenodd;clip-rule:evenodd;fill:#ffffff;" d="M0.796,0L0.172,0.004C0.068,0.008,0.008,0.068,0,0.172V0.824c0,0.076,0.06,0.16,0.168,0.172h0.652c0.072,0,0.148-0.06,0.172-0.144V0.14C1,0.06,0.908,0,0.796,0zM0.812,0.968H0.36v-0.224h0.312v-0.24H0.36V0.3h0.316l0-0.264l0.116-0c0.088,0,0.164,0.044,0.164,0.096l0,0.696C0.96,0.912,0.876,0.968,0.812,0.968z"/>
+			</mask>
+		</defs>
+	</svg>
+</div>

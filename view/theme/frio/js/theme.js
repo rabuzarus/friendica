@@ -13,8 +13,15 @@ $(document).ready(function(){
 
 	// scroll body to 0px on click
 	$("#back-to-top").click(function () {
+		var topPos = 0;
+
+		// If there is a cover photo, scroll to the bottom of the cover-photo
+		if (typeof coverSlid !== "undefined" && coverSlid) {
+			topPos = $("#nav-cover").outerHeight(true);
+		}
+
 		$("body,html").animate({
-			scrollTop: 0
+			scrollTop: topPos - 50
 		}, 400);
 		return false;
 	});
