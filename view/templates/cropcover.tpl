@@ -32,7 +32,7 @@
 				minHeight: 87,
 				maxWidth: 320,
 				maxHeight: 116,
-				ratioDim: { x: 100, y:36 },
+				ratioDim: { x: 3, y:1 },
 				displayOnInit: true,
 				onEndCrop: onEndCrop
 			}

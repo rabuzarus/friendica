@@ -80,7 +80,7 @@ function cover_photo_post(&$a) {
  				$orig_srcw = ($srcW / $scaled_width) * $r[0]['width'];
  				$orig_srch = ($srcH / $scaled_height) * $r[0]['height'];
 
-				$im->cropImageRect(1200,435,$orig_srcx, $orig_srcy, $orig_srcw, $orig_srch);
+				$im->cropImageRect(1200,400,$orig_srcx, $orig_srcy, $orig_srcw, $orig_srch);
 
 //				$aid = get_account_id();
 //				$p = array('aid' => $aid, 'uid' => local_user(), 'resource-id' => $base_image['resource_id'],
@@ -91,7 +91,7 @@ function cover_photo_post(&$a) {
 				//$r1 = $im->save($p);  //ist noch nicht implementiert in Photo Klasse
 				$r1 = $im->store(local_user(), 0, $base_image['resource-id'],$base_image['filename'], t('Cover Photos'), 7, PHOTO_COVER);
 
-				$im->doScaleImage(850,310);
+				$im->doScaleImage(600,200);
 				$p['scale'] = 8; // braucht cleanup -> entweder save Methode oder $p array löschen
 				$r2 = $im->store(local_user(), 0, $base_image['resource-id'],$base_image['filename'], t('Cover Photos'), 8, PHOTO_COVER);
 			
