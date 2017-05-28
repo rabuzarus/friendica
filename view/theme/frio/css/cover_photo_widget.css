@@ -52,6 +52,7 @@
 #nav-cover {
     position:relative;
     height: 240px;
+    margin-top: 50px;
     cursor: pointer;
 }
 #topbar-second.nav-scrollable {

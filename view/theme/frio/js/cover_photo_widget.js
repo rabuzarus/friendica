@@ -36,57 +36,84 @@ $(document).ready(function() {
 			$("main").css("padding-top", "40px");
 			coverSlid = false;
 		} else {
-			$("main").css("padding-top", "90px");
+			$("main").css("padding-top", "80px");
 			coverSlid = true;
 		}
 
 		// Slide the cover up if it is clicked
 		$(document).on("click", slideUpCover);
 
+		// Initialize the Scrollspy for the cover element
+		initCoverScrollSpy();
+
+
+		// Initialize the prallax effect
+		var rellax = new Rellax(".rellax");
+	}
+
+});
+
+$(window).scroll(function () {
+	if ($('#cover-photo').length && window.matchMedia("(min-width: 768px)").matches && $(window).scrollTop() < ($("#nav-cover").height())) {
+		if (coverSlid) {
+			$(window).scrollTop(Math.ceil($('#nav-cover').height()));
+			setTimeout(function(){coverVis = true;}, 1000);
+		}
+	}
+});
+
+$(window).resize(function () {
+		// If the screen width becomes smaller than 768px we remove the cover
+		if ($("#cover-photo").length && window.matchMedia("(max-width: 767px)").matches) {
+			$(window).off("scroll.coverscroll");
+			$('#nav-cover').remove();
+			$("#topbar-second").removeClass("nav-scrollable");
+			$("main").css("margin-top", "90px");
+			$("main").css("padding-top", "40px");
+			coverSlid = false;
+
+		// If the screen width is larger than 767px reinitialize the scrollspy (we need to do this
+		// because on screen size change the cover height changes too)
+		} else if ($("#cover-photo").length && window.matchMedia("(min-width: 768px)").matches) {
+			initCoverScrollSpy();
+		}
+});
+
+// Slide to the end of the cover
+function slideUpCover() {
+	var secondNavPos = $("#topbar-second").position().top;
+	$("html, body").animate({scrollTop: secondNavPos - 50 + "px"});
+}
+
+// Initialize the Scrollspy for the cover element
+function initCoverScrollSpy() {
+	// Remove old scrollspys for the cover
+	$(window).off("scroll.coverscroll");
+
+	// Handle the cover photo on profile pages (we show the cover photo only
+	// on screens that have a minimal width of 768px)
+	if ($("#cover-photo").length && window.matchMedia("(min-width: 768px)").matches) {
+		var coverMin = 0;
+		var coverMax = $("#nav-cover").height();
+
 		// Add a ScrollSpy to the cover element
 		$("#nav-cover").scrollspy({
 			// Specify the scrollspy area.
-			min: navCoverElm.position().top - 50, // - 50px is the heigh of the first topbar
-			max: navCoverElm.position().top + navCoverElm.height() - 50,
+			min: coverMin,
+			max: coverMax,
 			mode: 'vertical',
+			namespace: 'coverscroll',
 			onEnter: function (element) {
-				secondNavElm.addClass("nav-scrollable");
+				$("#topbar-second").addClass("nav-scrollable");
 				$("main").css("padding-top", "40px");
 				coverSlid = false;
 
 			},
 			onLeave: function(element) {
-				secondNavElm.removeClass("nav-scrollable");
-				$("main").css("padding-top", "90px");
+				$("#topbar-second").removeClass("nav-scrollable");
+				$("main").css("padding-top", "80px");
 				coverSlid = true;
 			}
 		});
-
-		// Initialize the prallax effect
-		var rellax = new Rellax(".rellax");
 	}
-});
-
-$(window).scroll(function () {
-	if ($('#cover-photo').length && window.matchMedia("(min-width: 768px)").matches && $(window).scrollTop() < ($("#nav-cover").height() - 50)) {
-		if (coverSlid) {
-			$(window).scrollTop(Math.ceil($('#nav-cover').height()) - 50);
-			setTimeout(function(){coverVis = true;}, 1000);
-		}
-	}
-});
-$(window).resize(function () {
-		// If the screen width becomes smaller than 768px we remove the cover
-		if ($("#cover-photo").length && window.matchMedia("(max-width: 767px)").matches) {
-			$(window).unbind("scroll.scrollspy");
-			$('#nav-cover').remove();
-			$("#topbar-second").removeClass("nav-scrollable");
-			$("main").css("margin-top", "90px");
-			coverSlid = false;
-		}
-});
-
-function slideUpCover() {
-	var secondNavPos = $("#topbar-second").position().top;
-	$("html, body").animate({scrollTop: secondNavPos - 50 + "px"});
 }

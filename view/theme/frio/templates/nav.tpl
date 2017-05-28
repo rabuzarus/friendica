@@ -266,7 +266,7 @@
 
 {{* Insert a cover photo for the profile page *}}
 {{if $nav.cover_photo}}
-<div id="nav-cover" class="rellax hidden" data-rellax-speed="-7">
+<div id="nav-cover" class="rellax hidden" data-rellax-speed="-2">
 	{{$nav.cover_photo}}
 </div>
 {{/if}}
