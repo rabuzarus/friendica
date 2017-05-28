@@ -7,11 +7,16 @@
 var coverSlid = false;
 
 $(document).ready(function() {
-	// Handle the cover photo on profile pages (parallax effect)
-	if ($("#nav-cover #cover-photo").length) {
+	// Handle the cover photo on profile pages (we show the cover photo only
+	// on screens that have a minimal width of 768px)
+	if ($("#cover-photo").length && window.matchMedia("(min-width: 768px)").matches) {
 		var navCoverElm = $("#nav-cover");
 		var secondNavElm = $("#topbar-second");
 
+		// When the page does load, the cover is hidden (This was done
+		// to prevent glitches which would result of the fact that 
+		// important css is only added through this js file.
+		// Now we remove the hidden class to make the cover visible
 		navCoverElm.removeClass("hidden");
 		$("main").css("margin-top", "0");
 
@@ -36,47 +41,52 @@ $(document).ready(function() {
 		}
 
 		// Slide the cover up if it is clicked
-		$(document).on('click', slideUpCover);
+		$(document).on("click", slideUpCover);
 
 		// Add a ScrollSpy to the cover element
 		$("#nav-cover").scrollspy({
-			min: navCoverElm.position().top - 50, //
+			// Specify the scrollspy area.
+			min: navCoverElm.position().top - 50, // - 50px is the heigh of the first topbar
 			max: navCoverElm.position().top + navCoverElm.height() - 50,
 			mode: 'vertical',
-			onEnter: function onLeave(element) {
-//				$("#nav-cover").removeClass("hidden");
+			onEnter: function (element) {
 				secondNavElm.addClass("nav-scrollable");
 				$("main").css("padding-top", "40px");
-//				$("main").addClass("no-margin");
-//				$("main").css("margin-top", "0");
 				coverSlid = false;
-				
+
 			},
 			onLeave: function(element) {
-//				$("#nav-cover").addClass("hidden");
 				secondNavElm.removeClass("nav-scrollable");
 				$("main").css("padding-top", "90px");
-//				$("main").removeClass("no-margin");
-//				$("main").css("margin-top", "90px");
 				coverSlid = true;
 			}
 		});
 
 		// Initialize the prallax effect
-		var rellax = new Rellax('.rellax');
+		var rellax = new Rellax(".rellax");
 	}
 });
 
 $(window).scroll(function () {
-	if ($(window).scrollTop() < ($('#cover-photo').height() - 50)) {
+	if ($('#cover-photo').length && window.matchMedia("(min-width: 768px)").matches && $(window).scrollTop() < ($("#nav-cover").height() - 50)) {
 		if (coverSlid) {
-			$(window).scrollTop(Math.ceil($('#cover-photo').height()) - 50);
-			setTimeout(function(){ coverVis = true; }, 1000);
+			$(window).scrollTop(Math.ceil($('#nav-cover').height()) - 50);
+			setTimeout(function(){coverVis = true;}, 1000);
 		}
 	}
+});
+$(window).resize(function () {
+		// If the screen width becomes smaller than 768px we remove the cover
+		if ($("#cover-photo").length && window.matchMedia("(max-width: 767px)").matches) {
+			$(window).unbind("scroll.scrollspy");
+			$('#nav-cover').remove();
+			$("#topbar-second").removeClass("nav-scrollable");
+			$("main").css("margin-top", "90px");
+			coverSlid = false;
+		}
 });
 
 function slideUpCover() {
 	var secondNavPos = $("#topbar-second").position().top;
-	$('html, body').animate({scrollTop: secondNavPos - 50 + 'px'});
+	$("html, body").animate({scrollTop: secondNavPos - 50 + "px"});
 }
