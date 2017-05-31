@@ -878,7 +878,7 @@ function photos_post(App $a) {
 
 	$photo_hash = photo_new_resource();
 
-	$r = $ph->store($page_owner_uid, $visitor, $photo_hash, $filename, $album, 0 , 0, $str_contact_allow, $str_group_allow, $str_contact_deny, $str_group_deny);
+	$r = $ph->store($page_owner_uid, $visitor, $photo_hash, $filename, $album, 0 , PHOTO_NORMAL, $str_contact_allow, $str_group_allow, $str_contact_deny, $str_group_deny);
 
 	if (! $r) {
 		logger('mod/photos.php: photos_post(): image store failed' , LOGGER_DEBUG);
@@ -888,13 +888,13 @@ function photos_post(App $a) {
 
 	if ($width > 640 || $height > 640) {
 		$ph->scaleImage(640);
-		$ph->store($page_owner_uid, $visitor, $photo_hash, $filename, $album, 1, 0, $str_contact_allow, $str_group_allow, $str_contact_deny, $str_group_deny);
+		$ph->store($page_owner_uid, $visitor, $photo_hash, $filename, $album, 1, PHOTO_NORMAL, $str_contact_allow, $str_group_allow, $str_contact_deny, $str_group_deny);
 		$smallest = 1;
 	}
 
 	if ($width > 320 || $height > 320) {
 		$ph->scaleImage(320);
-		$ph->store($page_owner_uid, $visitor, $photo_hash, $filename, $album, 2, 0, $str_contact_allow, $str_group_allow, $str_contact_deny, $str_group_deny);
+		$ph->store($page_owner_uid, $visitor, $photo_hash, $filename, $album, 2, PHOTO_NORMAL, $str_contact_allow, $str_group_allow, $str_contact_deny, $str_group_deny);
 		$smallest = 2;
 	}
 

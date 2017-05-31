@@ -258,7 +258,7 @@ function import_account(App $a, $file) {
 		$p = new Photo($photo['data'], $photo['type']);
 		$r = $p->store(
 				$photo['uid'], $photo['contact-id'], //0
-				$photo['resource-id'], $photo['filename'], $photo['album'], $photo['scale'], $photo['profile'], //1
+				$photo['resource-id'], $photo['filename'], $photo['album'], $photo['scale'], PHOTO_PROFILE, //1
 				$photo['allow_cid'], $photo['allow_gid'], $photo['deny_cid'], $photo['deny_gid']
 		);
 

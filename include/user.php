@@ -303,7 +303,7 @@ function create_user($arr) {
 
 			$hash = photo_new_resource();
 
-			$r = $img->store($newuid, 0, $hash, $filename, t('Profile Photos'), 4 );
+			$r = $img->store($newuid, 0, $hash, $filename, t('Profile Photos'), 4, PHOTO_PROFILE);
 
 			if ($r === false) {
 				$photo_failure = true;
@@ -311,7 +311,7 @@ function create_user($arr) {
 
 			$img->scaleImage(80);
 
-			$r = $img->store($newuid, 0, $hash, $filename, t('Profile Photos'), 5 );
+			$r = $img->store($newuid, 0, $hash, $filename, t('Profile Photos'), 5, PHOTO_PROFILE);
 
 			if ($r === false) {
 				$photo_failure = true;
@@ -319,14 +319,15 @@ function create_user($arr) {
 
 			$img->scaleImage(48);
 
-			$r = $img->store($newuid, 0, $hash, $filename, t('Profile Photos'), 6 );
+			$r = $img->store($newuid, 0, $hash, $filename, t('Profile Photos'), 6, PHOTO_PROFILE);
 
 			if ($r === false) {
 				$photo_failure = true;
 			}
 
 			if (! $photo_failure) {
-				q("UPDATE `photo` SET `profile` = 1 WHERE `resource-id` = '%s' ",
+				q("UPDATE `photo` SET `photo_usage` = %d WHERE `resource-id` = '%s' ",
+					intval(PHOTO_PROFILE),
 					dbesc($hash)
 				);
 			}

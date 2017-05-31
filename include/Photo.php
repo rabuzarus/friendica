@@ -910,21 +910,21 @@ function import_profile_photo($photo, $uid, $cid, $quit_on_error = false) {
 
 		$img->scaleImageSquare(175);
 
-		$r = $img->store($uid, $cid, $hash, $filename, 'Contact Photos', 4);
+		$r = $img->store($uid, $cid, $hash, $filename, 'Contact Photos', 4, PHOTO_CONTACT);
 
 		if ($r === false)
 			$photo_failure = true;
 
 		$img->scaleImage(80);
 
-		$r = $img->store($uid, $cid, $hash, $filename, 'Contact Photos', 5);
+		$r = $img->store($uid, $cid, $hash, $filename, 'Contact Photos', 5, PHOTO_CONTACT);
 
 		if ($r === false)
 			$photo_failure = true;
 
 		$img->scaleImage(48);
 
-		$r = $img->store($uid, $cid, $hash, $filename, 'Contact Photos', 6);
+		$r = $img->store($uid, $cid, $hash, $filename, 'Contact Photos', 6, PHOTO_CONTACT);
 
 		if ($r === false) {
 			$photo_failure = true;
@@ -1147,7 +1147,7 @@ function store_photo(App $a, $uid, $imagedata = "", $url = "") {
 	$defperm = "";
 	$visitor = 0;
 
-	$r = $ph->store($uid, $visitor, $hash, $tempfile, t('Wall Photos'), 0, 0, $defperm);
+	$r = $ph->store($uid, $visitor, $hash, $tempfile, t('Wall Photos'), 0, PHOTO_NORMAL, $defperm);
 
 	if (!$r) {
 		logger("Picture couldn't be stored", LOGGER_DEBUG);
@@ -1163,7 +1163,7 @@ function store_photo(App $a, $uid, $imagedata = "", $url = "") {
 
 	if ($width > 640 || $height > 640) {
 		$ph->scaleImage(640);
-		$r = $ph->store($uid, $visitor, $hash, $tempfile, t('Wall Photos'), 1, 0, $defperm);
+		$r = $ph->store($uid, $visitor, $hash, $tempfile, t('Wall Photos'), 1, PHOTO_NORMAL, $defperm);
 		if ($r) {
 			$image["medium"] = App::get_baseurl()."/photo/{$hash}-1.".$ph->getExt();
 		}
@@ -1171,7 +1171,7 @@ function store_photo(App $a, $uid, $imagedata = "", $url = "") {
 
 	if ($width > 320 || $height > 320) {
 		$ph->scaleImage(320);
-		$r = $ph->store($uid, $visitor, $hash, $tempfile, t('Wall Photos'), 2, 0, $defperm);
+		$r = $ph->store($uid, $visitor, $hash, $tempfile, t('Wall Photos'), 2, PHOTO_NORMAL, $defperm);
 		if ($r) {
 			$image["small"] = App::get_baseurl()."/photo/{$hash}-2.".$ph->getExt();
 		}
@@ -1196,7 +1196,7 @@ function store_photo(App $a, $uid, $imagedata = "", $url = "") {
 		$min = 160;
 		$ph->cropImage(160, $x, $y, $min, $min);
 
-		$r = $ph->store($uid, $visitor, $hash, $tempfile, t('Wall Photos'), 3, 0, $defperm);
+		$r = $ph->store($uid, $visitor, $hash, $tempfile, t('Wall Photos'), 3, PHOTO_NORMAL, $defperm);
 		if ($r) {
 			$image["thumb"] = App::get_baseurl()."/photo/{$hash}-3.".$ph->getExt();
 		}

@@ -226,7 +226,9 @@ define ( 'CP_GLOBAL_COMMUNITY',    1 );
  */
 define ( 'PHOTO_NORMAL',           0x0000 );
 define ( 'PHOTO_PROFILE',          0x0001 );
-define ( 'PHOTO_COVER',            0x0010 );
+define ( 'PHOTO_CONTACT',          0x0002 );
+define ( 'PHOTO_COVER',            0x0004 );
+define ( 'PHOTO_CACHE',            0x0064 );
 /** @}*/
 
 /**

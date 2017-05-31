@@ -181,7 +181,7 @@ function proxy_init(App $a) {
 			}
 
 			q("INSERT INTO `photo`
-			( `uid`, `contact-id`, `guid`, `resource-id`, `created`, `edited`, `filename`, `album`, `height`, `width`, `desc`, `data`, `scale`, `profile`, `allow_cid`, `allow_gid`, `deny_cid`, `deny_gid` )
+			( `uid`, `contact-id`, `guid`, `resource-id`, `created`, `edited`, `filename`, `album`, `height`, `width`, `desc`, `data`, `scale`, `photo_usage`, `allow_cid`, `allow_gid`, `deny_cid`, `deny_gid` )
 			VALUES ( %d, %d, '%s', '%s', '%s', '%s', '%s', '%s', %d, %d, '%s', '%s', %d, %d, '%s', '%s', '%s', '%s' )",
 				0, 0, get_guid(), dbesc($urlhash),
 				dbesc(datetime_convert()),
@@ -192,7 +192,7 @@ function proxy_init(App $a) {
 				intval(imagesx($image)),
 				$mime,
 				dbesc($img_str),
-				100,
+				intval(PHOTO_CACHE),
 				intval(0),
 				dbesc(''), dbesc(''), dbesc(''), dbesc('')
 			);
@@ -200,7 +200,7 @@ function proxy_init(App $a) {
 		} else {
 			$img = new Photo($img_str, $mime);
 			if ($img->is_valid() AND !$direct_cache AND ($cachefile == '')) {
-				$img->store(0, 0, $urlhash, $_REQUEST['url'], '', 100);
+				$img->store(0, 0, $urlhash, $_REQUEST['url'], '', PHOTO_CACHE);
 			}
 		}
 	}

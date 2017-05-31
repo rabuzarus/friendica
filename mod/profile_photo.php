@@ -72,7 +72,7 @@ function profile_photo_post(App $a) {
 			if($im->is_valid()) {
 				$im->cropImage(175,$srcX,$srcY,$srcW,$srcH);
 
-				$r = $im->store(local_user(), 0, $base_image['resource-id'],$base_image['filename'], t('Profile Photos'), 4, $is_default_profile);
+				$r = $im->store(local_user(), 0, $base_image['resource-id'],$base_image['filename'], t('Profile Photos'), 4, PHOTO_PROFILE);
 
 				if ($r === false) {
 					notice ( sprintf(t('Image size reduction [%s] failed.'),"175") . EOL );
@@ -80,7 +80,7 @@ function profile_photo_post(App $a) {
 
 				$im->scaleImage(80);
 
-				$r = $im->store(local_user(), 0, $base_image['resource-id'],$base_image['filename'], t('Profile Photos'), 5, $is_default_profile);
+				$r = $im->store(local_user(), 0, $base_image['resource-id'],$base_image['filename'], t('Profile Photos'), 5, PHOTO_PROFILE);
 
 				if ($r === false) {
 					notice( sprintf(t('Image size reduction [%s] failed.'),"80") . EOL );
@@ -88,7 +88,7 @@ function profile_photo_post(App $a) {
 
 				$im->scaleImage(48);
 
-				$r = $im->store(local_user(), 0, $base_image['resource-id'],$base_image['filename'], t('Profile Photos'), 6, $is_default_profile);
+				$r = $im->store(local_user(), 0, $base_image['resource-id'],$base_image['filename'], t('Profile Photos'), 6, PHOTO_PROFILE);
 
 				if ($r === false) {
 					notice( sprintf(t('Image size reduction [%s] failed.'),"48") . EOL );
@@ -97,7 +97,9 @@ function profile_photo_post(App $a) {
 				// If setting for the default profile, unset the profile photo flag from any other photos I own
 
 				if($is_default_profile) {
-					$r = q("UPDATE `photo` SET `profile` = 0 WHERE `profile` = 1 AND `resource-id` != '%s' AND `uid` = %d",
+					$r = q("UPDATE `photo` SET `photo_usage` = %d WHERE `photo_usage` = %d AND `resource-id` != '%s' AND `uid` = %d",
+						intval(PHOTO_NORMAL),
+						intval(PHOTO_PROFILE),
 						dbesc($base_image['resource-id']),
 						intval(local_user())
 					);
@@ -213,10 +215,13 @@ function profile_photo_content(App $a) {
 		// set an already uloaded photo as profile photo
 		// if photo is in 'Profile Photos', change it in db
 		if (($r[0]['album']== t('Profile Photos')) && ($havescale)){
-			$r=q("UPDATE `photo` SET `profile`=0 WHERE `profile`=1 AND `uid`=%d",
+			$r=q("UPDATE `photo` SET `photo_usage` = %d WHERE photo_usage` = %d AND `uid`=%d",
+				intval(PHOTO_NORMAL),
+				intval(PHOTO_PROFILE),
 				intval(local_user()));
 
-			$r=q("UPDATE `photo` SET `profile`=1 WHERE `uid` = %d AND `resource-id` = '%s'",
+			$r=q("UPDATE `photo` SET `photo_usage` = %d WHERE `uid` = %d AND `resource-id` = '%s'",
+				intval(PHOTO_PROFILE),
 				intval(local_user()),
 				dbesc($resource_id)
 				);
@@ -307,7 +312,7 @@ function profile_photo_crop_ui_head(App $a, $ph) {
 
 	$smallest = 0;
 
-	$r = $ph->store(local_user(), 0 , $hash, $filename, t('Profile Photos'), 0 );
+	$r = $ph->store(local_user(), 0 , $hash, $filename, t('Profile Photos'), 0, PHOTO_PROFILE);
 
 	if ($r) {
 		info( t('Image uploaded successfully.') . EOL );
@@ -317,7 +322,7 @@ function profile_photo_crop_ui_head(App $a, $ph) {
 
 	if ($width > 640 || $height > 640) {
 		$ph->scaleImage(640);
-		$r = $ph->store(local_user(), 0 , $hash, $filename, t('Profile Photos'), 1 );
+		$r = $ph->store(local_user(), 0 , $hash, $filename, t('Profile Photos'), 1, PHOTO_PROFILE);
 
 		if ($r === false) {
 			notice( sprintf(t('Image size reduction [%s] failed.'),"640") . EOL );

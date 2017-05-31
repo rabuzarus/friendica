@@ -3694,7 +3694,7 @@ $called_api = null;
 			$media = $_FILES['media'];
 		}
 		// save new profile image
-		$data = save_media_to_database("profileimage", $media, $type, t('Profile Photos'), "", "", "", "", "", $is_default_profile);
+		$data = save_media_to_database("profileimage", $media, $type, t('Profile Photos'), "", "", "", "", "", PHOTO_PROFILE);
 
 		// get filetype
 		if (is_array($media['type'])) {
@@ -3709,7 +3709,9 @@ $called_api = null;
 		}
 		// change specified profile or all profiles to the new resource-id
 		if ($is_default_profile) {
-			$r = q("UPDATE `photo` SET `profile` = 0 WHERE `profile` = 1 AND `resource-id` != '%s' AND `uid` = %d",
+			$r = q("UPDATE `photo` SET `photo_usage` = %d WHERE `photo_usage` = %d AND `resource-id` != '%s' AND `uid` = %d",
+				intval(PHOTO_NORMAL),
+				intval(PHOTO_PROFILE),
 				dbesc($data['photo']['id']),
 				intval(local_user())
 			);
@@ -3788,7 +3790,7 @@ $called_api = null;
 		return $contact_not_found;
 	}
 
-	function save_media_to_database($mediatype, $media, $type, $album, $allow_cid, $deny_cid, $allow_gid, $deny_gid, $desc, $profile = 0, $visibility = false, $photo_id = null) {
+	function save_media_to_database($mediatype, $media, $type, $album, $allow_cid, $deny_cid, $allow_gid, $deny_gid, $desc, $photo_usage = PHOTO_NORMAL, $visibility = false, $photo_id = null) {
 		$visitor   = 0;
 		$src = "";
 		$filetype = "";
@@ -3869,13 +3871,13 @@ $called_api = null;
 			// upload normal image (scales 0, 1, 2)
 			logger("photo upload: starting new photo upload", LOGGER_DEBUG);
 
-			$r =$ph->store(local_user(), $visitor, $hash, $filename, $album, 0, 0, $allow_cid, $allow_gid, $deny_cid, $deny_gid, $desc);
+			$r =$ph->store(local_user(), $visitor, $hash, $filename, $album, 0, PHOTO_NORMAL, $allow_cid, $allow_gid, $deny_cid, $deny_gid, $desc);
 			if (! $r) {
 				logger("photo upload: image upload with scale 0 (original size) failed");
 			}
 			if($width > 640 || $height > 640) {
 				$ph->scaleImage(640);
-				$r = $ph->store(local_user(),$visitor, $hash, $filename, $album, 1, 0, $allow_cid, $allow_gid, $deny_cid, $deny_gid, $desc);
+				$r = $ph->store(local_user(),$visitor, $hash, $filename, $album, 1, PHOTO_NORMAL, $allow_cid, $allow_gid, $deny_cid, $deny_gid, $desc);
 				if (! $r) {
 					logger("photo upload: image upload with scale 1 (640x640) failed");
 				}
@@ -3883,7 +3885,7 @@ $called_api = null;
 
 			if ($width > 320 || $height > 320) {
 				$ph->scaleImage(320);
-				$r = $ph->store(local_user(), $visitor, $hash, $filename, $album, 2, 0, $allow_cid, $allow_gid, $deny_cid, $deny_gid, $desc);
+				$r = $ph->store(local_user(), $visitor, $hash, $filename, $album, 2, PHOTO_NORMAL, $allow_cid, $allow_gid, $deny_cid, $deny_gid, $desc);
 				if (! $r) {
 					logger("photo upload: image upload with scale 2 (320x320) failed");
 				}
@@ -3895,7 +3897,7 @@ $called_api = null;
 
 			if ($width > 175 || $height > 175) {
 				$ph->scaleImage(175);
-				$r = $ph->store(local_user(),$visitor, $hash, $filename, $album, 4, $profile, $allow_cid, $allow_gid, $deny_cid, $deny_gid, $desc);
+				$r = $ph->store(local_user(),$visitor, $hash, $filename, $album, 4, PHOTO_PROFILE, $allow_cid, $allow_gid, $deny_cid, $deny_gid, $desc);
 				if (! $r) {
 					logger("photo upload: profile image upload with scale 4 (175x175) failed");
 				}
@@ -3903,7 +3905,7 @@ $called_api = null;
 
 			if ($width > 80 || $height > 80) {
 				$ph->scaleImage(80);
-				$r = $ph->store(local_user(),$visitor, $hash, $filename, $album, 5, $profile, $allow_cid, $allow_gid, $deny_cid, $deny_gid, $desc);
+				$r = $ph->store(local_user(),$visitor, $hash, $filename, $album, 5, PHOTO_PROFILE, $allow_cid, $allow_gid, $deny_cid, $deny_gid, $desc);
 				if (! $r) {
 					logger("photo upload: profile image upload with scale 5 (80x80) failed");
 				}
@@ -3911,7 +3913,7 @@ $called_api = null;
 
 			if ($width > 48 || $height > 48) {
 				$ph->scaleImage(48);
-				$r = $ph->store(local_user(), $visitor, $hash, $filename, $album, 6, $profile, $allow_cid, $allow_gid, $deny_cid, $deny_gid, $desc);
+				$r = $ph->store(local_user(), $visitor, $hash, $filename, $album, 6, PHOTO_PROFILE, $allow_cid, $allow_gid, $deny_cid, $deny_gid, $desc);
 				if (! $r) {
 					logger("photo upload: profile image upload with scale 6 (48x48) failed");
 				}
