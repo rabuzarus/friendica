@@ -23,7 +23,7 @@ function poller_run($argv, $argc){
 		$a = new App(dirname(__DIR__));
 	}
 
-	if(is_null($db)) {
+	if (is_null($db)) {
 		@include(".htconfig.php");
 		require_once("include/dba.php");
 		$db = new dba($db_host, $db_user, $db_pass, $db_data);
@@ -55,7 +55,7 @@ function poller_run($argv, $argc){
 		return;
 	}
 
-	if(($argc <= 1) OR ($argv[1] != "no_cron")) {
+	if (($argc <= 1) OR ($argv[1] != "no_cron")) {
 		poller_run_cron();
 	}
 
@@ -73,24 +73,34 @@ function poller_run($argv, $argc){
 
 	while ($r = poller_worker_process()) {
 
+		if (!poller_claim_process($r[0])) {
+			continue;
+		}
+
 		// Check free memory
 		if ($a->min_memory_reached()) {
+			logger('Memory limit reached, quitting.', LOGGER_DEBUG);
 			return;
 		}
 
 		// Count active workers and compare them with a maximum value that depends on the load
 		if (poller_too_much_workers()) {
+			logger('Active worker limit reached, quitting.', LOGGER_DEBUG);
 			return;
 		}
 
 		if (!poller_execute($r[0])) {
+			logger('Process execution failed, quitting.', LOGGER_DEBUG);
 			return;
 		}
 
 		// Quit the poller once every hour
-		if (time() > ($starttime + 3600))
+		if (time() > ($starttime + 3600)) {
+			logger('Process lifetime reachted, quitting.', LOGGER_DEBUG);
 			return;
+		}
 	}
+	logger("Couldn't select a workerqueue entry, quitting.", LOGGER_DEBUG);
 }
 
 /**
@@ -108,42 +118,21 @@ function poller_execute($queue) {
 
 	// Quit when in maintenance
 	if (Config::get('system', 'maintenance', true)) {
+		logger("Maintenance mode - quit process ".$mypid, LOGGER_DEBUG);
 		return false;
 	}
 
 	// Constantly check the number of parallel database processes
 	if ($a->max_processes_reached()) {
+		logger("Max processes reached for process ".$mypid, LOGGER_DEBUG);
 		return false;
 	}
 
 	// Constantly check the number of available database connections to let the frontend be accessible at any time
 	if (poller_max_connections_reached()) {
+		logger("Max connection reached for process ".$mypid, LOGGER_DEBUG);
 		return false;
 	}
-
-	if (!dba::update('workerqueue', array('executed' => datetime_convert(), 'pid' => $mypid),
-			array('id' => $queue["id"], 'pid' => 0))) {
-		logger("Couldn't update queue entry ".$queue["id"]." - skip this execution", LOGGER_DEBUG);
-		dba::commit();
-		return true;
-	}
-
-	// Assure that there are no tasks executed twice
-	$id = q("SELECT `pid`, `executed` FROM `workerqueue` WHERE `id` = %d", intval($queue["id"]));
-	if (!$id) {
-		logger("Queue item ".$queue["id"]." vanished - skip this execution", LOGGER_DEBUG);
-		dba::commit();
-		return true;
-	} elseif ((strtotime($id[0]["executed"]) <= 0) OR ($id[0]["pid"] == 0)) {
-		logger("Entry for queue item ".$queue["id"]." wasn't stored - skip this execution", LOGGER_DEBUG);
-		dba::commit();
-		return true;
-	} elseif ($id[0]["pid"] != $mypid) {
-		logger("Queue item ".$queue["id"]." is to be executed by process ".$id[0]["pid"]." and not by me (".$mypid.") - skip this execution", LOGGER_DEBUG);
-		dba::commit();
-		return true;
-	}
-	dba::commit();
 
 	$argv = json_decode($queue["parameter"]);
 
@@ -163,7 +152,6 @@ function poller_execute($queue) {
 	if (function_exists($funcname)) {
 
 		poller_exec_function($queue, $funcname, $argv);
-
 		dba::delete('workerqueue', array('id' => $queue["id"]));
 	} else {
 		logger("Function ".$funcname." does not exist");
@@ -378,8 +366,9 @@ function poller_kill_stale_workers() {
 			// Kill long running processes
 
 			// Check if the priority is in a valid range
-			if (!in_array($pid["priority"], array(PRIORITY_CRITICAL, PRIORITY_HIGH, PRIORITY_MEDIUM, PRIORITY_LOW, PRIORITY_NEGLIGIBLE)))
+			if (!in_array($pid["priority"], array(PRIORITY_CRITICAL, PRIORITY_HIGH, PRIORITY_MEDIUM, PRIORITY_LOW, PRIORITY_NEGLIGIBLE))) {
 				$pid["priority"] = PRIORITY_MEDIUM;
+			}
 
 			// Define the maximum durations
 			$max_duration_defaults = array(PRIORITY_CRITICAL => 360, PRIORITY_HIGH => 10, PRIORITY_MEDIUM => 60, PRIORITY_LOW => 180, PRIORITY_NEGLIGIBLE => 360);
@@ -421,7 +410,7 @@ function poller_too_much_workers() {
 
 	// Decrease the number of workers at higher load
 	$load = current_load();
-	if($load) {
+	if ($load) {
 		$maxsysload = intval(Config::get("system", "maxloadavg", 50));
 
 		$maxworkers = $queues;
@@ -430,6 +419,29 @@ function poller_too_much_workers() {
 		$exponent = 3;
 		$slope = $maxworkers / pow($maxsysload, $exponent);
 		$queues = ceil($slope * pow(max(0, $maxsysload - $load), $exponent));
+
+		// Create a list of queue entries grouped by their priority
+		$listitem = array();
+
+		// Adding all processes with no workerqueue entry
+		$processes = dba::p("SELECT COUNT(*) AS `running` FROM `process` WHERE NOT EXISTS (SELECT id FROM `workerqueue` WHERE `workerqueue`.`pid` = `process`.`pid`)");
+		if ($process = dba::fetch($processes)) {
+			$listitem[0] = "0:".$process["running"];
+		}
+		dba::close($processes);
+
+		// Now adding all processes with workerqueue entries
+		$entries = dba::p("SELECT COUNT(*) AS `entries`, `priority` FROM `workerqueue` GROUP BY `priority`");
+		while ($entry = dba::fetch($entries)) {
+			$processes = dba::p("SELECT COUNT(*) AS `running` FROM `process` INNER JOIN `workerqueue` ON `workerqueue`.`pid` = `process`.`pid` WHERE `priority` = ?", $entry["priority"]);
+			if ($process = dba::fetch($processes)) {
+				$listitem[$entry["priority"]] = $entry["priority"].":".$process["running"]."/".$entry["entries"];
+			}
+			dba::close($processes);
+		}
+		dba::close($entries);
+
+		$processlist = implode(', ', $listitem);
 
 		$s = q("SELECT COUNT(*) AS `total` FROM `workerqueue` WHERE `executed` <= '%s'", dbesc(NULL_DATE));
 		$entries = $s[0]["total"];
@@ -447,27 +459,6 @@ function poller_too_much_workers() {
 				$queues = $active + 1;
 			}
 		}
-
-		// Create a list of queue entries grouped by their priority
-		$running = array(PRIORITY_CRITICAL => 0,
-				PRIORITY_HIGH => 0,
-				PRIORITY_MEDIUM => 0,
-				PRIORITY_LOW => 0,
-				PRIORITY_NEGLIGIBLE => 0);
-
-		$r = q("SELECT COUNT(*) AS `running`, `priority` FROM `process` INNER JOIN `workerqueue` ON `workerqueue`.`pid` = `process`.`pid` GROUP BY `priority`");
-		if (dbm::is_result($r))
-			foreach ($r AS $process)
-				$running[$process["priority"]] = $process["running"];
-
-		$processlist = "";
-		$r = q("SELECT COUNT(*) AS `entries`, `priority` FROM `workerqueue` GROUP BY `priority`");
-		if (dbm::is_result($r))
-			foreach ($r as $entry) {
-				if ($processlist != "")
-					$processlist .= ", ";
-				$processlist .= $entry["priority"].":".$running[$entry["priority"]]."/".$entry["entries"];
-			}
 
 		logger("Load: ".$load."/".$maxsysload." - processes: ".$active."/".$entries." (".$processlist.") - maximum: ".$queues."/".$maxqueues, LOGGER_DEBUG);
 
@@ -551,12 +542,12 @@ function poller_passing_slow(&$highest_priority) {
  */
 function poller_worker_process() {
 
-	dba::transaction();
-
 	// Check if we should pass some low priority process
 	$highest_priority = 0;
 
 	if (poller_passing_slow($highest_priority)) {
+		dba::e('LOCK TABLES `workerqueue` WRITE');
+
 		// Are there waiting processes with a higher priority than the currently highest?
 		$r = q("SELECT * FROM `workerqueue`
 				WHERE `executed` <= '%s' AND `priority` < %d
@@ -572,13 +563,70 @@ function poller_worker_process() {
 				ORDER BY `priority`, `created` LIMIT 1",
 				dbesc(NULL_DATE),
 				intval($highest_priority));
+
+		if (dbm::is_result($r)) {
+			return $r;
+		}
+	} else {
+		dba::e('LOCK TABLES `workerqueue` WRITE');
 	}
 
 	// If there is no result (or we shouldn't pass lower processes) we check without priority limit
-	if (($highest_priority == 0) OR !dbm::is_result($r)) {
+	if (!dbm::is_result($r)) {
 		$r = q("SELECT * FROM `workerqueue` WHERE `executed` <= '%s' ORDER BY `priority`, `created` LIMIT 1", dbesc(NULL_DATE));
 	}
+
+	// We only unlock the tables here, when we got no data
+	if (!dbm::is_result($r)) {
+		dba::e('UNLOCK TABLES');
+	}
+
 	return $r;
+}
+
+/**
+ * @brief Assigns a workerqueue entry to the current process
+ *
+ * When we are sure that the table locks are working correctly, we can remove the checks from here
+ *
+ * @param array $queue Workerqueue entry
+ *
+ * @return boolean "true" if the claiming was successful
+ */
+function poller_claim_process($queue) {
+	$mypid = getmypid();
+
+	$success = dba::update('workerqueue', array('executed' => datetime_convert(), 'pid' => $mypid),
+			array('id' => $queue["id"], 'pid' => 0));
+	dba::e('UNLOCK TABLES');
+
+	if (!$success) {
+		logger("Couldn't update queue entry ".$queue["id"]." - skip this execution", LOGGER_DEBUG);
+		return false;
+	}
+
+	// Assure that there are no tasks executed twice
+	$id = q("SELECT `pid`, `executed` FROM `workerqueue` WHERE `id` = %d", intval($queue["id"]));
+	if (!$id) {
+		logger("Queue item ".$queue["id"]." vanished - skip this execution", LOGGER_DEBUG);
+		return false;
+	} elseif ((strtotime($id[0]["executed"]) <= 0) OR ($id[0]["pid"] == 0)) {
+		logger("Entry for queue item ".$queue["id"]." wasn't stored - skip this execution", LOGGER_DEBUG);
+		return false;
+	} elseif ($id[0]["pid"] != $mypid) {
+		logger("Queue item ".$queue["id"]." is to be executed by process ".$id[0]["pid"]." and not by me (".$mypid.") - skip this execution", LOGGER_DEBUG);
+		return false;
+	}
+	return true;
+}
+
+/**
+ * @brief Removes a workerqueue entry from the current process
+ */
+function poller_unclaim_process() {
+	$mypid = getmypid();
+
+	dba::update('workerqueue', array('executed' => NULL_DATE, 'pid' => 0), array('pid' => $mypid));
 }
 
 /**
@@ -676,6 +724,8 @@ function poller_run_cron() {
 
 if (array_search(__file__,get_included_files())===0){
 	poller_run($_SERVER["argv"],$_SERVER["argc"]);
+
+	poller_unclaim_process();
 
 	get_app()->end_process();
 

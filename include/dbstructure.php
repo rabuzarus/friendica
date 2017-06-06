@@ -3,10 +3,14 @@
 use Friendica\App;
 use Friendica\Core\Config;
 
-require_once("boot.php");
-require_once("include/text.php");
+require_once "boot.php";
+require_once "include/text.php";
 
 define('NEW_UPDATE_ROUTINE_VERSION', 1170);
+
+const DB_UPDATE_NOT_CHECKED = 0; // Database check wasn't executed before
+const DB_UPDATE_SUCCESSFUL = 1;  // Database check was successful
+const DB_UPDATE_FAILED = 2;      // Database check failed
 
 /*
  * Converts all tables from MyISAM to InnoDB
@@ -478,6 +482,12 @@ function update_structure($verbose, $action, $tables=null, $definition=null) {
 	if ($action) {
 		Config::set('system', 'maintenance', 0);
 		Config::set('system', 'maintenance_reason', '');
+	}
+
+	if ($errors) {
+		Config::set('system', 'dbupdate', DB_UPDATE_FAILED);
+	} else {
+		Config::set('system', 'dbupdate', DB_UPDATE_SUCCESSFUL);
 	}
 
 	return $errors;
@@ -1733,6 +1743,8 @@ function db_definition() {
 					),
 			"indexes" => array(
 					"PRIMARY" => array("id"),
+					"pid" => array("pid"),
+					"priority_created" => array("priority", "created"),
 					)
 			);
 
@@ -1757,7 +1769,7 @@ function dbstructure_run(&$argv, &$argc) {
 			unset($db_host, $db_user, $db_pass, $db_data);
 	}
 
-	if ($argc==2) {
+	if ($argc == 2) {
 		switch ($argv[1]) {
 			case "dryrun":
 				update_structure(true, false);
@@ -1767,7 +1779,7 @@ function dbstructure_run(&$argv, &$argc) {
 
 				$build = get_config('system','build');
 				if (!x($build)) {
-					set_config('system','build',DB_UPDATE_VERSION);
+					set_config('system', 'build', DB_UPDATE_VERSION);
 					$build = DB_UPDATE_VERSION;
 				}
 
@@ -1777,7 +1789,9 @@ function dbstructure_run(&$argv, &$argc) {
 				// run any left update_nnnn functions in update.php
 				for ($x = $stored; $x < $current; $x ++) {
 					$r = run_update_function($x);
-					if (!$r) break;
+					if (!$r) {
+						break;
+					}
 				}
 
 				set_config('system','build',DB_UPDATE_VERSION);
@@ -1804,7 +1818,7 @@ function dbstructure_run(&$argv, &$argc) {
 
 }
 
-if (array_search(__file__,get_included_files())===0) {
+if (array_search(__FILE__,get_included_files())===0) {
 	dbstructure_run($_SERVER["argv"],$_SERVER["argc"]);
 	killme();
 }
