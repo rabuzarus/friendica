@@ -260,8 +260,8 @@ function frio_remote_nav($a,&$nav) {
 		$nav['sitename'] = $a->config['sitename'];
 	}
 
-	// insert a cover photo
-	if ($a->argc > 1 && $a->module == 'profile') {
+	// insert a cover photo (only show it for the profile wall)
+	if ($a->argc == 2 && $a->module == 'profile' && !x($_GET, 'tab')) {
 		$nav['cover_photo'] = cover_photo_widget($a->profile);
 	}
 }
