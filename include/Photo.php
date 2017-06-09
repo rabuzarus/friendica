@@ -860,7 +860,7 @@ function update_contact_avatar($avatar, $uid, $cid, $force = false) {
 		$data = array($r[0]["photo"], $r[0]["thumb"], $r[0]["micro"]);
 	}
 
-	if (($r[0]["avatar"] != $avatar) OR $force) {
+	if (($r[0]["avatar"] != $avatar) || $force) {
 		$photos = import_profile_photo($avatar, $uid, $cid, true);
 
 		if ($photos) {
@@ -900,7 +900,7 @@ function import_profile_photo($photo, $uid, $cid, $quit_on_error = false) {
 	$filename = basename($photo);
 	$img_str = fetch_url($photo, true);
 
-	if ($quit_on_error AND ($img_str == "")) {
+	if ($quit_on_error && ($img_str == "")) {
 		return false;
 	}
 
@@ -958,7 +958,7 @@ function import_profile_photo($photo, $uid, $cid, $quit_on_error = false) {
 		$photo_failure = true;
 	}
 
-	if ($photo_failure AND $quit_on_error) {
+	if ($photo_failure && $quit_on_error) {
 		return false;
 	}
 
@@ -977,7 +977,7 @@ function get_photo_info($url) {
 
 	$data = Cache::get($url);
 
-	if (is_null($data) OR !$data OR !is_array($data)) {
+	if (is_null($data) || !$data || !is_array($data)) {
 		$img_str = fetch_url($url, true, $redirects, 4);
 		$filesize = strlen($img_str);
 
@@ -1071,7 +1071,7 @@ function store_photo(App $a, $uid, $imagedata = "", $url = "") {
 	/// $default_cid      = $r[0]['id'];
 	/// $community_page   = (($r[0]['page-flags'] == PAGE_COMMUNITY) ? true : false);
 
-	if ((strlen($imagedata) == 0) AND ($url == "")) {
+	if ((strlen($imagedata) == 0) && ($url == "")) {
 		logger("No image data and no url provided", LOGGER_DEBUG);
 		return(array());
 	} elseif (strlen($imagedata) == 0) {
@@ -1177,7 +1177,7 @@ function store_photo(App $a, $uid, $imagedata = "", $url = "") {
 		}
 	}
 
-	if ($width > 160 AND $height > 160) {
+	if ($width > 160 && $height > 160) {
 		$x = 0;
 		$y = 0;
 

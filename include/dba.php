@@ -117,7 +117,7 @@ class dba {
 
 	/**
 	 * @brief Returns the MySQL server version string
-	 * 
+	 *
 	 * This function discriminate between the deprecated mysql API and the current
 	 * object-oriented mysqli API. Example of returned string: 5.5.46-0+deb8u1
 	 *
@@ -183,17 +183,17 @@ class dba {
 
 		foreach ($r AS $row) {
 			if ((intval($a->config["system"]["db_loglimit_index"]) > 0)) {
-				$log = (in_array($row['key'], $watchlist) AND
+				$log = (in_array($row['key'], $watchlist) &&
 					($row['rows'] >= intval($a->config["system"]["db_loglimit_index"])));
 			} else {
 				$log = false;
 			}
 
-			if ((intval($a->config["system"]["db_loglimit_index_high"]) > 0) AND ($row['rows'] >= intval($a->config["system"]["db_loglimit_index_high"]))) {
+			if ((intval($a->config["system"]["db_loglimit_index_high"]) > 0) && ($row['rows'] >= intval($a->config["system"]["db_loglimit_index_high"]))) {
 				$log = true;
 			}
 
-			if (in_array($row['key'], $blacklist) OR ($row['key'] == "")) {
+			if (in_array($row['key'], $blacklist) || ($row['key'] == "")) {
 				$log = false;
 			}
 
@@ -363,7 +363,7 @@ class dba {
 		// PDO doesn't return "true" on successful operations - like mysqli does
 		// Emulate this behaviour by checking if the query returned data and had columns
 		// This should be reliable enough
-		if (($this->driver == 'pdo') AND (count($r) == 0) AND ($columns == 0)) {
+		if (($this->driver == 'pdo') && (count($r) == 0) && ($columns == 0)) {
 			return true;
 		}
 
@@ -490,7 +490,7 @@ class dba {
 	static private function replace_parameters($sql, $args) {
 		$offset = 0;
 		foreach ($args AS $param => $value) {
-			if (is_int($args[$param]) OR is_float($args[$param])) {
+			if (is_int($args[$param]) || is_float($args[$param])) {
 				$replace = intval($args[$param]);
 			} else {
 				$replace = "'".self::$dbo->escape($args[$param])."'";
@@ -520,7 +520,7 @@ class dba {
 		unset($args[0]);
 
 		// When the second function parameter is an array then use this as the parameter array
-		if ((count($args) > 0) AND (is_array($args[1]))) {
+		if ((count($args) > 0) && (is_array($args[1]))) {
 			$params = $args[1];
 		} else {
 			$params = $args;
@@ -533,7 +533,7 @@ class dba {
 			$args[++$i] = $param;
 		}
 
-		if (!self::$dbo OR !self::$dbo->connected) {
+		if (!self::$dbo || !self::$dbo->connected) {
 			return false;
 		}
 
@@ -807,6 +807,41 @@ class dba {
 	}
 
 	/**
+	 * @brief Locks a table for exclusive write access
+	 *
+	 * This function can be extended in the future to accept a table array as well.
+	 *
+	 * @param string $table Table name
+	 *
+	 * @return boolean was the lock successful?
+	 */
+	static public function lock($table) {
+		// See here: https://dev.mysql.com/doc/refman/5.7/en/lock-tables-and-transactions.html
+		self::e("SET autocommit=0");
+		$success = self::e("LOCK TABLES `".self::$dbo->escape($table)."` WRITE");
+		if (!$success) {
+			self::e("SET autocommit=1");
+		} else {
+			self::$in_transaction = true;
+		}
+		return $success;
+	}
+
+	/**
+	 * @brief Unlocks all locked tables
+	 *
+	 * @return boolean was the unlock successful?
+	 */
+	static public function unlock() {
+		// See here: https://dev.mysql.com/doc/refman/5.7/en/lock-tables-and-transactions.html
+		self::e("COMMIT");
+		$success = self::e("UNLOCK TABLES");
+		self::e("SET autocommit=1");
+		self::$in_transaction = false;
+		return $success;
+	}
+
+	/**
 	 * @brief Starts a transaction
 	 *
 	 * @return boolean Was the command executed successfully?
@@ -913,7 +948,7 @@ class dba {
 
 			// When the search field is the relation field, we don't need to fetch the rows
 			// This is useful when the leading record is already deleted in the frontend but the rest is done in the backend
-			if ((count($param) == 1) AND ($field == array_keys($param)[0])) {
+			if ((count($param) == 1) && ($field == array_keys($param)[0])) {
 				foreach ($rel_def AS $rel_table => $rel_fields) {
 					foreach ($rel_fields AS $rel_field) {
 						$retval = self::delete($rel_table, array($rel_field => array_values($param)[0]), true, $callstack);
@@ -1075,7 +1110,7 @@ class dba {
 			}
 		}
 
-		if (!$do_update OR (count($fields) == 0)) {
+		if (!$do_update || (count($fields) == 0)) {
 			return true;
 		}
 
@@ -1155,7 +1190,7 @@ class dba {
 
 		$result = self::p($sql, $condition);
 
-		if (is_bool($result) OR !$single_row) {
+		if (is_bool($result) || !$single_row) {
 			return $result;
 		} else {
 			$row = self::fetch($result);
