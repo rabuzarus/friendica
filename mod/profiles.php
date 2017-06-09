@@ -683,6 +683,7 @@ function profiles_content(App $a) {
 			'$banner'	=> t('Edit Profile Details'),
 			'$submit'	=> t('Submit'),
 			'$profpic'	=> t('Change Profile Photo'),
+			'$coverpic'	=> t('Change Cover Photo'),
 			'$viewprof'	=> t('View this profile'),
 			'$editvis' 	=> t('Edit visibility'),
 			'$cr_prof'	=> t('Create a new profile using these settings'),

@@ -10,7 +10,10 @@
 					<i class="fa fa-angle-down"  aria-hidden="true"></i>&nbsp;{{$profile_action}}
 				</button>
 				<ul class="dropdown-menu pull-right" role="menu" aria-labelledby="profile-edit-links-dropdown">
-					<li role="menuitem"><a href="profile_photo" id="profile-photo_upload-link" title="{{$profpic|escape:'html'}}"><i class="fa fa-user"  aria-hidden="true"></i>&nbsp;{{$profpic}}</a></li>
+					<li role="menuitem"><a href="profile_photo" id="profile-photo_upload-link" title="{{$profpic|escape:'html'}}"><i class="fa fa-user" aria-hidden="true"></i>&nbsp;{{$profpic}}</a></li>
+					{{if $is_default}}
+					<li role="menuitem"><a href="cover_photo" id="profile-cover_upload-link" title="{{$coverpic|escape:'html'}}"><i class="fa fa-picture-o" aria-hidden="true"></i>&nbsp;{{$coverpic}}</a></li>
+					{{/if}}
 					<li role="menuitem"><button type="button" class="btn-link" id="profile-photo_upload-link" title="{{$profpic|escape:'html'}}" onclick="openClose('profile-photo-upload-section');"><i class="fa fa-user" aria-hidden="true"></i>&nbsp;{{$profpic}}</button></li>
 					{{if ! $is_default}}
 					<li class="nav-item"><a href="profperm/{{$profile_id}}" id="profile-edit-visibility-link" title="{{$editvis}}"><i class="fa fa-pencil"  aria-hidden="true"></i>&nbsp;{{$editvis}}</a>
