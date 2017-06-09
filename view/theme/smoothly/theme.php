@@ -10,13 +10,15 @@
  * Screenshot: <a href="screenshot.png">Screenshot</a>
  */
 
+use Friendica\App;
+
 function smoothly_init(App $a) {
 	set_template_engine($a, 'smarty3');
 
 	$cssFile = null;
 	$ssl_state = null;
 	$baseurl = App::get_baseurl($ssl_state);
-$a->page['htmlhead'] .= <<< EOT
+	$a->page['htmlhead'] .= <<< EOT
 
 <script>
 function insertFormatting(BBcode, id) {
@@ -31,19 +33,11 @@ function insertFormatting(BBcode, id) {
 	if (document.selection) {
 		textarea.focus();
 		selected = document.selection.createRange();
-		if (BBcode == "url") {
-			selected.text = "["+BBcode+"]" + "http://" +  selected.text + "[/"+BBcode+"]";
-		} else {
-			selected.text = "["+BBcode+"]" + selected.text + "[/"+BBcode+"]";
-		}
+		selected.text = "["+BBcode+"]" + selected.text + "[/"+BBcode+"]";
 	} else if (textarea.selectionStart || textarea.selectionStart == "0") {
 		var start = textarea.selectionStart;
 		var end = textarea.selectionEnd;
-		if (BBcode == "url") {
-			textarea.value = textarea.value.substring(0, start) + "["+BBcode+"]" + "http://" + textarea.value.substring(start, end) + "[/"+BBcode+"]" + textarea.value.substring(end, textarea.value.length);
-		} else {
-			textarea.value = textarea.value.substring(0, start) + "["+BBcode+"]" + textarea.value.substring(start, end) + "[/"+BBcode+"]" + textarea.value.substring(end, textarea.value.length);
-		}
+		textarea.value = textarea.value.substring(0, start) + "["+BBcode+"]" + textarea.value.substring(start, end) + "[/"+BBcode+"]" + textarea.value.substring(end, textarea.value.length);
 	}
 
 	return true;
@@ -99,13 +93,12 @@ $(document).ready(function() {
 </script>
 EOT;
 
-    	/** custom css **/
+	/** custom css **/
 	if (!is_null($cssFile)) {
         $a->page['htmlhead'] .= sprintf('<link rel="stylesheet" type="text/css" href="%s" />', $cssFile);
 	}
 
-_js_in_foot();
-
+	_js_in_foot();
 }
 
 if (! function_exists('_js_in_foot')) {

@@ -1,4 +1,8 @@
 <?php
+
+use Friendica\App;
+use Friendica\Core\Config;
+
 require_once('include/security.php');
 require_once('include/datetime.php');
 
@@ -19,10 +23,13 @@ if (isset($_COOKIE["Friendica"])) {
 			}
 
 			// Renew the cookie
-			new_cookie(604800, $r[0]);
+			// Expires after 7 days by default,
+			// can be set via system.auth_cookie_lifetime
+			$authcookiedays = Config::get('system', 'auth_cookie_lifetime', 7);
+			new_cookie($authcookiedays*24*60*60, $r[0]);
 
 			// Do the authentification if not done by now
-			if (!isset($_SESSION) OR !isset($_SESSION['authenticated'])) {
+			if (!isset($_SESSION) || !isset($_SESSION['authenticated'])) {
 				authenticate_success($r[0]);
 
 				if (get_config('system','paranoia'))

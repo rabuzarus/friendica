@@ -1,5 +1,7 @@
 <?php
 
+use Friendica\App;
+
 require_once('include/group.php');
 require_once('include/socgraph.php');
 
@@ -460,13 +462,13 @@ function settings_post(App $a) {
 		$notify += intval($_POST['notify8']);
 
 	// Adjust the page flag if the account type doesn't fit to the page flag.
-	if (($account_type == ACCOUNT_TYPE_PERSON) AND !in_array($page_flags, array(PAGE_NORMAL, PAGE_SOAPBOX, PAGE_FREELOVE)))
+	if (($account_type == ACCOUNT_TYPE_PERSON) && !in_array($page_flags, array(PAGE_NORMAL, PAGE_SOAPBOX, PAGE_FREELOVE)))
 		$page_flags = PAGE_NORMAL;
-	elseif (($account_type == ACCOUNT_TYPE_ORGANISATION) AND !in_array($page_flags, array(PAGE_SOAPBOX)))
+	elseif (($account_type == ACCOUNT_TYPE_ORGANISATION) && !in_array($page_flags, array(PAGE_SOAPBOX)))
 		$page_flags = PAGE_SOAPBOX;
-	elseif (($account_type == ACCOUNT_TYPE_NEWS) AND !in_array($page_flags, array(PAGE_SOAPBOX)))
+	elseif (($account_type == ACCOUNT_TYPE_NEWS) && !in_array($page_flags, array(PAGE_SOAPBOX)))
 		$page_flags = PAGE_SOAPBOX;
-	elseif (($account_type == ACCOUNT_TYPE_COMMUNITY) AND !in_array($page_flags, array(PAGE_COMMUNITY, PAGE_PRVGROUP)))
+	elseif (($account_type == ACCOUNT_TYPE_COMMUNITY) && !in_array($page_flags, array(PAGE_COMMUNITY, PAGE_PRVGROUP)))
 		$page_flags = PAGE_COMMUNITY;
 
 	$email_changed = false;
@@ -635,8 +637,7 @@ function settings_post(App $a) {
 		}
 	}
 
-	require_once('include/profile_update.php');
-	profile_change();
+	proc_run(PRIORITY_LOW, 'include/profile_update.php', local_user());
 
 	// Update the global contact for the user
 	update_gcontact_for_user(local_user());
@@ -779,7 +780,7 @@ function settings_content(App $a) {
 			$arr[$fname] = array();
 			$arr[$fname][0] = $fdata[0];
 			foreach (array_slice($fdata,1) as $f) {
-				$arr[$fname][1][] = array('feature_' .$f[0],$f[1],((intval(feature_enabled(local_user(),$f[0]))) ? "1" : ''),$f[2],array(t('Off'),t('On')));
+				$arr[$fname][1][] = array('feature_' .$f[0],$f[1],((intval(feature_enabled(local_user(),$f[0]))) ? "1" : ''),$f[2],array(t('Off'), t('On')));
 			}
 		}
 
@@ -948,7 +949,7 @@ function settings_content(App $a) {
 				$is_experimental = file_exists('view/theme/' . $th . '/experimental');
 				$unsupported = file_exists('view/theme/' . $th . '/unsupported');
 				$is_mobile = file_exists('view/theme/' . $th . '/mobile');
-				if (!$is_experimental or ($is_experimental && (get_config('experimentals','exp_themes')==1 or get_config('experimentals','exp_themes')===false))){
+				if (!$is_experimental || ($is_experimental && (get_config('experimentals','exp_themes')==1 || get_config('experimentals','exp_themes')===false))){
 					$theme_name = (($is_experimental) ?  sprintf("%s - \x28Experimental\x29", $f) : $f);
 					if ($is_mobile) {
 						$mobile_themes[$f]=$theme_name;
@@ -1100,7 +1101,7 @@ function settings_content(App $a) {
 
 	// Set the account type to "Community" when the page is a community page but the account type doesn't fit
 	// This is only happening on the first visit after the update
-	if (in_array($a->user['page-flags'], array(PAGE_COMMUNITY, PAGE_PRVGROUP)) AND
+	if (in_array($a->user['page-flags'], array(PAGE_COMMUNITY, PAGE_PRVGROUP)) &&
 		($a->user['account-type'] != ACCOUNT_TYPE_COMMUNITY))
 		$a->user['account-type'] = ACCOUNT_TYPE_COMMUNITY;
 
@@ -1117,39 +1118,39 @@ function settings_content(App $a) {
 		'$type_community' 	=> ACCOUNT_TYPE_COMMUNITY,
 
 		'$account_person' 	=> array('account-type', t('Personal Page'), ACCOUNT_TYPE_PERSON,
-									t('This account is a regular personal profile'),
+									t('Account for a personal profile.'),
 									($a->user['account-type'] == ACCOUNT_TYPE_PERSON)),
 
 		'$account_organisation'	=> array('account-type', t('Organisation Page'), ACCOUNT_TYPE_ORGANISATION,
-									t('This account is a profile for an organisation'),
+									t('Account for an organisation that automatically approves contact requests as "Followers".'),
 									($a->user['account-type'] == ACCOUNT_TYPE_ORGANISATION)),
 
 		'$account_news'		=> array('account-type', t('News Page'), ACCOUNT_TYPE_NEWS,
-									t('This account is a news account/reflector'),
+									t('Account for a news reflector that automatically approves contact requests as "Followers".'),
 									($a->user['account-type'] == ACCOUNT_TYPE_NEWS)),
 
 		'$account_community' 	=> array('account-type', t('Community Forum'), ACCOUNT_TYPE_COMMUNITY,
-									t('This account is a community forum where people can discuss with each other'),
+									t('Account for community discussions.'),
 									($a->user['account-type'] == ACCOUNT_TYPE_COMMUNITY)),
 
 		'$page_normal'		=> array('page-flags', t('Normal Account Page'), PAGE_NORMAL,
-									t('This account is a normal personal profile'),
+									t('Account for a regular personal profile that requires manual approval of "Friends" and "Followers".'),
 									($a->user['page-flags'] == PAGE_NORMAL)),
 
 		'$page_soapbox' 	=> array('page-flags', t('Soapbox Page'), PAGE_SOAPBOX,
-									t('Automatically approve all connection/friend requests as read-only fans'),
+									t('Account for a public profile that automatically approves contact requests as "Followers".'),
 									($a->user['page-flags'] == PAGE_SOAPBOX)),
 
 		'$page_community'	=> array('page-flags', t('Public Forum'), PAGE_COMMUNITY,
-									t('Automatically approve all contact requests'),
+									t('Automatically approves all contact requests.'),
 									($a->user['page-flags'] == PAGE_COMMUNITY)),
 
 		'$page_freelove' 	=> array('page-flags', t('Automatic Friend Page'), PAGE_FREELOVE,
-									t('Automatically approve all connection/friend requests as friends'),
+									t('Account for a popular profile that automatically approves contact requests as "Friends".'),
 									($a->user['page-flags'] == PAGE_FREELOVE)),
 
 		'$page_prvgroup' 	=> array('page-flags', t('Private Forum [Experimental]'), PAGE_PRVGROUP,
-									t('Private forum - approved members only'),
+									t('Requires manual approval of contact requests.'),
 									($a->user['page-flags'] == PAGE_PRVGROUP)),
 
 
@@ -1164,48 +1165,48 @@ function settings_content(App $a) {
 	}
 
 	$opt_tpl = get_markup_template("field_yesno.tpl");
-	if(get_config('system','publish_all')) {
+	if (get_config('system','publish_all')) {
 		$profile_in_dir = '<input type="hidden" name="profile_in_directory" value="1" />';
 	} else {
-		$profile_in_dir = replace_macros($opt_tpl,array(
-			'$field' 	=> array('profile_in_directory', t('Publish your default profile in your local site directory?'), $profile['publish'], '', array(t('No'),t('Yes'))),
+		$profile_in_dir = replace_macros($opt_tpl, array(
+			'$field' => array('profile_in_directory', t('Publish your default profile in your local site directory?'), $profile['publish'], t("Your profile may be visible in public."), array(t('No'), t('Yes')))
 		));
 	}
 
 	if (strlen(get_config('system','directory'))) {
-		$profile_in_net_dir = replace_macros($opt_tpl,array(
-			'$field' 	=> array('profile_in_netdirectory', t('Publish your default profile in the global social directory?'), $profile['net-publish'], '', array(t('No'),t('Yes'))),
+		$profile_in_net_dir = replace_macros($opt_tpl, array(
+			'$field' => array('profile_in_netdirectory', t('Publish your default profile in the global social directory?'), $profile['net-publish'], '', array(t('No'), t('Yes')))
 		));
 	} else {
 		$profile_in_net_dir = '';
 	}
 
 	$hide_friends = replace_macros($opt_tpl,array(
-			'$field' 	=> array('hide-friends', t('Hide your contact/friend list from viewers of your default profile?'), $profile['hide-friends'], '', array(t('No'),t('Yes'))),
+			'$field' 	=> array('hide-friends', t('Hide your contact/friend list from viewers of your default profile?'), $profile['hide-friends'], '', array(t('No'), t('Yes'))),
 	));
 
 	$hide_wall = replace_macros($opt_tpl,array(
-			'$field' 	=> array('hidewall',  t('Hide your profile details from unknown viewers?'), $a->user['hidewall'], t("If enabled, posting public messages to Diaspora and other networks isn't possible."), array(t('No'),t('Yes'))),
+			'$field' 	=> array('hidewall',  t('Hide your profile details from unknown viewers?'), $a->user['hidewall'], t("If enabled, posting public messages to Diaspora and other networks isn't possible."), array(t('No'), t('Yes'))),
 
 	));
 
 	$blockwall = replace_macros($opt_tpl,array(
-			'$field' 	=> array('blockwall',  t('Allow friends to post to your profile page?'), (intval($a->user['blockwall']) ? '0' : '1'), '', array(t('No'),t('Yes'))),
+			'$field' 	=> array('blockwall',  t('Allow friends to post to your profile page?'), (intval($a->user['blockwall']) ? '0' : '1'), '', array(t('No'), t('Yes'))),
 
 	));
 
 	$blocktags = replace_macros($opt_tpl,array(
-			'$field' 	=> array('blocktags',  t('Allow friends to tag your posts?'), (intval($a->user['blocktags']) ? '0' : '1'), '', array(t('No'),t('Yes'))),
+			'$field' 	=> array('blocktags',  t('Allow friends to tag your posts?'), (intval($a->user['blocktags']) ? '0' : '1'), '', array(t('No'), t('Yes'))),
 
 	));
 
 	$suggestme = replace_macros($opt_tpl,array(
-			'$field' 	=> array('suggestme',  t('Allow us to suggest you as a potential friend to new members?'), $suggestme, '', array(t('No'),t('Yes'))),
+			'$field' 	=> array('suggestme',  t('Allow us to suggest you as a potential friend to new members?'), $suggestme, '', array(t('No'), t('Yes'))),
 
 	));
 
 	$unkmail = replace_macros($opt_tpl,array(
-			'$field' 	=> array('unkmail',  t('Permit unknown people to send you private mail?'), $unkmail, '', array(t('No'),t('Yes'))),
+			'$field' 	=> array('unkmail',  t('Permit unknown people to send you private mail?'), $unkmail, '', array(t('No'), t('Yes'))),
 
 	));
 
@@ -1231,11 +1232,11 @@ function settings_content(App $a) {
 		'days' => array('expire',  t("Automatically expire posts after this many days:"), $expire, t('If empty, posts will not expire. Expired posts will be deleted')),
 		'advanced' => t('Advanced expiration settings'),
 		'label' => t('Advanced Expiration'),
-		'items' => array('expire_items',  t("Expire posts:"), $expire_items, '', array(t('No'),t('Yes'))),
-		'notes' => array('expire_notes',  t("Expire personal notes:"), $expire_notes, '', array(t('No'),t('Yes'))),
-		'starred' => array('expire_starred',  t("Expire starred posts:"), $expire_starred, '', array(t('No'),t('Yes'))),
-		'photos' => array('expire_photos',  t("Expire photos:"), $expire_photos, '', array(t('No'),t('Yes'))),
-		'network_only' => array('expire_network_only',  t("Only expire posts by others:"), $expire_network_only, '', array(t('No'),t('Yes'))),
+		'items' => array('expire_items',  t("Expire posts:"), $expire_items, '', array(t('No'), t('Yes'))),
+		'notes' => array('expire_notes',  t("Expire personal notes:"), $expire_notes, '', array(t('No'), t('Yes'))),
+		'starred' => array('expire_starred',  t("Expire starred posts:"), $expire_starred, '', array(t('No'), t('Yes'))),
+		'photos' => array('expire_photos',  t("Expire photos:"), $expire_photos, '', array(t('No'), t('Yes'))),
+		'network_only' => array('expire_network_only',  t("Only expire posts by others:"), $expire_network_only, '', array(t('No'), t('Yes'))),
 	);
 
 	require_once('include/group.php');
@@ -1293,7 +1294,7 @@ function settings_content(App $a) {
 
 		'$h_prv' 	=> t('Security and Privacy Settings'),
 
-		'$maxreq' 	=> array('maxreq', t('Maximum Friend Requests/Day:'), $maxreq ,t("\x28to prevent spam abuse\x29")),
+		'$maxreq' 	=> array('maxreq', t('Maximum Friend Requests/Day:'), $maxreq , t("\x28to prevent spam abuse\x29")),
 		'$permissions' => t('Default Post Permissions'),
 		'$permdesc' => t("\x28click to open/close\x29"),
 		'$visibility' => $profile['net-publish'],
@@ -1323,7 +1324,7 @@ function settings_content(App $a) {
 		'$hide_friends' => $hide_friends,
 		'$hide_wall' => $hide_wall,
 		'$unkmail' => $unkmail,
-		'$cntunkmail' 	=> array('cntunkmail', t('Maximum private messages per day from unknown people:'), $cntunkmail ,t("\x28to prevent spam abuse\x29")),
+		'$cntunkmail' 	=> array('cntunkmail', t('Maximum private messages per day from unknown people:'), $cntunkmail , t("\x28to prevent spam abuse\x29")),
 
 
 		'$h_not' 	=> t('Notification Settings'),

@@ -1,5 +1,7 @@
 <?php
-use \Friendica\Core\Config;
+
+use Friendica\App;
+use Friendica\Core\Config;
 
 require_once 'include/oembed.php';
 require_once 'include/event.php';
@@ -9,131 +11,131 @@ require_once 'include/Contact.php';
 require_once 'include/plaintext.php';
 
 function bb_PictureCacheExt($matches) {
-	if (strpos($matches[3], "data:image/") === 0)
-		return ($matches[0]);
+	if (strpos($matches[3], "data:image/") === 0) {
+		return $matches[0];
+	}
 
 	$matches[3] = proxy_url($matches[3]);
-	return "[img=".$matches[1]."x".$matches[2]."]".$matches[3]."[/img]";
+	return "[img=" . $matches[1] . "x" . $matches[2] . "]" . $matches[3] . "[/img]";
 }
 
 function bb_PictureCache($matches) {
-	if (strpos($matches[1], "data:image/") === 0)
-		return ($matches[0]);
+	if (strpos($matches[1], "data:image/") === 0) {
+		return $matches[0];
+	}
 
 	$matches[1] = proxy_url($matches[1]);
-	return "[img]".$matches[1]."[/img]";
+	return "[img]" . $matches[1] . "[/img]";
 }
 
 function bb_map_coords($match) {
 	// the extra space in the following line is intentional
-	return str_replace($match[0],'<div class="map"  >' . generate_map(str_replace('/',' ',$match[1])) . '</div>', $match[0]);
+	return str_replace($match[0], '<div class="map"  >' . generate_map(str_replace('/', ' ', $match[1])) . '</div>', $match[0]);
 }
 function bb_map_location($match) {
 	// the extra space in the following line is intentional
-	return str_replace($match[0],'<div class="map"  >' . generate_named_map($match[1]) . '</div>', $match[0]);
+	return str_replace($match[0], '<div class="map"  >' . generate_named_map($match[1]) . '</div>', $match[0]);
 }
 
 function bb_attachment($Text, $simplehtml = false, $tryoembed = true) {
 
 	$data = get_attachment_data($Text);
-	if (!$data)
+	if (!$data) {
 		return $Text;
+	}
 
 	if (isset($data["title"])) {
 		$data["title"] = strip_tags($data["title"]);
 		$data["title"] = str_replace(array("http://", "https://"), "", $data["title"]);
 	}
 
-	if (((strpos($data["text"], "[img=") !== false) OR (strpos($data["text"], "[img]") !== false)) AND ($data["image"] != "")) {
+	if (((strpos($data["text"], "[img=") !== false) || (strpos($data["text"], "[img]") !== false)) && ($data["image"] != "")) {
 		$data["preview"] = $data["image"];
 		$data["image"] = "";
 	}
 
 	if ($simplehtml == 7) {
-		$title2 = $data["title"];
-
-		$test1 = trim(html_entity_decode($data["text"],ENT_QUOTES,'UTF-8'));
-		$test2 = trim(html_entity_decode($data["title"],ENT_QUOTES,'UTF-8'));
-
-		// If the link description is similar to the text above then don't add the link description
-		if (($data["title"] != "") AND ((strpos($test1,$test2) !== false) OR
-			(similar_text($test1,$test2) / strlen($data["title"])) > 0.9))
-			$title2 = $data["url"];
-		$text = sprintf('<a href="%s" title="%s" class="attachment thumbnail" rel="nofollow external">%s</a><br />',
-				$data["url"], $data["title"], $title2);
-	} elseif (($simplehtml != 4) AND ($simplehtml != 0))
+		$text = style_url_for_mastodon($data["url"]);
+	} elseif (($simplehtml != 4) && ($simplehtml != 0)) {
 		$text = sprintf('<a href="%s" target="_blank">%s</a><br>', $data["url"], $data["title"]);
-	else {
+	} else {
 		$text = sprintf('<span class="type-%s">', $data["type"]);
 
 		$bookmark = array(sprintf('[bookmark=%s]%s[/bookmark]', $data["url"], $data["title"]), $data["url"], $data["title"]);
-		if ($tryoembed)
+		if ($tryoembed) {
 			$oembed = tryoembed($bookmark);
-		else
+		} else {
 			$oembed = $bookmark[0];
+		}
 
-		if (strstr(strtolower($oembed), "<iframe "))
+		if (strstr(strtolower($oembed), "<iframe ")) {
 			$text = $oembed;
-		else {
-			if (($data["image"] != "") AND !strstr(strtolower($oembed), "<img "))
+		} else {
+			if (($data["image"] != "") && !strstr(strtolower($oembed), "<img ")) {
 				$text .= sprintf('<a href="%s" target="_blank"><img src="%s" alt="" title="%s" class="attachment-image" /></a><br />', $data["url"], proxy_url($data["image"]), $data["title"]);
-			elseif (($data["preview"] != "") AND !strstr(strtolower($oembed), "<img "))
+			} elseif (($data["preview"] != "") && !strstr(strtolower($oembed), "<img ")) {
 				$text .= sprintf('<a href="%s" target="_blank"><img src="%s" alt="" title="%s" class="attachment-preview" /></a><br />', $data["url"], proxy_url($data["preview"]), $data["title"]);
+			}
 
-			if (($data["type"] == "photo") AND ($data["url"] != "") AND ($data["image"] != ""))
+			if (($data["type"] == "photo") && ($data["url"] != "") && ($data["image"] != "")) {
 				$text .= sprintf('<a href="%s" target="_blank"><img src="%s" alt="" title="%s" class="attachment-image" /></a>', $data["url"], proxy_url($data["image"]), $data["title"]);
-			else
+			} else {
 				$text .= $oembed;
+			}
 
-			if (trim($data["description"]) != "")
+			if (trim($data["description"]) != "") {
 				$text .= sprintf('<blockquote>%s</blockquote></span>', trim(bbcode($data["description"])));
+			}
 		}
 	}
-	return $data["text"].$text.$data["after"];
+	return trim($data["text"].' '.$text.' '.$data["after"]);
 }
 
 function bb_remove_share_information($Text, $plaintext = false, $nolink = false) {
 
 	$data = get_attachment_data($Text);
 
-	if (!$data)
+	if (!$data) {
 		return $Text;
-
-	if ($nolink)
-		return $data["text"].$data["after"];
+	} elseif ($nolink) {
+		return $data["text"] . $data["after"];
+	}
 
 	$title = htmlentities($data["title"], ENT_QUOTES, 'UTF-8', false);
 	$text = htmlentities($data["text"], ENT_QUOTES, 'UTF-8', false);
-	if ($plaintext OR (($title != "") AND strstr($text, $title)))
+	if ($plaintext || (($title != "") && strstr($text, $title))) {
 		$data["title"] = $data["url"];
-	elseif (($text != "") AND strstr($title, $text)) {
+	} elseif (($text != "") && strstr($title, $text)) {
 		$data["text"] = $data["title"];
 		$data["title"] = $data["url"];
 	}
 
-	if (($data["text"] == "") AND ($data["title"] != "") AND ($data["url"] == ""))
-		return $data["title"].$data["after"];
+	if (($data["text"] == "") && ($data["title"] != "") && ($data["url"] == "")) {
+		return $data["title"] . $data["after"];
+	}
 
 	// If the link already is included in the post, don't add it again
-	if (($data["url"] != "") AND strpos($data["text"], $data["url"]))
-		return $data["text"].$data["after"];
+	if (($data["url"] != "") && strpos($data["text"], $data["url"])) {
+		return $data["text"] . $data["after"];
+	}
 
 	$text = $data["text"];
 
-	if (($data["url"] != "") AND ($data["title"] != ""))
-		$text .= "\n[url=".$data["url"]."]".$data["title"]."[/url]";
-	elseif (($data["url"] != ""))
-		$text .= "\n".$data["url"];
+	if (($data["url"] != "") && ($data["title"] != "")) {
+		$text .= "\n[url=" . $data["url"] . "]" . $data["title"] . "[/url]";
+	} elseif (($data["url"] != "")) {
+		$text .= "\n" . $data["url"];
+	}
 
-	return $text."\n".$data["after"];
+	return $text . "\n" . $data["after"];
 }
 
 function bb_cleanstyle($st) {
-  return "<span style=\"".cleancss($st[1]).";\">".$st[2]."</span>";
+	return "<span style=\"" . cleancss($st[1]) . ";\">" . $st[2] . "</span>";
 }
 
 function bb_cleanclass($st) {
-  return "<span class=\"".cleancss($st[1])."\">".$st[2]."</span>";
+	return "<span class=\"" . cleancss($st[1]) . "\">" . $st[2] . "</span>";
 }
 
 function cleancss($input) {
@@ -145,14 +147,64 @@ function cleancss($input) {
 	for ($i = 0; $i < strlen($input); $i++) {
 		$char = substr($input, $i, 1);
 
-		if (($char >= "a") and ($char <= "z"))
+		if (($char >= "a") && ($char <= "z")) {
 			$cleaned .= $char;
+		}
 
-		if (!(strpos(" #;:0123456789-_.%", $char) === false))
+		if (!(strpos(" #;:0123456789-_.%", $char) === false)) {
 			$cleaned .= $char;
+		}
 	}
 
-	return($cleaned);
+	return $cleaned;
+}
+
+/**
+ * @brief Converts [url] BBCodes in a format that looks fine on Mastodon. (callback function)
+ * @param array $match Array with the matching values
+ * @return string reformatted link including HTML codes
+ */
+function bb_style_url($match) {
+        $url = $match[1];
+
+	if (isset($match[2]) && ($match[1] != $match[2])) {
+		return $match[0];
+	}
+
+        $parts = parse_url($url);
+        if (!isset($parts['scheme'])) {
+                return $match[0];
+        }
+
+	return style_url_for_mastodon($url);
+}
+
+/**
+ * @brief Converts [url] BBCodes in a format that looks fine on Mastodon and GNU Social.
+ * @param string $url URL that is about to be reformatted
+ * @return string reformatted link including HTML codes
+ */
+function style_url_for_mastodon($url) {
+        $styled_url = $url;
+
+        $parts = parse_url($url);
+        $scheme = $parts['scheme'].'://';
+        $styled_url = str_replace($scheme, '', $styled_url);
+
+        $html = '<a href="%s" class="attachment" rel="nofollow noopener" target="_blank">'.
+                 '<span class="invisible">%s</span>';
+
+        if (strlen($styled_url) > 30) {
+                $html .= '<span class="ellipsis">%s</span>'.
+                        '<span class="invisible">%s</span></a>';
+
+                $ellipsis = substr($styled_url, 0, 30);
+                $rest = substr($styled_url, 30);
+                return sprintf($html, $url, $scheme, $ellipsis, $rest);
+        } else {
+                $html .= '%s</a>';
+                return sprintf($html, $url, $scheme, $styled_url);
+        }
 }
 
 function stripcode_br_cb($s) {
@@ -166,25 +218,30 @@ function tryoembed($match) {
 	$url = str_replace(array("http://www.youtube.com/", "http://player.vimeo.com/"),
 				array("https://www.youtube.com/", "https://player.vimeo.com/"), $url);
 
-
 	$o = oembed_fetch_url($url);
 
-	if (!is_object($o))
+	if (!is_object($o)) {
 		return $match[0];
+	}
 
-	if (isset($match[2]))
+	if (isset($match[2])) {
 		$o->title = $match[2];
+	}
 
-	if ($o->type=="error") return $match[0];
+	if ($o->type == "error") {
+		return $match[0];
+	}
 
 	$html = oembed_format_object($o);
+
 	return $html;
 }
 
-// [noparse][i]italic[/i][/noparse] turns into
-// [noparse][ i ]italic[ /i ][/noparse],
-// to hide them from parser.
-
+/*
+ * [noparse][i]italic[/i][/noparse] turns into
+ * [noparse][ i ]italic[ /i ][/noparse],
+ * to hide them from parser.
+ */
 function bb_spacefy($st) {
 	$whole_match = $st[0];
 	$captured = $st[1];
@@ -193,10 +250,11 @@ function bb_spacefy($st) {
 	return $new_str;
 }
 
-// The previously spacefied [noparse][ i ]italic[ /i ][/noparse],
-// now turns back and the [noparse] tags are trimed
-// returning [i]italic[/i]
-
+/*
+ * The previously spacefied [noparse][ i ]italic[ /i ][/noparse],
+ * now turns back and the [noparse] tags are trimed
+ * returning [i]italic[/i]
+ */
 function bb_unspacefy_and_trim($st) {
 	$whole_match = $st[0];
 	$captured = $st[1];
@@ -205,23 +263,26 @@ function bb_unspacefy_and_trim($st) {
 }
 
 function bb_find_open_close($s, $open, $close, $occurence = 1) {
-
-	if($occurence < 1)
+	if ($occurence < 1) {
 		$occurence = 1;
-
-	$start_pos = -1;
-	for($i = 1; $i <= $occurence; $i++) {
-		if( $start_pos !== false)
-			$start_pos = strpos($s, $open, $start_pos + 1);
 	}
 
-	if( $start_pos === false)
+	$start_pos = -1;
+	for ($i = 1; $i <= $occurence; $i++) {
+		if ($start_pos !== false) {
+			$start_pos = strpos($s, $open, $start_pos + 1);
+		}
+	}
+
+	if ($start_pos === false) {
 		return false;
+	}
 
 	$end_pos = strpos($s, $close, $start_pos);
 
-	if( $end_pos === false)
+	if ($end_pos === false) {
 		return false;
+	}
 
 	$res = array( 'start' => $start_pos, 'end' => $end_pos );
 
@@ -229,36 +290,50 @@ function bb_find_open_close($s, $open, $close, $occurence = 1) {
 }
 
 function get_bb_tag_pos($s, $name, $occurence = 1) {
-
-	if($occurence < 1)
+	if ($occurence < 1) {
 		$occurence = 1;
-
-	$start_open = -1;
-	for($i = 1; $i <= $occurence; $i++) {
-		if( $start_open !== false)
-			$start_open = strpos($s, '[' . $name, $start_open + 1); // allow [name= type tags
 	}
 
-	if( $start_open === false)
+	$start_open = -1;
+	for ($i = 1; $i <= $occurence; $i++) {
+		if ($start_open !== false) {
+			$start_open = strpos($s, '[' . $name, $start_open + 1); // allow [name= type tags
+		}
+	}
+
+	if ($start_open === false) {
 		return false;
+	}
 
 	$start_equal = strpos($s, '=', $start_open);
 	$start_close = strpos($s, ']', $start_open);
 
-	if( $start_close === false)
+	if ($start_close === false) {
 		return false;
+	}
 
 	$start_close++;
 
 	$end_open = strpos($s, '[/' . $name . ']', $start_close);
 
-	if( $end_open === false)
+	if ($end_open === false) {
 		return false;
+	}
 
-	$res = array( 'start' => array('open' => $start_open, 'close' => $start_close),
-		      'end' => array('open' => $end_open, 'close' => $end_open + strlen('[/' . $name . ']')) );
-	if( $start_equal !== false)
+	$res = array(
+		'start' => array(
+			'open'  => $start_open,
+			'close' => $start_close
+		),
+		'end'   => array(
+			'open'  => $end_open,
+			'close' => $end_open + strlen('[/' . $name . ']')
+		),
+	);
+
+	if ($start_equal !== false) {
 		$res['start']['equal'] = $start_equal + 1;
+	}
 
 	return $res;
 }
@@ -269,13 +344,13 @@ function bb_tag_preg_replace($pattern, $replace, $name, $s) {
 
 	$occurence = 1;
 	$pos = get_bb_tag_pos($string, $name, $occurence);
-	while($pos !== false && $occurence < 1000) {
-
+	while ($pos !== false && $occurence < 1000) {
 		$start = substr($string, 0, $pos['start']['open']);
 		$subject = substr($string, $pos['start']['open'], $pos['end']['close'] - $pos['start']['open']);
 		$end = substr($string, $pos['end']['close']);
-		if($end === false)
+		if ($end === false) {
 			$end = '';
+		}
 
 		$subject = preg_replace($pattern, $replace, $subject);
 		$string = $start . $subject . $end;
@@ -287,7 +362,7 @@ function bb_tag_preg_replace($pattern, $replace, $name, $s) {
 	return $string;
 }
 
-if(! function_exists('bb_extract_images')) {
+if (! function_exists('bb_extract_images')) {
 function bb_extract_images($body) {
 
 	$saved_image = array();
@@ -298,26 +373,28 @@ function bb_extract_images($body) {
 	$img_start = strpos($orig_body, '[img');
 	$img_st_close = ($img_start !== false ? strpos(substr($orig_body, $img_start), ']') : false);
 	$img_end = ($img_start !== false ? strpos(substr($orig_body, $img_start), '[/img]') : false);
-	while(($img_st_close !== false) && ($img_end !== false)) {
+	while (($img_st_close !== false) && ($img_end !== false)) {
 
 		$img_st_close++; // make it point to AFTER the closing bracket
 		$img_end += $img_start;
 
-		if(! strcmp(substr($orig_body, $img_start + $img_st_close, 5), 'data:')) {
+		if (! strcmp(substr($orig_body, $img_start + $img_st_close, 5), 'data:')) {
 			// This is an embedded image
 
 			$saved_image[$cnt] = substr($orig_body, $img_start + $img_st_close, $img_end - ($img_start + $img_st_close));
 			$new_body = $new_body . substr($orig_body, 0, $img_start) . '[$#saved_image' . $cnt . '#$]';
 
 			$cnt++;
-		}
-		else
+		} else {
 			$new_body = $new_body . substr($orig_body, 0, $img_end + strlen('[/img]'));
+		}
 
 		$orig_body = substr($orig_body, $img_end + strlen('[/img]'));
 
-		if($orig_body === false) // in case the body ends on a closing image tag
+		if ($orig_body === false) {
+			// in case the body ends on a closing image tag
 			$orig_body = '';
+		}
 
 		$img_start = strpos($orig_body, '[img');
 		$img_st_close = ($img_start !== false ? strpos(substr($orig_body, $img_start), ']') : false);
@@ -329,7 +406,7 @@ function bb_extract_images($body) {
 	return array('body' => $new_body, 'images' => $saved_image);
 }}
 
-if(! function_exists('bb_replace_images')) {
+if (! function_exists('bb_replace_images')) {
 function bb_replace_images($body, $images) {
 
 	$newbody = $body;
@@ -408,20 +485,20 @@ function bb_ShareAttributes($share, $simplehtml) {
 
 	$data = get_contact_details_by_url($profile);
 
-	if (isset($data["name"]) AND ($data["name"] != "") AND isset($data["addr"]) AND ($data["addr"] != ""))
+	if (isset($data["name"]) && ($data["name"] != "") && isset($data["addr"]) && ($data["addr"] != ""))
 	        $userid_compact = $data["name"]." (".$data["addr"].")";
 	else
 		$userid_compact = GetProfileUsername($profile,$author, true);
 
-	if (isset($data["addr"]) AND ($data["addr"] != ""))
+	if (isset($data["addr"]) && ($data["addr"] != ""))
 		$userid = $data["addr"];
 	else
 		$userid = GetProfileUsername($profile,$author, false);
 
-	if (isset($data["name"]) AND ($data["name"] != ""))
+	if (isset($data["name"]) && ($data["name"] != ""))
 		$author = $data["name"];
 
-	if (isset($data["micro"]) AND ($data["micro"] != ""))
+	if (isset($data["micro"]) && ($data["micro"] != ""))
 		$avatar = $data["micro"];
 
 	$preshare = trim($share[1]);
@@ -504,85 +581,94 @@ function bb_ShareAttributes($share, $simplehtml) {
 				);
 			break;
 	}
-	return($text);
+
+	return $text;
 }
 
 function GetProfileUsername($profile, $username, $compact = false, $getnetwork = false) {
 
 	$twitter = preg_replace("=https?://twitter.com/(.*)=ism", "$1@twitter.com", $profile);
 	if ($twitter != $profile) {
-		if ($getnetwork)
-			return(NETWORK_TWITTER);
-		elseif ($compact)
-			return($twitter);
-		else
-			return($username." (".$twitter.")");
+		if ($getnetwork) {
+			return NETWORK_TWITTER;
+		} elseif ($compact) {
+			return $twitter;
+		} else {
+			return ($username . " (" . $twitter . ")");
+		}
 	}
 
 	$appnet = preg_replace("=https?://alpha.app.net/(.*)=ism", "$1@alpha.app.net", $profile);
 	if ($appnet != $profile) {
-		if ($getnetwork)
-			return(NETWORK_APPNET);
-		elseif ($compact)
-			return($appnet);
-		else
-			return($username." (".$appnet.")");
+		if ($getnetwork) {
+			return NETWORK_APPNET;
+		} elseif ($compact) {
+			return $appnet;
+		} else {
+			return ($username . " (" . $appnet . ")");
+		}
 	}
 
 	$gplus = preg_replace("=https?://plus.google.com/(.*)=ism", "$1@plus.google.com", $profile);
 	if ($gplus != $profile) {
-		if ($getnetwork)
-			return(NETWORK_GPLUS);
-		elseif ($compact)
-			return($gplususername." (".$username.")");
-		else
-			return($username." (".$gplus.")");
+		if ($getnetwork) {
+			return NETWORK_GPLUS;
+		} elseif ($compact) {
+			return ($gplususername . " (" . $username . ")");
+		} else {
+			return ($username . " (" . $gplus . ")");
+		}
 	}
 
 	$friendica = preg_replace("=https?://(.*)/profile/(.*)=ism", "$2@$1", $profile);
 	if ($friendica != $profile) {
-		if ($getnetwork)
-			return(NETWORK_DFRN);
-		elseif ($compact)
-			return($friendica);
-		else
-			return($username." (".$friendica.")");
+		if ($getnetwork) {
+			return NETWORK_DFRN;
+		} elseif ($compact) {
+			return $friendica;
+		} else {
+			return ($username . " (" . $friendica . ")");
+		}
 	}
 
 	$diaspora = preg_replace("=https?://(.*)/u/(.*)=ism", "$2@$1", $profile);
 	if ($diaspora != $profile) {
-		if ($getnetwork)
-			return(NETWORK_DIASPORA);
-		elseif ($compact)
-			return($diaspora);
-		else
-			return($username." (".$diaspora.")");
+		if ($getnetwork) {
+			return NETWORK_DIASPORA;
+		} elseif ($compact) {
+			return $diaspora;
+		} else {
+			return ($username . " (" . $diaspora . ")");
+		}
 	}
 
 	$red = preg_replace("=https?://(.*)/channel/(.*)=ism", "$2@$1", $profile);
 	if ($red != $profile) {
-		if ($getnetwork)
+		if ($getnetwork) {
 			// red is identified as Diaspora - friendica can't connect directly to it
-			return(NETWORK_DIASPORA);
-		elseif ($compact)
-			return($red);
-		else
-			return($username." (".$red.")");
+			return NETWORK_DIASPORA;
+		} elseif ($compact) {
+			return $red;
+		} else {
+			return ($username . " (" . $red . ")");
+		}
 	}
 
 	$StatusnetHost = preg_replace("=https?://(.*)/user/(.*)=ism", "$1", $profile);
 	if ($StatusnetHost != $profile) {
 		$StatusnetUser = preg_replace("=https?://(.*)/user/(.*)=ism", "$2", $profile);
 		if ($StatusnetUser != $profile) {
+			/// @TODO Some hosts run on https, not just http and sometimes http is disabled, let's support both here
 			$UserData = fetch_url("http://".$StatusnetHost."/api/users/show.json?user_id=".$StatusnetUser);
 			$user = json_decode($UserData);
 			if ($user) {
-				if ($getnetwork)
-					return(NETWORK_STATUSNET);
-				elseif ($compact)
-					return($user->screen_name."@".$StatusnetHost);
-				else
-					return($username." (".$user->screen_name."@".$StatusnetHost.")");
+				if ($getnetwork) {
+					return NETWORK_STATUSNET;
+				} elseif ($compact) {
+					return ($user->screen_name . "@" . $StatusnetHost);
+				} else {
+					return ($username . " (" . $user->screen_name . "@" . $StatusnetHost . ")");
+				}
 			}
 		}
 	}
@@ -592,16 +678,17 @@ function GetProfileUsername($profile, $username, $compact = false, $getnetwork =
 	if ($rest == "") {
 		$pumpio = preg_replace("=https?://([\.\w]+)/([\.\w]+)(.*)=ism", "$2@$1", $profile);
 		if ($pumpio != $profile) {
-			if ($getnetwork)
-				return(NETWORK_PUMPIO);
-			elseif ($compact)
-				return($pumpio);
-			else
-				return($username." (".$pumpio.")");
+			if ($getnetwork) {
+				return NETWORK_PUMPIO;
+			} elseif ($compact) {
+				return $pumpio;
+			} else {
+				return ($username . " (" . $pumpio . ")");
+			}
 		}
 	}
 
-	return($username);
+	return $username;
 }
 
 function bb_DiasporaLinks($match) {
@@ -611,7 +698,7 @@ function bb_DiasporaLinks($match) {
 function bb_RemovePictureLinks($match) {
 	$text = Cache::get($match[1]);
 
-	if(is_null($text)){
+	if (is_null($text)) {
 		$a = get_app();
 
 		$stamp1 = microtime(true);
@@ -652,20 +739,22 @@ function bb_RemovePictureLinks($match) {
 		}
 		Cache::set($match[1],$text);
 	}
-	return($text);
+
+	return $text;
 }
 
 function bb_expand_links($match) {
-	if (($match[3] == "") OR ($match[2] == $match[3]) OR stristr($match[2], $match[3]))
-		return ($match[1]."[url]".$match[2]."[/url]");
-	else
-		return ($match[1].$match[3]." [url]".$match[2]."[/url]");
+	if (($match[3] == "") || ($match[2] == $match[3]) || stristr($match[2], $match[3])) {
+		return ($match[1] . "[url]" . $match[2] . "[/url]");
+	} else {
+		return ($match[1] . $match[3] . " [url]" . $match[2] . "[/url]");
+	}
 }
 
 function bb_CleanPictureLinksSub($match) {
 	$text = Cache::get($match[1]);
 
-	if(is_null($text)){
+	if (is_null($text)) {
 		$a = get_app();
 
 		$stamp1 = microtime(true);
@@ -707,18 +796,20 @@ function bb_CleanPictureLinksSub($match) {
 		}
 		Cache::set($match[1],$text);
 	}
-	return($text);
+
+	return $text;
 }
 
 function bb_CleanPictureLinks($text) {
 	$text = preg_replace_callback("&\[url=([^\[\]]*)\]\[img\](.*)\[\/img\]\[\/url\]&Usi", 'bb_CleanPictureLinksSub', $text);
-	return ($text);
+	return $text;
 }
 
 function bb_highlight($match) {
-	if(in_array(strtolower($match[1]),['php','css','mysql','sql','abap','diff','html','perl','ruby',
-		'vbscript','avrc','dtd','java','xml','cpp','python','javascript','js','sh']))
-		return text_highlight($match[2],strtolower($match[1]));
+	if (in_array(strtolower($match[1]), ['php', 'css', 'mysql', 'sql', 'abap', 'diff', 'html', 'perl', 'ruby',
+		'vbscript', 'avrc', 'dtd', 'java', 'xml', 'cpp', 'python', 'javascript', 'js', 'sh'])) {
+		return text_highlight($match[2], strtolower($match[1]));
+	}
 	return $match[0];
 }
 
@@ -827,7 +918,7 @@ function bbcode($Text, $preserve_nl = false, $tryoembed = true, $simplehtml = fa
 	// Handle attached links or videos
 	$Text = bb_attachment($Text, $simplehtml, $tryoembed);
 
-	$Text = str_replace(array("\r","\n"), array('<br />','<br />'), $Text);
+	$Text = str_replace(array("\r","\n"), array('<br />', '<br />'), $Text);
 
 	if ($preserve_nl) {
 		$Text = str_replace(array("\n", "\r"), array('', ''), $Text);
@@ -839,7 +930,7 @@ function bbcode($Text, $preserve_nl = false, $tryoembed = true, $simplehtml = fa
 	$MAILSearchString = $URLSearchString;
 
 	// Remove all hashtag addresses
-	if ((!$tryoembed OR $simplehtml) AND !in_array($simplehtml, array(3, 7))) {
+	if ((!$tryoembed || $simplehtml) && !in_array($simplehtml, array(3, 7))) {
 		$Text = preg_replace("/([#@])\[url\=([$URLSearchString]*)\](.*?)\[\/url\]/ism", '$1$3', $Text);
 	} elseif ($simplehtml == 3) {
 		$Text = preg_replace("/([@])\[url\=([$URLSearchString]*)\](.*?)\[\/url\]/ism",
@@ -888,7 +979,14 @@ function bbcode($Text, $preserve_nl = false, $tryoembed = true, $simplehtml = fa
 	// if the HTML is used to generate plain text, then don't do this search, but replace all URL of that kind to text
 //	if ($simplehtml != 7) {
 		if (!$forplaintext) {
-			$Text = preg_replace("/([^\]\='".'"'."]|^)(https?\:\/\/[a-zA-Z0-9\:\/\-\?\&\;\.\=\_\~\#\%\$\!\+\,]+)/ism", '$1<a href="$2" target="_blank">$2</a>', $Text);
+			if ($simplehtml != 7) {
+				$Text = preg_replace("/([^\]\='".'"'."]|^)(https?\:\/\/[a-zA-Z0-9\:\/\-\?\&\;\.\=\_\~\#\%\$\!\+\,]+)/ism", '$1<a href="$2" target="_blank">$2</a>', $Text);
+			} else {
+				$Text = preg_replace("/([^\]\='".'"'."]|^)(https?\:\/\/[a-zA-Z0-9\:\/\-\?\&\;\.\=\_\~\#\%\$\!\+\,]+)/ism", '$1[url]$2[/url]', $Text);
+
+				$Text = preg_replace_callback("/\[url\]([$URLSearchString]*)\[\/url\]/ism", 'bb_style_url', $Text);
+				$Text = preg_replace_callback("/\[url\=([$URLSearchString]*)\]([$URLSearchString]*)\[\/url\]/ism", 'bb_style_url', $Text);
+			}
 		} else {
 			$Text = preg_replace("(\[url\]([$URLSearchString]*)\[\/url\])ism", " $1 ", $Text);
 			$Text = preg_replace_callback("&\[url=([^\[\]]*)\]\[img\](.*)\[\/img\]\[\/url\]&Usi", 'bb_RemovePictureLinks', $Text);
@@ -1028,7 +1126,7 @@ function bbcode($Text, $preserve_nl = false, $tryoembed = true, $simplehtml = fa
 	// Check for [spoiler] text
 	// handle nested quotes
 	$endlessloop = 0;
-	while ((strpos($Text, "[/spoiler]") !== false) and (strpos($Text, "[spoiler]") !== false) and (++$endlessloop < 20)) {
+	while ((strpos($Text, "[/spoiler]") !== false) && (strpos($Text, "[spoiler]") !== false) && (++$endlessloop < 20)) {
 		$Text = preg_replace("/\[spoiler\](.*?)\[\/spoiler\]/ism", "$SpoilerLayout", $Text);
 	}
 
@@ -1038,7 +1136,7 @@ function bbcode($Text, $preserve_nl = false, $tryoembed = true, $simplehtml = fa
 
 	// handle nested quotes
 	$endlessloop = 0;
-	while ((strpos($Text, "[/spoiler]")!== false)  and (strpos($Text, "[spoiler=") !== false) and (++$endlessloop < 20)) {
+	while ((strpos($Text, "[/spoiler]")!== false)  && (strpos($Text, "[spoiler=") !== false) && (++$endlessloop < 20)) {
 		$Text = preg_replace("/\[spoiler=[\"\']*(.*?)[\"\']*\](.*?)\[\/spoiler\]/ism",
 				     "<br /><strong class=".'"spoiler"'.">" . $t_wrote . "</strong><blockquote class=".'"spoiler"'.">$2</blockquote>",
 				     $Text);
@@ -1050,7 +1148,7 @@ function bbcode($Text, $preserve_nl = false, $tryoembed = true, $simplehtml = fa
 	// Check for [quote] text
 	// handle nested quotes
 	$endlessloop = 0;
-	while ((strpos($Text, "[/quote]") !== false) and (strpos($Text, "[quote]") !== false) and (++$endlessloop < 20)) {
+	while ((strpos($Text, "[/quote]") !== false) && (strpos($Text, "[quote]") !== false) && (++$endlessloop < 20)) {
 		$Text = preg_replace("/\[quote\](.*?)\[\/quote\]/ism", "$QuoteLayout", $Text);
 	}
 
@@ -1060,7 +1158,7 @@ function bbcode($Text, $preserve_nl = false, $tryoembed = true, $simplehtml = fa
 
 	// handle nested quotes
 	$endlessloop = 0;
-	while ((strpos($Text, "[/quote]")!== false)  and (strpos($Text, "[quote=") !== false) and (++$endlessloop < 20)) {
+	while ((strpos($Text, "[/quote]")!== false)  && (strpos($Text, "[quote=") !== false) && (++$endlessloop < 20)) {
 		$Text = preg_replace("/\[quote=[\"\']*(.*?)[\"\']*\](.*?)\[\/quote\]/ism",
 				     "<br /><strong class=".'"author"'.">" . $t_wrote . "</strong><blockquote>$2</blockquote>",
 				     $Text);
@@ -1082,14 +1180,13 @@ function bbcode($Text, $preserve_nl = false, $tryoembed = true, $simplehtml = fa
 
 	// Shared content
 	$Text = preg_replace_callback("/(.*?)\[share(.*?)\](.*?)\[\/share\]/ism",
-		function ($match) use ($simplehtml){
-			return(bb_ShareAttributes($match, $simplehtml));
+		function ($match) use ($simplehtml) {
+			return bb_ShareAttributes($match, $simplehtml);
 		}, $Text);
 
 	$Text = preg_replace("/\[crypt\](.*?)\[\/crypt\]/ism", '<br/><img src="' .App::get_baseurl() . '/images/lock_icon.gif" alt="' . t('Encrypted content') . '" title="' . t('Encrypted content') . '" /><br />', $Text);
 	$Text = preg_replace("/\[crypt(.*?)\](.*?)\[\/crypt\]/ism", '<br/><img src="' .App::get_baseurl() . '/images/lock_icon.gif" alt="' . t('Encrypted content') . '" title="' . '$1' . ' ' . t('Encrypted content') . '" /><br />', $Text);
 	//$Text = preg_replace("/\[crypt=(.*?)\](.*?)\[\/crypt\]/ism", '<br/><img src="' .App::get_baseurl() . '/images/lock_icon.gif" alt="' . t('Encrypted content') . '" title="' . '$1' . ' ' . t('Encrypted content') . '" /><br />', $Text);
-
 
 	// Try to Oembed
 	if ($tryoembed) {
@@ -1160,7 +1257,7 @@ function bbcode($Text, $preserve_nl = false, $tryoembed = true, $simplehtml = fa
 	// Summary (e.g. title) is required, earlier revisions only required description (in addition to
 	// start which is always required). Allow desc with a missing summary for compatibility.
 
-	if((x($ev, 'desc') || x($ev, 'summary')) && x($ev, 'start')) {
+	if ((x($ev, 'desc') || x($ev, 'summary')) && x($ev, 'start')) {
 		$sub = format_event_html($ev, $simplehtml);
 
 		$Text = preg_replace("/\[event\-summary\](.*?)\[\/event\-summary\]/ism", '', $Text);
@@ -1215,14 +1312,14 @@ function bbcode($Text, $preserve_nl = false, $tryoembed = true, $simplehtml = fa
 	$regex = '#<([^>]*?)(href)="(?!' . implode('|', $allowed_link_protocols) . ')(.*?)"(.*?)>#ism';
 	$Text = preg_replace($regex, '<$1$2="javascript:void(0)"$4 class="invalid-href" title="' . t('Invalid link protocol') . '">', $Text);
 
-	if($saved_image) {
+	if ($saved_image) {
 		$Text = bb_replace_images($Text, $saved_image);
 	}
 
 	// Clean up the HTML by loading and saving the HTML with the DOM.
 	// Bad structured html can break a whole page.
 	// For performance reasons do it only with ativated item cache or at export.
-	if (!$tryoembed OR (get_itemcachepath() != "")) {
+	if (!$tryoembed || (get_itemcachepath() != "")) {
 		$doc = new DOMDocument();
 		$doc->preserveWhiteSpace = false;
 

@@ -1,4 +1,7 @@
 <?php
+
+use Friendica\App;
+
 require_once("include/bbcode.php");
 require_once('include/security.php');
 require_once('include/conversation.php');
@@ -94,7 +97,7 @@ function search_content(App $a) {
 		return;
 	}
 
-	if(get_config('system','local_search') AND !local_user()) {
+	if(get_config('system','local_search') && !local_user()) {
 		http_status_exit(403,
 				array("title" => t("Public access denied."),
 					"description" => t("Only logged in users are permitted to perform a search.")));
@@ -103,7 +106,7 @@ function search_content(App $a) {
 		//return;
 	}
 
-	if (get_config('system','permit_crawling') AND !local_user()) {
+	if (get_config('system','permit_crawling') && !local_user()) {
 		// Default values:
 		// 10 requests are "free", after the 11th only a call per minute is allowed
 
@@ -119,7 +122,7 @@ function search_content(App $a) {
 		$result = Cache::get("remote_search:".$remote);
 		if (!is_null($result)) {
 			$resultdata = json_decode($result);
-			if (($resultdata->time > (time() - $crawl_permit_period)) AND ($resultdata->accesses > $free_crawls)) {
+			if (($resultdata->time > (time() - $crawl_permit_period)) && ($resultdata->accesses > $free_crawls)) {
 				http_status_exit(429,
 						array("title" => t("Too Many Requests"),
 							"description" => t("Only one search per minute is permitted for not logged in users.")));
@@ -203,18 +206,13 @@ function search_content(App $a) {
 	} else {
 		logger("Start fulltext search for '".$search."'", LOGGER_DEBUG);
 
-		// Disabled until finally is decided how to proceed with this
-		//if (get_config('system','use_fulltext_engine')) {
-		//	$sql_extra = sprintf(" AND MATCH (`item`.`body`, `item`.`title`) AGAINST ('%s' in boolean mode) ", dbesc(protect_sprintf($search)));
-		//} else {
-			$sql_extra = sprintf(" AND `item`.`body` REGEXP '%s' ", dbesc(protect_sprintf(preg_quote($search))));
-		//}
+		$sql_extra = sprintf(" AND `item`.`body` REGEXP '%s' ", dbesc(protect_sprintf(preg_quote($search))));
 
 		$r = q("SELECT %s
 			FROM `item` %s
 			WHERE %s AND (`item`.`uid` = 0 OR (`item`.`uid` = %s AND NOT `item`.`global`))
 				$sql_extra
-			GROUP BY `item`.`uri` ORDER BY `item`.`id` DESC LIMIT %d , %d",
+			GROUP BY `item`.`uri`, `item`.`id` ORDER BY `item`.`id` DESC LIMIT %d , %d",
 				item_fieldlists(), item_joins(), item_condition(),
 				intval(local_user()),
 				intval($a->pager['start']), intval($a->pager['itemspage']));

@@ -4,8 +4,9 @@
  * @file include/oembed.php
  */
 
-use \Friendica\ParseUrl;
-use \Friendica\Core\Config;
+use Friendica\App;
+use Friendica\ParseUrl;
+use Friendica\Core\Config;
 
 function oembed_replacecb($matches){
 	$embedurl=$matches[1];
@@ -107,7 +108,7 @@ function oembed_fetch_url($embedurl, $no_rich_type = false){
 	$j->embedurl = $embedurl;
 
 	// If fetching information doesn't work, then improve via internal functions
-	if (($j->type == "error") OR ($no_rich_type AND ($j->type == "rich"))) {
+	if (($j->type == "error") || ($no_rich_type && ($j->type == "rich"))) {
 		$data = ParseUrl::getSiteinfoCached($embedurl, true, false);
 		$j->type = $data["type"];
 
@@ -193,7 +194,7 @@ function oembed_format_object($j){
 			if (isset($j->author_name)) {
 				$ret.=" (".$j->author_name.")";
 			}
-		} elseif (isset($j->provider_name) OR isset($j->author_name)) {
+		} elseif (isset($j->provider_name) || isset($j->author_name)) {
 			$embedlink = "";
 			if (isset($j->provider_name)) {
 				$embedlink .= $j->provider_name;
@@ -303,9 +304,11 @@ function oembed_html2bbcode($text) {
 		$entries = $xpath->query("//span[$xattr]");
 
 		$xattr = "@rel='oembed'";//oe_build_xpath("rel","oembed");
-		foreach($entries as $e) {
+		foreach ($entries as $e) {
 			$href = $xpath->evaluate("a[$xattr]/@href", $e)->item(0)->nodeValue;
-			if(!is_null($href)) $e->parentNode->replaceChild(new DOMText("[embed]".$href."[/embed]"), $e);
+			if (!is_null($href)) {
+				$e->parentNode->replaceChild(new DOMText("[embed]".$href."[/embed]"), $e);
+			}
 		}
 		return oe_get_inner_html( $dom->getElementsByTagName("body")->item(0) );
 	} else {

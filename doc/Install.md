@@ -28,7 +28,7 @@ Requirements
 * Apache with mod-rewrite enabled and "Options All" so you can use a local .htaccess file
 * PHP 5.4+.
 * PHP *command line* access with register_argc_argv set to true in the php.ini file
-* curl, gd, mysql, hash and openssl extensions
+* Curl, GD, PDO, MySQLi, hash and OpenSSL extensions
 * some form of email server or email gateway such that PHP mail() works
 * Mysql 5.5.3+ or an equivalant alternative for MySQL (MariaDB, Percona Server etc.)
 * the ability to schedule jobs with cron (Linux/Mac) or Scheduled Tasks (Windows) (Note: other options are presented in Section 7 of this document.)
@@ -81,6 +81,8 @@ Restart mysql and you should be fine.
 
 Point your web browser to the new site and follow the instructions.
 Please note any error messages and correct these before continuing.
+
+If you need to specify a port for the connection to the database, you can do so in the host name setting for the database.
 
 *If* the automated installation fails for any reason, check the following:
 

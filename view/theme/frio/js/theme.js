@@ -275,6 +275,83 @@ $(document).ready(function(){
 
 	});
 
+	/*
+	 * This event handler hides all comment UI when the user clicks anywhere on the page
+	 * It ensures that we aren't closing the current comment box
+	 *
+	 * We are making an exception for buttons because of a race condition with the
+	 * comment opening button that results in an already closed comment UI.
+	 */
+	$(document).on('click', function(event) {
+		if (event.target.type === 'button') {
+			return true;
+		}
+
+		var $dontclosethis = $(event.target).closest('.wall-item-comment-wrapper').find('.comment-edit-form');
+		$('.wall-item-comment-wrapper .comment-edit-submit-wrapper:visible').each(function() {
+			var $parent = $(this).parent('.comment-edit-form');
+			var itemId = $parent.data('itemId');
+
+			if ($dontclosethis[0] != $parent[0]) {
+				var textarea = $parent.find('textarea').get(0)
+
+				commentCloseUI(textarea, itemId);
+			}
+		});
+	});
+
+	// Customize some elements when the app is used in standalone mode on Android
+	if (window.matchMedia('(display-mode: standalone)').matches) {
+		// Open links to source outside of the webview
+		$('body').on('click', '.plink', function (e) {
+			$(e.target).attr('target', '_blank');
+		});
+	}
+
+	/*
+	 * This event listeners ensures that the textarea size is updated event if the
+	 * value is changed externally (textcomplete, insertFormatting, fbrowser...)
+	 */
+	$(document).on('change', 'textarea', function(event) {
+		autosize.update(event.target);
+	});
+
+	/*
+	 * Sticky aside on page scroll
+	 * We enable the sticky aside only when window is wider than
+	 * 976px - which is the maximum width where the aside is shown in
+	 * mobile style - because on chrome-based browsers (desktop and
+	 * android) the sticky plugin in mobile style causes the browser to
+	 * scroll back to top the main content, making it impossible
+	 * to navigate.
+	 * A side effect is that the sitky aside isn't really responsive,
+	 * since is enabled or not at page loading time.
+	 */
+	if ($(window).width() > 976) {
+		$("aside").stick_in_parent({
+			offset_top: 100, // px, header + tab bar + spacing
+			recalc_every: 10
+		});
+		// recalculate sticky aside on clicks on <a> elements
+		// this handle height changes on expanding submenus
+		$("aside").on("click", "a", function(){
+			$(document.body).trigger("sticky_kit:recalc");
+		});
+	}
+
+	/*
+	 * Add or remove "aside-out" class to body tag
+	 * when the mobile aside is shown or hidden.
+	 * The class is used in css to disable scroll in page when the aside
+	 * is shown.
+	 */
+	$("aside")
+		.on("shown.bs.offcanvas", function() {
+			$("body").addClass("aside-out");
+		})
+		.on("hidden.bs.offcanvas", function() {
+			$("body").removeClass("aside-out");
+		});
 
 });
 

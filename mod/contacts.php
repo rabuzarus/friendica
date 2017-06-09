@@ -1,11 +1,14 @@
 <?php
 
-require_once('include/Contact.php');
-require_once('include/socgraph.php');
-require_once('include/contact_selectors.php');
-require_once('include/Scrape.php');
-require_once('mod/proxy.php');
-require_once('include/Photo.php');
+use Friendica\App;
+use Friendica\Network\Probe;
+
+require_once 'include/Contact.php';
+require_once 'include/socgraph.php';
+require_once 'include/contact_selectors.php';
+require_once 'include/probe.php';
+require_once 'mod/proxy.php';
+require_once 'include/Photo.php';
 
 function contacts_init(App $a) {
 	if (! local_user()) {
@@ -14,7 +17,7 @@ function contacts_init(App $a) {
 
 	$contact_id = 0;
 
-	if((($a->argc == 2) && intval($a->argv[1])) OR (($a->argc == 3) && intval($a->argv[1]) && ($a->argv[2] == "posts"))) {
+	if((($a->argc == 2) && intval($a->argv[1])) || (($a->argc == 3) && intval($a->argv[1]) && ($a->argv[2] == "posts"))) {
 		$contact_id = intval($a->argv[1]);
 		$r = q("SELECT * FROM `contact` WHERE `uid` = %d and `id` = %d LIMIT 1",
 			intval(local_user()),
@@ -25,8 +28,8 @@ function contacts_init(App $a) {
 		}
 	}
 
-	require_once('include/group.php');
-	require_once('include/contact_widgets.php');
+	require_once 'include/group.php';
+	require_once 'include/contact_widgets.php';
 
 	if ($_GET['nets'] == "all") {
 		$_GET['nets'] = "";
@@ -39,7 +42,7 @@ function contacts_init(App $a) {
 	if ($contact_id) {
 		$a->data['contact'] = $r[0];
 
-		if (($a->data['contact']['network'] != "") AND ($a->data['contact']['network'] != NETWORK_DFRN)) {
+		if (($a->data['contact']['network'] != "") && ($a->data['contact']['network'] != NETWORK_DFRN)) {
 			$networkname = format_network_name($a->data['contact']['network'],$a->data['contact']['url']);
 		} else {
 			$networkname = '';
@@ -260,10 +263,10 @@ function _contact_update_profile($contact_id) {
 	if ($uid != local_user())
 		return;
 
-	$data = probe_url($r[0]["url"]);
+	$data = Probe::uri($r[0]["url"], "", 0, false);
 
 	// "Feed" or "Unknown" is mostly a sign of communication problems
-	if ((in_array($data["network"], array(NETWORK_FEED, NETWORK_PHANTOM))) AND ($data["network"] != $r[0]["network"]))
+	if ((in_array($data["network"], array(NETWORK_FEED, NETWORK_PHANTOM))) && ($data["network"] != $r[0]["network"]))
 		return;
 
 	$updatefields = array("name", "nick", "url", "addr", "batch", "notify", "poll", "request", "confirm",
@@ -278,14 +281,14 @@ function _contact_update_profile($contact_id) {
 	}
 
 	foreach($updatefields AS $field)
-		if (isset($data[$field]) AND ($data[$field] != ""))
+		if (isset($data[$field]) && ($data[$field] != ""))
 			$update[$field] = $data[$field];
 
 	$update["nurl"] = normalise_link($data["url"]);
 
 	$query = "";
 
-	if (isset($data["priority"]) AND ($data["priority"] != 0))
+	if (isset($data["priority"]) && ($data["priority"] != 0))
 		$query = "`priority` = ".intval($data["priority"]);
 
 	foreach($update AS $key => $value) {
@@ -304,7 +307,7 @@ function _contact_update_profile($contact_id) {
 	);
 
 	// Update the entry in the contact table
-	update_contact_avatar($data['photo'], local_user(), $contact_id);
+	update_contact_avatar($data['photo'], local_user(), $contact_id, true);
 
 	// Update the entry in the gcontact table
 	update_gcontact_from_probe($data["url"]);
@@ -496,7 +499,7 @@ function contacts_content(App $a) {
 			'$baseurl' => App::get_baseurl(true),
 		));
 
-		require_once('include/contact_selectors.php');
+		require_once 'include/contact_selectors.php';
 
 		$tpl = get_markup_template("contact_edit.tpl");
 
@@ -570,7 +573,7 @@ function contacts_content(App $a) {
 		if ($contact['network'] == NETWORK_DFRN)
 			$profile_select = contact_profile_assign($contact['profile-id'],(($contact['network'] !== NETWORK_DFRN) ? true : false));
 
-		if (in_array($contact['network'], array(NETWORK_DIASPORA, NETWORK_OSTATUS)) AND
+		if (in_array($contact['network'], array(NETWORK_DIASPORA, NETWORK_OSTATUS)) &&
 			($contact['rel'] == CONTACT_IS_FOLLOWER))
 			$follow = App::get_baseurl(true)."/follow?url=".urlencode($contact["url"]);
 
@@ -828,7 +831,7 @@ function contacts_content(App $a) {
  *
  * Available Pages are 'Status', 'Profile', 'Contacts' and 'Common Friends'
  *
- * @param app $a
+ * @param App $a
  * @param int $contact_id The ID of the contact
  * @param int $active_tab 1 if tab should be marked as active
  *

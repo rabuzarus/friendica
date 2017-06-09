@@ -32,6 +32,8 @@
  *
  */
 
+use Friendica\App;
+
 if (sizeof($_SERVER["argv"]) == 0)
 	die();
 
@@ -47,8 +49,9 @@ require_once("boot.php");
 
 global $a, $db;
 
-if (is_null($a))
-	$a = new App;
+if (is_null($a)) {
+	$a = new App(dirname(__DIR__));
+}
 
 if (is_null($db)) {
 	@include(".htconfig.php");
@@ -86,7 +89,7 @@ class exAuth {
 
 		// Open the logfile if the logfile name is defined
 		if ($this->sLogFile != '')
-			$this->rLogFile = fopen($this->sLogFile, "a") or die("Error opening log file: ". $this->sLogFile);
+			$this->rLogFile = fopen($this->sLogFile, "a") || die("Error opening log file: ". $this->sLogFile);
 
 		$this->writeLog("[exAuth] start");
 
@@ -332,4 +335,3 @@ class exAuth {
 			fclose($this->rLogFile);
 	}
 }
-?>

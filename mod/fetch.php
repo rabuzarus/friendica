@@ -2,13 +2,16 @@
 /*
 This file is part of the Diaspora protocol. It is used for fetching single public posts.
 */
+
+use Friendica\App;
+
 require_once("include/crypto.php");
 require_once("include/diaspora.php");
 require_once("include/xml.php");
 
 function fetch_init(App $a) {
 
-	if (($a->argc != 3) OR (!in_array($a->argv[1], array("post", "status_message", "reshare")))) {
+	if (($a->argc != 3) || (!in_array($a->argv[1], array("post", "status_message", "reshare")))) {
 		header($_SERVER["SERVER_PROTOCOL"].' 404 '.t('Not Found'));
 		killme();
 	}

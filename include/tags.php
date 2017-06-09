@@ -1,4 +1,7 @@
 <?php
+
+use Friendica\App;
+
 function create_tags_from_item($itemid) {
 	$profile_base = App::get_baseurl();
 	$profile_data = parse_url($profile_base);
@@ -28,7 +31,7 @@ function create_tags_from_item($itemid) {
 
 	$tags = "";
 	foreach ($taglist as $tag)
-		if ((substr(trim($tag), 0, 1) == "#") OR (substr(trim($tag), 0, 1) == "@"))
+		if ((substr(trim($tag), 0, 1) == "#") || (substr(trim($tag), 0, 1) == "@"))
 			$tags .= " ".trim($tag);
 		else
 			$tags .= " #".trim($tag);
@@ -88,7 +91,7 @@ function create_tags_from_item($itemid) {
 			dbesc($link), dbesc($message["guid"]), dbesc($message["created"]), dbesc($message["received"]), intval($global));
 
 		// Search for mentions
-		if ((substr($tag, 0, 1) == '@') AND (strpos($link, $profile_base_friendica) OR strpos($link, $profile_base_diaspora))) {
+		if ((substr($tag, 0, 1) == '@') && (strpos($link, $profile_base_friendica) || strpos($link, $profile_base_diaspora))) {
 			$users = q("SELECT `uid` FROM `contact` WHERE self AND (`url` = '%s' OR `nurl` = '%s')", $link, $link);
 			foreach ($users AS $user) {
 				if ($user["uid"] == $message["uid"]) {
@@ -111,12 +114,11 @@ function create_tags_from_itemuri($itemuri, $uid) {
 }
 
 function update_items() {
-	global $db;
 
-        $messages = $db->q("SELECT `oid`,`item`.`guid`, `item`.`created`, `item`.`received` FROM `term` INNER JOIN `item` ON `item`.`id`=`term`.`oid` WHERE `term`.`otype` = 1 AND `term`.`guid` = ''", true);
+	$messages = dba::p("SELECT `oid`,`item`.`guid`, `item`.`created`, `item`.`received` FROM `term` INNER JOIN `item` ON `item`.`id`=`term`.`oid` WHERE `term`.`otype` = 1 AND `term`.`guid` = ''");
 
-        logger("fetched messages: ".count($messages));
-        while ($message = $db->qfetch()) {
+	logger("fetched messages: ".dba::num_rows($messages));
+	while ($message = dba::fetch($messages)) {
 
 		if ($message["uid"] == 0) {
 			$global = true;
@@ -135,15 +137,14 @@ function update_items() {
 			intval($global), intval(TERM_OBJ_POST), intval($message["oid"]));
 	}
 
-        $db->qclose();
+	dba::close($messages);
 
-	$messages = $db->q("SELECT `guid` FROM `item` WHERE `uid` = 0", true);
+	$messages = dba::p("SELECT `guid` FROM `item` WHERE `uid` = 0");
 
-	logger("fetched messages: ".count($messages));
-	while ($message = $db->qfetch()) {
+	logger("fetched messages: ".dba::num_rows($messages));
+	while ($message = dba::fetch(messages)) {
 		q("UPDATE `item` SET `global` = 1 WHERE `guid` = '%s'", dbesc($message["guid"]));
 	}
 
-	$db->qclose();
+	dba::close($messages);
 }
-?>

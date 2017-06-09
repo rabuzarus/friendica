@@ -2,6 +2,7 @@
 /**
  * @brief This class contain functions for the database management
  *
+ * This class contains functions that doesn't need to know if pdo, mysqli or whatever is used.
  */
 class dbm {
 	/**
@@ -47,6 +48,11 @@ class dbm {
 		if (is_bool($array)) {
 			return $array;
 		}
+
+		if (is_object($array)) {
+			return true;
+		}
+
 		return (is_array($array) && count($array) > 0);
 	}
 
@@ -70,7 +76,7 @@ class dbm {
 
 		if (is_bool($value)) {
 			$value = ($value ? 'true' : 'false');
-		} elseif (is_float($value) OR is_integer($value)) {
+		} elseif (is_float($value) || is_integer($value)) {
 			$value = (string)$value;
 		} else {
 			 $value = "'".dbesc($value)."'";
@@ -104,4 +110,3 @@ class dbm {
 		return date('Y-m-d H:i:s', $timestamp);
 	}
 }
-?>

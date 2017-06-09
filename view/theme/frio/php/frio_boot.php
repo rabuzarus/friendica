@@ -3,10 +3,11 @@
 /**
  * @file view/theme/frio/php/frio_boot.php
  *
- * @brief This file contains functions for page contstruction
+ * @brief This file contains functions for page construction
  *
  */
 
+use Friendica\App;
 
 /**
  * @brief Load page template in dependence of the template mode
@@ -14,9 +15,9 @@
  * @todo Check if this is really needed.
  */
 function load_page(App $a) {
-	if(isset($_GET["mode"]) AND ($_GET["mode"] == "minimal")) {
+	if(isset($_GET["mode"]) && ($_GET["mode"] == "minimal")) {
 		require "view/theme/frio/minimal.php";
-	} elseif((isset($_GET["mode"]) AND ($_GET["mode"] == "none"))) {
+	} elseif((isset($_GET["mode"]) && ($_GET["mode"] == "none"))) {
 		require "view/theme/frio/none.php";
 	} else {
 		$template = 'view/theme/' . current_theme() . '/'

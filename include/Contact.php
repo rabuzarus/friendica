@@ -1,5 +1,8 @@
 <?php
 
+use Friendica\App;
+use Friendica\Network\Probe;
+
 // Included here for completeness, but this is a very dangerous operation.
 // It is the caller's responsibility to confirm the requestor's intent and
 // authorisation to do this.
@@ -20,29 +23,7 @@ function user_remove($uid) {
 		$r[0]['nickname']
 	);
 
-	/// @todo Should be done in a background job since this likely will run into a time out
-	// don't delete yet, will be done later when contacts have deleted my stuff
-	// q("DELETE FROM `contact` WHERE `uid` = %d", intval($uid));
-	q("DELETE FROM `gcign` WHERE `uid` = %d", intval($uid));
-	q("DELETE FROM `group` WHERE `uid` = %d", intval($uid));
-	q("DELETE FROM `group_member` WHERE `uid` = %d", intval($uid));
-	q("DELETE FROM `intro` WHERE `uid` = %d", intval($uid));
-	q("DELETE FROM `event` WHERE `uid` = %d", intval($uid));
-	q("DELETE FROM `item` WHERE `uid` = %d", intval($uid));
-	q("DELETE FROM `item_id` WHERE `uid` = %d", intval($uid));
-	q("DELETE FROM `mail` WHERE `uid` = %d", intval($uid));
-	q("DELETE FROM `mailacct` WHERE `uid` = %d", intval($uid));
-	q("DELETE FROM `manage` WHERE `uid` = %d", intval($uid));
-	q("DELETE FROM `notify` WHERE `uid` = %d", intval($uid));
-	q("DELETE FROM `photo` WHERE `uid` = %d", intval($uid));
-	q("DELETE FROM `attach` WHERE `uid` = %d", intval($uid));
-	q("DELETE FROM `profile` WHERE `uid` = %d", intval($uid));
-	q("DELETE FROM `profile_check` WHERE `uid` = %d", intval($uid));
-	q("DELETE FROM `pconfig` WHERE `uid` = %d", intval($uid));
-	q("DELETE FROM `search` WHERE `uid` = %d", intval($uid));
-	q("DELETE FROM `spam` WHERE `uid` = %d", intval($uid));
-	// don't delete yet, will be done later when contacts have deleted my stuff
-	// q("DELETE FROM `user` WHERE `uid` = %d", intval($uid));
+	// The user and related data will be deleted in "cron_expire_and_remove_users" (cronjobs.php)
 	q("UPDATE `user` SET `account_removed` = 1, `account_expires_on` = UTC_TIMESTAMP() WHERE `uid` = %d", intval($uid));
 	proc_run(PRIORITY_HIGH, "include/notifier.php", "removeme", $uid);
 
@@ -89,11 +70,11 @@ function terminate_friendship($user,$self,$contact) {
 	/// @TODO Get rid of this, include/datetime.php should care about it by itself
 	$a = get_app();
 
-	require_once('include/datetime.php');
+	require_once 'include/datetime.php';
 
 	if ($contact['network'] === NETWORK_OSTATUS) {
 
-		require_once('include/ostatus.php');
+		require_once 'include/ostatus.php';
 
 		// create an unfollow slap
 		$item = array();
@@ -102,14 +83,14 @@ function terminate_friendship($user,$self,$contact) {
 		$slap = ostatus::salmon($item, $user);
 
 		if ((x($contact,'notify')) && (strlen($contact['notify']))) {
-			require_once('include/salmon.php');
+			require_once 'include/salmon.php';
 			slapper($user,$contact['notify'],$slap);
 		}
 	} elseif ($contact['network'] === NETWORK_DIASPORA) {
-		require_once('include/diaspora.php');
+		require_once 'include/diaspora.php';
 		Diaspora::send_unshare($user,$contact);
 	} elseif ($contact['network'] === NETWORK_DFRN) {
-		require_once('include/dfrn.php');
+		require_once 'include/dfrn.php';
 		dfrn::deliver($user,$contact,'placeholder', 1);
 	}
 
@@ -212,6 +193,10 @@ function unmark_for_death($contact) {
 function get_contact_details_by_url($url, $uid = -1, $default = array()) {
 	static $cache = array();
 
+	if ($url == '') {
+		return $default;
+	}
+
 	if ($uid == -1) {
 		$uid = local_user();
 	}
@@ -254,7 +239,7 @@ function get_contact_details_by_url($url, $uid = -1, $default = array()) {
 
 		// "bd" always contains the upcoming birthday of a contact.
 		// "birthday" might contain the birthday including the year of birth.
-		if ($profile["birthday"] != "0000-00-00") {
+		if ($profile["birthday"] > '0001-01-01') {
 			$bd_timestamp = strtotime($profile["birthday"]);
 			$month = date("m", $bd_timestamp);
 			$day = date("d", $bd_timestamp);
@@ -271,43 +256,43 @@ function get_contact_details_by_url($url, $uid = -1, $default = array()) {
 				$profile["bd"] = (++$current_year)."-".$month."-".$day;
 			}
 		} else {
-			$profile["bd"] = "0000-00-00";
+			$profile["bd"] = '0001-01-01';
 		}
 	} else {
 		$profile = $default;
 	}
 
-	if (($profile["photo"] == "") AND isset($default["photo"])) {
+	if (($profile["photo"] == "") && isset($default["photo"])) {
 		$profile["photo"] = $default["photo"];
 	}
 
-	if (($profile["name"] == "") AND isset($default["name"])) {
+	if (($profile["name"] == "") && isset($default["name"])) {
 		$profile["name"] = $default["name"];
 	}
 
-	if (($profile["network"] == "") AND isset($default["network"])) {
+	if (($profile["network"] == "") && isset($default["network"])) {
 		$profile["network"] = $default["network"];
 	}
 
-	if (($profile["thumb"] == "") AND isset($profile["photo"])) {
+	if (($profile["thumb"] == "") && isset($profile["photo"])) {
 		$profile["thumb"] = $profile["photo"];
 	}
 
-	if (($profile["micro"] == "") AND isset($profile["thumb"])) {
+	if (($profile["micro"] == "") && isset($profile["thumb"])) {
 		$profile["micro"] = $profile["thumb"];
 	}
 
-	if ((($profile["addr"] == "") OR ($profile["name"] == "")) AND ($profile["gid"] != 0) AND
+	if ((($profile["addr"] == "") || ($profile["name"] == "")) && ($profile["gid"] != 0) &&
 		in_array($profile["network"], array(NETWORK_DFRN, NETWORK_DIASPORA, NETWORK_OSTATUS))) {
 		proc_run(PRIORITY_LOW, "include/update_gcontact.php", $profile["gid"]);
 	}
 
 	// Show contact details of Diaspora contacts only if connected
-	if (($profile["cid"] == 0) AND ($profile["network"] == NETWORK_DIASPORA)) {
+	if (($profile["cid"] == 0) && ($profile["network"] == NETWORK_DIASPORA)) {
 		$profile["location"] = "";
 		$profile["about"] = "";
 		$profile["gender"] = "";
-		$profile["birthday"] = "0000-00-00";
+		$profile["birthday"] = '0001-01-01';
 	}
 
 	$cache[$url][$uid] = $profile;
@@ -327,6 +312,10 @@ function get_contact_details_by_url($url, $uid = -1, $default = array()) {
  */
 function get_contact_details_by_addr($addr, $uid = -1) {
 	static $cache = array();
+
+	if ($addr == '') {
+		return array();
+	}
 
 	if ($uid == -1) {
 		$uid = local_user();
@@ -353,7 +342,6 @@ function get_contact_details_by_addr($addr, $uid = -1) {
 				dbesc($addr));
 
 	if (!dbm::is_result($r)) {
-		require_once('include/Probe.php');
 		$data = Probe::uri($addr);
 
 		$profile = get_contact_details_by_url($data['url'], $uid);
@@ -534,6 +522,10 @@ function get_contact($url, $uid = 0, $no_update = false) {
 	$data = array();
 	$contact_id = 0;
 
+	if ($url == '') {
+		return 0;
+	}
+
 	// We first try the nurl (http://server.tld/nick), most common case
 	$contacts = q("SELECT `id`, `avatar-date` FROM `contact`
 					WHERE `nurl` = '%s'
@@ -567,7 +559,7 @@ function get_contact($url, $uid = 0, $no_update = false) {
 		// Update the contact every 7 days
 		$update_photo = ($contacts[0]['avatar-date'] < datetime_convert('','','now -7 days'));
 
-		if (!$update_photo OR $no_update) {
+		if (!$update_photo || $no_update) {
 			return $contact_id;
 		}
 	} elseif ($uid != 0) {
@@ -575,7 +567,6 @@ function get_contact($url, $uid = 0, $no_update = false) {
 		return 0;
 	}
 
-	require_once('include/Probe.php');
 	$data = Probe::uri($url);
 
 	// Last try in gcontact for unsupported networks
@@ -645,7 +636,7 @@ function get_contact($url, $uid = 0, $no_update = false) {
 		}
 	}
 
-	if (count($contacts) > 1 AND $uid == 0 AND $contact_id != 0 AND $url != "") {
+	if (count($contacts) > 1 && $uid == 0 && $contact_id != 0 && $url != "") {
 		q("DELETE FROM `contact` WHERE `nurl` = '%s' AND `id` != %d AND NOT `self`",
 			dbesc(normalise_link($url)),
 			intval($contact_id));
@@ -663,9 +654,9 @@ function get_contact($url, $uid = 0, $no_update = false) {
 	}
 
 	// Only update if there had something been changed
-	if ($data["addr"] != $contacts[0]["addr"] OR
-		$data["alias"] != $contacts[0]["alias"] OR
-		$data["name"] != $contacts[0]["name"] OR
+	if ($data["addr"] != $contacts[0]["addr"] ||
+		$data["alias"] != $contacts[0]["alias"] ||
+		$data["name"] != $contacts[0]["name"] ||
 		$data["nick"] != $contacts[0]["nick"]) {
 		q("UPDATE `contact` SET `addr` = '%s', `alias` = '%s', `name` = '%s', `nick` = '%s',
 			`name-date` = '%s', `uri-date` = '%s' WHERE `id` = %d",
@@ -692,7 +683,7 @@ function get_contact($url, $uid = 0, $no_update = false) {
  */
 function posts_from_gcontact(App $a, $gcontact_id) {
 
-	require_once('include/conversation.php');
+	require_once 'include/conversation.php';
 
 	// There are no posts with "uid = 0" with connector networks
 	// This speeds up the query a lot
@@ -731,7 +722,7 @@ function posts_from_gcontact(App $a, $gcontact_id) {
  */
 function posts_from_contact_url(App $a, $contact_url) {
 
-	require_once('include/conversation.php');
+	require_once 'include/conversation.php';
 
 	// There are no posts with "uid = 0" with connector networks
 	// This speeds up the query a lot
@@ -778,7 +769,7 @@ function formatted_location($profile) {
 	if($profile['locality'])
 		$location .= $profile['locality'];
 
-	if($profile['region'] AND ($profile['locality'] != $profile['region'])) {
+	if($profile['region'] && ($profile['locality'] != $profile['region'])) {
 		if($location)
 			$location .= ', ';
 
@@ -840,4 +831,3 @@ function account_type($contact) {
 
 	return $account_type;
 }
-?>

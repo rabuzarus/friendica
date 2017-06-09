@@ -1,6 +1,6 @@
 <?php
 
-use \Friendica\Core\Config;
+use Friendica\Core\Config;
 
 require_once('include/follow.php');
 
@@ -68,9 +68,9 @@ function onepoll_run(&$argv, &$argc){
 	$contact = $contacts[0];
 
 	// load current friends if possible.
-	if (($contact['poco'] != "") AND ($contact['success_update'] > $contact['failure_update'])) {
-		$r = q("SELECT count(*) as total from glink
-			where `cid` = %d and updated > UTC_TIMESTAMP() - INTERVAL 1 DAY",
+	if (($contact['poco'] != "") && ($contact['success_update'] > $contact['failure_update'])) {
+		$r = q("SELECT count(*) AS total FROM glink
+			WHERE `cid` = %d AND updated > UTC_TIMESTAMP() - INTERVAL 1 DAY",
 			intval($contact['id'])
 		);
 		if (dbm::is_result($r)) {
@@ -170,7 +170,7 @@ function onepoll_run(&$argv, &$argc){
 		// But this may be our first communication, so set the writable flag if it isn't set already.
 
 		if (! intval($contact['writable'])) {
-			q("update contact set writable = 1 where id = %d", intval($contact['id']));
+			q("UPDATE `contact` SET `writable` = 1 WHERE `id` = %d", intval($contact['id']));
 		}
 
 		$url = $contact['poll'] . '?dfrn_id=' . $idtosend
@@ -395,7 +395,7 @@ function onepoll_run(&$argv, &$argc){
 							logger("Mail: Seen before ".$msg_uid." for ".$mailconf[0]['user']." UID: ".$importer_uid." URI: ".$datarray['uri'],LOGGER_DEBUG);
 
 							// Only delete when mails aren't automatically moved or deleted
-							if (($mailconf[0]['action'] != 1) AND ($mailconf[0]['action'] != 3))
+							if (($mailconf[0]['action'] != 1) && ($mailconf[0]['action'] != 3))
 								if ($meta->deleted && ! $r[0]['deleted']) {
 									q("UPDATE `item` SET `deleted` = 1, `changed` = '%s' WHERE `id` = %d",
 										dbesc(datetime_convert()),
@@ -437,16 +437,18 @@ function onepoll_run(&$argv, &$argc){
 						if ($raw_refs) {
 							$refs_arr = explode(' ', $raw_refs);
 							if (count($refs_arr)) {
-								for($x = 0; $x < count($refs_arr); $x ++)
+								for ($x = 0; $x < count($refs_arr); $x ++) {
 									$refs_arr[$x] = "'" . msgid2iri(str_replace(array('<','>',' '),array('','',''),dbesc($refs_arr[$x]))) . "'";
+								}
 							}
 							$qstr = implode(',',$refs_arr);
 							$r = q("SELECT `uri` , `parent-uri` FROM `item` USE INDEX (`uid_uri`) WHERE `uri` IN ($qstr) AND `uid` = %d LIMIT 1",
 								intval($importer_uid)
 							);
-							if (dbm::is_result($r))
+							if (dbm::is_result($r)) {
 								$datarray['parent-uri'] = $r[0]['parent-uri'];  // Set the parent as the top-level item
-	//							$datarray['parent-uri'] = $r[0]['uri'];
+								//$datarray['parent-uri'] = $r[0]['uri'];
+							}
 						}
 
 						// Decoding the header
@@ -465,15 +467,15 @@ function onepoll_run(&$argv, &$argc){
 						$datarray['created'] = datetime_convert('UTC','UTC',$meta->date);
 
 						// Is it a reply?
-						$reply = ((substr(strtolower($datarray['title']), 0, 3) == "re:") or
-							(substr(strtolower($datarray['title']), 0, 3) == "re-") or
+						$reply = ((substr(strtolower($datarray['title']), 0, 3) == "re:") ||
+							(substr(strtolower($datarray['title']), 0, 3) == "re-") ||
 							($raw_refs != ""));
 
 						// Remove Reply-signs in the subject
 						$datarray['title'] = RemoveReply($datarray['title']);
 
 						// If it seems to be a reply but a header couldn't be found take the last message with matching subject
-						if (!x($datarray,'parent-uri') and $reply) {
+						if (!x($datarray,'parent-uri') && $reply) {
 							$r = q("SELECT `uri` , `parent-uri` FROM `item` WHERE `title` = \"%s\" AND `uid` = %d AND `network` = '%s' ORDER BY `created` DESC LIMIT 1",
 								dbesc(protect_sprintf($datarray['title'])),
 								intval($importer_uid),
@@ -611,14 +613,17 @@ function onepoll_run(&$argv, &$argc){
 		consume_feed($xml,$importer,$contact,$hub,1,2);
 
 		$hubmode = 'subscribe';
-		if ($contact['network'] === NETWORK_DFRN || $contact['blocked'] || $contact['readonly'])
+		if ($contact['network'] === NETWORK_DFRN || $contact['blocked'] || $contact['readonly']) {
 			$hubmode = 'unsubscribe';
+		}
 
-		if (($contact['network'] === NETWORK_OSTATUS ||  $contact['network'] == NETWORK_FEED) && (! $contact['hub-verify']))
+		if (($contact['network'] === NETWORK_OSTATUS ||  $contact['network'] == NETWORK_FEED) && (! $contact['hub-verify'])) {
 			$hub_update = true;
+		}
 
-		if ($force)
+		if ($force) {
 			$hub_update = true;
+		}
 
 		logger("Contact ".$contact['id']." returned hub: ".$hub." Network: ".$contact['network']." Relation: ".$contact['rel']." Update: ".$hub_update);
 

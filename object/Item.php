@@ -112,7 +112,7 @@ class Item extends BaseObject {
 
 		$conv = $this->get_conversation();
 
-		$lock = ((($item['private'] == 1) || (($item['uid'] == local_user()) && (strlen($item['allow_cid']) || strlen($item['allow_gid']) 
+		$lock = ((($item['private'] == 1) || (($item['uid'] == local_user()) && (strlen($item['allow_cid']) || strlen($item['allow_gid'])
 			|| strlen($item['deny_cid']) || strlen($item['deny_gid']))))
 			? t('Private Message')
 			: false);
@@ -158,7 +158,7 @@ class Item extends BaseObject {
 			$profile_link = zrl($profile_link);
 		}
 
-		if (!isset($item['author-thumb']) OR ($item['author-thumb'] == "")) {
+		if (!isset($item['author-thumb']) || ($item['author-thumb'] == "")) {
 			$author_contact = get_contact_details_by_url($item['author-link'], $conv->get_profile_owner());
 			if ($author_contact["thumb"]) {
 				$item['author-thumb'] = $author_contact["thumb"];
@@ -167,7 +167,7 @@ class Item extends BaseObject {
 			}
 		}
 
-		if (!isset($item['owner-thumb']) OR ($item['owner-thumb'] == "")) {
+		if (!isset($item['owner-thumb']) || ($item['owner-thumb'] == "")) {
 			$owner_contact = get_contact_details_by_url($item['owner-link'], $conv->get_profile_owner());
 			if ($owner_contact["thumb"]) {
 				$item['owner-thumb'] = $owner_contact["thumb"];
@@ -242,17 +242,14 @@ class Item extends BaseObject {
 					'classundo' => (($item['starred']) ? "" : "hidden"),
 					'starred'   =>  t('starred'),
 				);
-				$r = q("SELECT `ignored` FROM `thread` WHERE `uid` = %d AND `iid` = %d LIMIT 1",
-					intval($item['uid']),
-					intval($item['id'])
-				);
+				$r = dba::select('thread', array('ignored'), array('uid' => $item['uid'], 'iid' => $item['id']), array('limit' => 1));
 				if (dbm::is_result($r)) {
 					$ignore = array(
 						'do'        => t("ignore thread"),
 						'undo'      => t("unignore thread"),
 						'toggle'    => t("toggle ignore status"),
-						'classdo'   => (($r[0]['ignored']) ? "hidden" : ""),
-						'classundo' => (($r[0]['ignored']) ? "" : "hidden"),
+						'classdo'   => (($r['ignored']) ? "hidden" : ""),
+						'classundo' => (($r['ignored']) ? "" : "hidden"),
 						'ignored'   =>  t('ignored'),
 					);
 				}
@@ -310,28 +307,28 @@ class Item extends BaseObject {
 		// Disable features that aren't available in several networks
 
 		/// @todo Add NETWORK_DIASPORA when it will pass this information
-		if (!in_array($item["item_network"], array(NETWORK_DFRN)) AND isset($buttons["dislike"])) {
+		if (!in_array($item["item_network"], array(NETWORK_DFRN)) && isset($buttons["dislike"])) {
 			unset($buttons["dislike"],$isevent);
 			$tagger = '';
 		}
 
-		if (($item["item_network"] == NETWORK_FEED) AND isset($buttons["like"])) {
+		if (($item["item_network"] == NETWORK_FEED) && isset($buttons["like"])) {
 			unset($buttons["like"]);
 		}
 
-		if (($item["item_network"] == NETWORK_MAIL) AND isset($buttons["like"])) {
+		if (($item["item_network"] == NETWORK_MAIL) && isset($buttons["like"])) {
 			unset($buttons["like"]);
 		}
 
  		// Diaspora isn't able to do likes on comments - but Hubzilla does
 		/// @todo When Diaspora will pass this information we will remove these lines
-		if (($item["item_network"] == NETWORK_DIASPORA) AND ($indent == 'comment') AND
-			!Diaspora::is_redmatrix($item["owner-link"]) AND isset($buttons["like"])) {
+		if (($item["item_network"] == NETWORK_DIASPORA) && ($indent == 'comment') &&
+			!Diaspora::is_redmatrix($item["owner-link"]) && isset($buttons["like"])) {
 			unset($buttons["like"]);
 		}
 
 		// Facebook can like comments - but it isn't programmed in the connector yet.
-		if (($item["item_network"] == NETWORK_FACEBOOK) AND ($indent == 'comment') AND isset($buttons["like"])) {
+		if (($item["item_network"] == NETWORK_FACEBOOK) && ($indent == 'comment') && isset($buttons["like"])) {
 			unset($buttons["like"]);
 		}
 
@@ -736,7 +733,7 @@ class Item extends BaseObject {
 
 		if($this->is_toplevel()) {
 			if($conv->get_mode() !== 'profile') {
-				if($this->get_data_value('wall') AND !$this->get_data_value('self')) {
+				if($this->get_data_value('wall') && !$this->get_data_value('self')) {
 					// On the network page, I am the owner. On the display page it will be the profile owner.
 					// This will have been stored in $a->page_contact by our calling page.
 					// Put this person as the wall owner of the wall-to-wall notice.
@@ -754,20 +751,20 @@ class Item extends BaseObject {
 					if ((! $owner_linkmatch) && (! $alias_linkmatch) && (! $owner_namematch)) {
 
 						// The author url doesn't match the owner (typically the contact)
-						// and also doesn't match the contact alias. 
-						// The name match is a hack to catch several weird cases where URLs are 
+						// and also doesn't match the contact alias.
+						// The name match is a hack to catch several weird cases where URLs are
 						// all over the park. It can be tricked, but this prevents you from
 						// seeing "Bob Smith to Bob Smith via Wall-to-wall" and you know darn
-						// well that it's the same Bob Smith. 
+						// well that it's the same Bob Smith.
 
-						// But it could be somebody else with the same name. It just isn't highly likely. 
+						// But it could be somebody else with the same name. It just isn't highly likely.
 
 
 						$this->owner_photo = $this->get_data_value('owner-avatar');
 						$this->owner_name = $this->get_data_value('owner-name');
 						$this->wall_to_wall = true;
 						// If it is our contact, use a friendly redirect link
-						if ((link_compare($this->get_data_value('owner-link'),$this->get_data_value('url'))) 
+						if ((link_compare($this->get_data_value('owner-link'),$this->get_data_value('url')))
 							&& ($this->get_data_value('network') === NETWORK_DFRN)) {
 							$this->owner_url = $this->get_redirect_url();
 						} else {
@@ -807,5 +804,3 @@ class Item extends BaseObject {
 	}
 
 }
-/// @TODO These are discouraged and should be removed:
-?>

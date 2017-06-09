@@ -1,13 +1,14 @@
 <?php
 
-use \Friendica\Core\Config;
+use Friendica\App;
+use Friendica\Core\Config;
 
-require_once('include/queue_fn.php');
-require_once('include/html2plain.php');
-require_once('include/Scrape.php');
-require_once('include/diaspora.php');
-require_once('include/ostatus.php');
-require_once('include/salmon.php');
+require_once 'include/queue_fn.php';
+require_once 'include/html2plain.php';
+require_once 'include/probe.php';
+require_once 'include/diaspora.php';
+require_once 'include/ostatus.php';
+require_once 'include/salmon.php';
 
 /*
  * This file was at one time responsible for doing all deliveries, but this caused
@@ -45,13 +46,24 @@ require_once('include/salmon.php');
 function notifier_run(&$argv, &$argc){
 	global $a;
 
-	require_once('include/datetime.php');
-	require_once('include/items.php');
-	require_once('include/bbcode.php');
-	require_once('include/email.php');
+	require_once 'include/datetime.php';
+	require_once 'include/items.php';
+	require_once 'include/bbcode.php';
+	require_once 'include/email.php';
 
 	if ($argc < 3) {
 		return;
+	}
+
+	// Inherit the priority
+	$queue = dba::select('workerqueue', array('priority'), array('pid' => getmypid()), array('limit' => 1));
+	if (dbm::is_result($queue)) {
+		$priority = (int)$queue['priority'];
+		logger('inherited priority: '.$priority);
+	} else {
+		// Normally this shouldn't happen.
+		$priority = PRIORITY_HIGH;
+		logger('no inherited priority! Something is wrong.');
 	}
 
 	logger('notifier: invoked: ' . print_r($argv,true), LOGGER_DEBUG);
@@ -138,7 +150,7 @@ function notifier_run(&$argv, &$argc){
 		if (!$r) {
 			return;
 		}
-		require_once('include/Contact.php');
+		require_once 'include/Contact.php';
 		foreach ($r as $contact) {
 			terminate_friendship($user, $self, $contact);
 		}
@@ -151,7 +163,7 @@ function notifier_run(&$argv, &$argc){
 		$recipients_relocate = q("SELECT * FROM contact WHERE uid = %d  AND self = 0 AND network = '%s'" , intval($uid), NETWORK_DFRN);
 	} else {
 		// find ancestors
-		$r = q("SELECT * FROM `item` WHERE `id` = %d and visible = 1 and moderated = 0 LIMIT 1",
+		$r = q("SELECT * FROM `item` WHERE `id` = %d AND visible = 1 AND moderated = 0 LIMIT 1",
 			intval($item_id)
 		);
 
@@ -165,7 +177,7 @@ function notifier_run(&$argv, &$argc){
 		$updated = $r[0]['edited'];
 
 		$items = q("SELECT `item`.*, `sign`.`signed_text`,`sign`.`signature`,`sign`.`signer`
-			FROM `item` LEFT JOIN `sign` ON `sign`.`iid` = `item`.`id` WHERE `parent` = %d and visible = 1 and moderated = 0 ORDER BY `id` ASC",
+			FROM `item` LEFT JOIN `sign` ON `sign`.`iid` = `item`.`id` WHERE `parent` = %d AND visible = 1 AND moderated = 0 ORDER BY `id` ASC",
 			intval($parent_id)
 		);
 
@@ -222,7 +234,7 @@ function notifier_run(&$argv, &$argc){
 
 		$slap = ostatus::salmon($target_item,$owner);
 
-		require_once('include/group.php');
+		require_once 'include/group.php';
 
 		$parent = $items[0];
 
@@ -294,13 +306,13 @@ function notifier_run(&$argv, &$argc){
 			$recipients = array($parent['contact-id']);
 			$recipients_followup  = array($parent['contact-id']);
 
-			//if (!$target_item['private'] AND $target_item['wall'] AND
-			if (!$target_item['private'] AND
+			//if (!$target_item['private'] && $target_item['wall'] &&
+			if (!$target_item['private'] &&
 				(strlen($target_item['allow_cid'].$target_item['allow_gid'].
 					$target_item['deny_cid'].$target_item['deny_gid']) == 0))
 				$push_notify = true;
 
-			if (($thr_parent AND ($thr_parent[0]['network'] == NETWORK_OSTATUS)) OR ($parent['network'] == NETWORK_OSTATUS)) {
+			if (($thr_parent && ($thr_parent[0]['network'] == NETWORK_OSTATUS)) || ($parent['network'] == NETWORK_OSTATUS)) {
 
 				$push_notify = true;
 
@@ -347,7 +359,7 @@ function notifier_run(&$argv, &$argc){
 			// a delivery fork. private groups (forum_mode == 2) do not uplink
 
 			if ((intval($parent['forum_mode']) == 1) && (! $top_level) && ($cmd !== 'uplink')) {
-				proc_run(PRIORITY_HIGH,'include/notifier.php','uplink',$item_id);
+				proc_run($priority, 'include/notifier.php', 'uplink', $item_id);
 			}
 
 			$conversants = array();
@@ -384,7 +396,7 @@ function notifier_run(&$argv, &$argc){
 
 		// If the thread parent is OStatus then do some magic to distribute the messages.
 		// We have not only to look at the parent, since it could be a Friendica thread.
-		if (($thr_parent AND ($thr_parent[0]['network'] == NETWORK_OSTATUS)) OR ($parent['network'] == NETWORK_OSTATUS)) {
+		if (($thr_parent && ($thr_parent[0]['network'] == NETWORK_OSTATUS)) || ($parent['network'] == NETWORK_OSTATUS)) {
 
 			$diaspora_delivery = false;
 
@@ -486,7 +498,7 @@ function notifier_run(&$argv, &$argc){
 			}
 			logger("Deliver ".$target_item["guid"]." to ".$contact['url']." via network ".$contact['network'], LOGGER_DEBUG);
 
-			proc_run(PRIORITY_HIGH,'include/delivery.php', $cmd, $item_id, $contact['id']);
+			proc_run(array('priority' => $priority, 'dont_fork' => true), 'include/delivery.php', $cmd, $item_id, $contact['id']);
 		}
 	}
 
@@ -516,7 +528,8 @@ function notifier_run(&$argv, &$argc){
 				$r0 = Diaspora::relay_list();
 			}
 
-			$r1 = q("SELECT DISTINCT(`batch`), `id`, `name`,`network` FROM `contact` WHERE `network` = '%s'
+			$r1 = q("SELECT `batch`, ANY_VALUE(`id`) AS `id`, ANY_VALUE(`name`) AS `name`, ANY_VALUE(`network`) AS `network`
+				FROM `contact` WHERE `network` = '%s'
 				AND `uid` = %d AND `rel` != %d AND NOT `blocked` AND NOT `pending` AND NOT `archive` GROUP BY `batch` ORDER BY rand()",
 				dbesc(NETWORK_DIASPORA),
 				intval($owner['uid']),
@@ -550,7 +563,7 @@ function notifier_run(&$argv, &$argc){
 
 				if ((! $mail) && (! $fsuggest) && (! $followup)) {
 					logger('notifier: delivery agent: '.$rr['name'].' '.$rr['id'].' '.$rr['network'].' '.$target_item["guid"]);
-					proc_run(PRIORITY_HIGH,'include/delivery.php',$cmd,$item_id,$rr['id']);
+					proc_run(array('priority' => $priority, 'dont_fork' => true), 'include/delivery.php', $cmd, $item_id, $rr['id']);
 				}
 			}
 		}
@@ -560,7 +573,7 @@ function notifier_run(&$argv, &$argc){
 	}
 
 	// Notify PuSH subscribers (Used for OStatus distribution of regular posts)
-	if ($push_notify AND strlen($hub)) {
+	if ($push_notify && strlen($hub)) {
 		$hubs = explode(',', $hub);
 		if (count($hubs)) {
 			foreach ($hubs as $h) {
@@ -590,7 +603,7 @@ function notifier_run(&$argv, &$argc){
 		}
 
 		// Handling the pubsubhubbub requests
-		proc_run(PRIORITY_HIGH,'include/pubsubpublish.php');
+		proc_run(array('priority' => PRIORITY_HIGH, 'dont_fork' => true), 'include/pubsubpublish.php');
 	}
 
 	logger('notifier: calling hooks', LOGGER_DEBUG);

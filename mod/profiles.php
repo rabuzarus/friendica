@@ -1,6 +1,10 @@
 <?php
-require_once("include/Contact.php");
-require_once('include/Probe.php');
+
+use Friendica\App;
+use Friendica\Network\Probe;
+
+require_once 'include/Contact.php';
+require_once 'include/socgraph.php';
 
 function profiles_init(App $a) {
 
@@ -193,7 +197,7 @@ function profiles_post(App $a) {
 			return;
 		}
 
-		$dob = $_POST['dob'] ? escape_tags(trim($_POST['dob'])) : '0000-00-00'; // FIXME: Needs to be validated?
+		$dob = $_POST['dob'] ? escape_tags(trim($_POST['dob'])) : '0001-01-01'; // FIXME: Needs to be validated?
 
 		$y = substr($dob, 0, 4);
 		if ((! ctype_digit($y)) || ($y < 1900)) {
@@ -201,15 +205,15 @@ function profiles_post(App $a) {
 		} else {
 			$ignore_year = false;
 		}
-		if ($dob != '0000-00-00') {
-			if (strpos($dob, '0000-') === 0) {
+		if (!in_array($dob, array('0000-00-00', '0001-01-01'))) {
+			if (strpos($dob, '0000-') === 0 || strpos($dob, '0001-') === 0) {
 				$ignore_year = true;
 				$dob = substr($dob, 5);
 			}
 			$dob = datetime_convert('UTC', 'UTC', (($ignore_year) ? '1900-' . $dob : $dob), (($ignore_year) ? 'm-d' : 'Y-m-d'));
 
 			if ($ignore_year) {
-				$dob = '0000-' . $dob;
+				$dob = '0001-' . $dob;
 			}
 		}
 
@@ -501,8 +505,7 @@ function profiles_post(App $a) {
 				proc_run(PRIORITY_LOW, "include/directory.php", $url);
 			}
 
-			require_once('include/profile_update.php');
-			profile_change();
+			proc_run(PRIORITY_LOW, 'include/profile_update.php', local_user());
 
 			// Update the global contact for the user
 			update_gcontact_for_user(local_user());
@@ -526,7 +529,7 @@ function profile_activity($changed, $value) {
 		return;
 	}
 
-	require_once('include/items.php');
+	require_once 'include/items.php';
 
 	$self = q("SELECT * FROM `contact` WHERE `self` = 1 AND `uid` = %d LIMIT 1",
 		intval(local_user())
@@ -620,7 +623,7 @@ function profiles_content(App $a) {
 			return;
 		}
 
-		require_once('include/profile_selectors.php');
+		require_once 'include/profile_selectors.php';
 
 
 		$a->page['htmlhead'] .= replace_macros(get_markup_template('profed_head.tpl'), array(
@@ -637,7 +640,7 @@ function profiles_content(App $a) {
 				t('Hide contacts and friends:'), //Label
 				!!$r[0]['hide-friends'], //Value
 				'', //Help string
-				array(t('No'),t('Yes')) //Off - On strings
+				array(t('No'), t('Yes')) //Off - On strings
 			),
 			'$desc' => t('Hide your contact/friend list from viewers of this profile?'),
 			'$yes_str' => t('Yes'),
@@ -739,7 +742,7 @@ function profiles_content(App $a) {
 			'$tv' => array('tv', t('Television'), $r[0]['tv']),
 			'$film' => array('film', t('Film/dance/culture/entertainment'), $r[0]['film']),
 			'$interest' => array('interest', t('Hobbies/Interests'), $r[0]['interest']),
-			'$romance' => array('romance',t('Love/romance'), $r[0]['romance']),
+			'$romance' => array('romance', t('Love/romance'), $r[0]['romance']),
 			'$work' => array('work', t('Work/employment'), $r[0]['work']),
 			'$education' => array('education', t('School/education'), $r[0]['education']),
 			'$contact' => array('contact', t('Contact information and Social Networks'), $r[0]['contact']),

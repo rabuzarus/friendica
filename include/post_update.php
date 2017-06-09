@@ -45,7 +45,7 @@ function post_update_1192() {
 			WHERE `thread`.`gcontact-id` = 0 AND
 				(`thread`.`uid` IN (SELECT `uid` from `user`) OR `thread`.`uid` = 0)");
 
-		if ($r AND ($r[0]["total"] == 0)) {
+		if ($r && ($r[0]["total"] == 0)) {
 			set_config("system", "post_update_version", 1192);
 			return true;
 		}
@@ -68,7 +68,7 @@ function post_update_1192() {
 	}
 
 	// Set the "gcontact-id" in the item table and add a new gcontact entry if needed
-	foreach($item_arr AS $item) {
+	foreach ($item_arr AS $item) {
 		$gcontact_id = get_gcontact_id(array("url" => $item['author-link'], "network" => $item['network'],
 						"photo" => $item['author-avatar'], "name" => $item['author-name']));
 		q("UPDATE `item` SET `gcontact-id` = %d WHERE `uid` = %d AND `author-link` = '%s' AND `gcontact-id` = 0",
@@ -171,7 +171,7 @@ function post_update_1198() {
 			WHERE `thread`.`author-id` = 0 AND `thread`.`owner-id` = 0 AND
 				(`thread`.`uid` IN (SELECT `uid` from `user`) OR `thread`.`uid` = 0)");
 
-		if ($r AND ($r[0]["total"] == 0)) {
+		if ($r && ($r[0]["total"] == 0)) {
 			set_config("system", "post_update_version", 1198);
 			logger("Done", LOGGER_DEBUG);
 			return true;
@@ -204,7 +204,7 @@ function post_update_1198() {
 	}
 
 	// Set the "gcontact-id" in the item table and add a new gcontact entry if needed
-	foreach($item_arr AS $item) {
+	foreach ($item_arr AS $item) {
 		$author_id = get_contact($item["author-link"], 0);
 		$owner_id = get_contact($item["owner-link"], 0);
 
@@ -247,7 +247,7 @@ function post_update_1206() {
 		return false;
 	}
 	foreach ($r AS $user) {
-		if (!empty($user["lastitem_date"]) AND ($user["lastitem_date"] > $user["last-item"])) {
+		if (!empty($user["lastitem_date"]) && ($user["lastitem_date"] > $user["last-item"])) {
 			q("UPDATE `contact` SET `last-item` = '%s' WHERE `id` = %d",
 				dbesc($user["lastitem_date"]),
 				intval($user["id"]));
@@ -258,5 +258,3 @@ function post_update_1206() {
 	logger("Done", LOGGER_DEBUG);
 	return true;
 }
-
-?>

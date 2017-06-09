@@ -1,4 +1,9 @@
 <?php
+
+use Friendica\App;
+use Friendica\Core\Config;
+use Friendica\Network\Probe;
+
 require_once 'include/Photo.php';
 require_once 'include/photos.php';
 require_once 'include/items.php';
@@ -8,9 +13,6 @@ require_once 'include/security.php';
 require_once 'include/redir.php';
 require_once 'include/tags.php';
 require_once 'include/threads.php';
-require_once 'include/Probe.php';
-
-use \Friendica\Core\Config;
 
 function photos_init(App $a) {
 
@@ -983,9 +985,9 @@ function photos_content(App $a) {
 		return;
 	}
 
-	require_once('include/bbcode.php');
-	require_once('include/security.php');
-	require_once('include/conversation.php');
+	require_once 'include/bbcode.php';
+	require_once 'include/security.php';
+	require_once 'include/conversation.php';
 
 	if (! x($a->data,'user')) {
 		notice( t('No photos selected') . EOL );
@@ -1249,7 +1251,11 @@ function photos_content(App $a) {
 			$order = 'DESC';
 		}
 
-		$r = q("SELECT `resource-id`, `id`, `uid`, `filename`, type, max(`scale`) AS `scale`, `desc`, `allow_cid`, `allow_gid`, `deny_cid`, `deny_gid`
+		$r = q("SELECT `resource-id`, ANY_VALUE(`id`) AS `id`, ANY_VALUE(`filename`) AS `filename`,
+			ANY_VALUE(`type`) AS `type`, max(`scale`) AS `scale`, ANY_VALUE(`desc`) as `desc`,
+			ANY_VALUE(`created`) AS `created`,
+			ANY_VALUE(`allow_cid`), ANY_VALUE(`allow_gid`),
+			ANY_VALUE(`deny_cid`), ANY_VALUE(`deny_gid`)
 			FROM `photo` WHERE `uid` = %d AND `album` = '%s'
 			AND `scale` <= 4 $sql_extra GROUP BY `resource-id` ORDER BY `created` $order LIMIT %d , %d",
 			intval($owner_uid),
@@ -1639,9 +1645,9 @@ function photos_content(App $a) {
 				'$album' => array('albname', t('New album name'), $album_e,''),
 				'$caption' => array('desc', t('Caption'), $caption_e, ''),
 				'$tags' => array('newtag', t('Add a Tag'), "", t('Example: @bob, @Barbara_Jensen, @jim@example.com, #California, #camping')),
-				'$rotate_none' => array('rotate',t('Do not rotate'),0,'', true),
-				'$rotate_cw' => array('rotate',t('Rotate CW (right)'),1,''),
-				'$rotate_ccw' => array('rotate',t('Rotate CCW (left)'),2,''),
+				'$rotate_none' => array('rotate', t('Do not rotate'),0,'', true),
+				'$rotate_cw' => array('rotate', t('Rotate CW (right)'),1,''),
+				'$rotate_ccw' => array('rotate', t('Rotate CCW (left)'),2,''),
 
 				'$nickname' => $a->data['user']['nickname'],
 				'$resource_id' => $ph[0]['resource-id'],
@@ -1898,7 +1904,9 @@ function photos_content(App $a) {
 		$a->set_pager_itemspage(20);
 	}
 
-	$r = qu("SELECT `resource-id`, `id`, `filename`, type, `album`, max(`scale`) AS `scale` FROM `photo`
+	$r = qu("SELECT `resource-id`, ANY_VALUE(`id`) AS `id`, ANY_VALUE(`filename`) AS `filename`,
+		ANY_VALUE(`type`) AS `type`, ANY_VALUE(`album`) AS `album`, max(`scale`) AS `scale`,
+		ANY_VALUE(`created`) AS `created` FROM `photo`
 		WHERE `uid` = %d AND `album` != '%s' AND `album` != '%s'
 		$sql_extra GROUP BY `resource-id` ORDER BY `created` DESC LIMIT %d , %d",
 		intval($a->data['user']['uid']),

@@ -1,10 +1,11 @@
 <?php
 
-use \Friendica\Core\Config;
+use Friendica\App;
+use Friendica\Core\Config;
 
 require_once("boot.php");
 
-$a = new App;
+$a = new App(dirname(__DIR__));
 @include(".htconfig.php");
 
 $lang = get_browser_language();
@@ -23,7 +24,7 @@ if ($argc > 1) {
 
 Config::set('system', 'maintenance', $maint_mode);
 
-if ($maint_mode AND ($argc > 2)) {
+if ($maint_mode && ($argc > 2)) {
 	$reason_arr = $argv;
 	array_shift($reason_arr);
 	array_shift($reason_arr);

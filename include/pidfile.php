@@ -8,7 +8,7 @@ class pidfile {
 
 		if (file_exists($this->_file)) {
 			$pid = trim(@file_get_contents($this->_file));
-			if (($pid != "") AND posix_kill($pid, 0)) {
+			if (($pid != "") && posix_kill($pid, 0)) {
 				$this->_running = true;
 			}
 		}
@@ -38,4 +38,3 @@ class pidfile {
 			return(posix_kill(file_get_contents($this->_file), SIGTERM));
 	}
 }
-?>

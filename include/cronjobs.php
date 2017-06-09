@@ -1,17 +1,19 @@
 <?php
-use \Friendica\Core\Config;
+
+use Friendica\App;
+use Friendica\Core\Config;
+use Friendica\Network\Probe;
 
 function cronjobs_run(&$argv, &$argc){
 	global $a;
 
-	require_once('include/datetime.php');
-	require_once('include/ostatus.php');
-	require_once('include/post_update.php');
-	require_once('mod/nodeinfo.php');
-	require_once('include/photos.php');
-	require_once('include/user.php');
-	require_once('include/socgraph.php');
-	require_once('include/Probe.php');
+	require_once 'include/datetime.php';
+	require_once 'include/ostatus.php';
+	require_once 'include/post_update.php';
+	require_once 'mod/nodeinfo.php';
+	require_once 'include/photos.php';
+	require_once 'include/user.php';
+	require_once 'include/socgraph.php';
 
 	// No parameter set? So return
 	if ($argc <= 1) {
@@ -108,12 +110,11 @@ function cron_expire_and_remove_users() {
 		AND `account_expires_on` > '%s'
 		AND `account_expires_on` < UTC_TIMESTAMP()", dbesc(NULL_DATE));
 
-	// delete user and contact records for recently removed accounts
+	// delete user records for recently removed accounts
 	$r = q("SELECT * FROM `user` WHERE `account_removed` AND `account_expires_on` < UTC_TIMESTAMP() - INTERVAL 3 DAY");
 	if (dbm::is_result($r)) {
 		foreach ($r as $user) {
-			q("DELETE FROM `contact` WHERE `uid` = %d", intval($user['uid']));
-			q("DELETE FROM `user` WHERE `uid` = %d", intval($user['uid']));
+			dba::delete('user', array('uid' => $user['uid']));
 		}
 	}
 }

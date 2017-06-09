@@ -44,7 +44,7 @@ function node2bbcodesub(&$doc, $oldnode, $attributes, $startbb, $endbb)
 
 			if (strpos('*'.$startbb, '$1') > 0) {
 
-				if ($replace and (@$attr[$attribute] != '')) {
+				if ($replace && (@$attr[$attribute] != '')) {
 
 					$startbb = preg_replace($value, $startbb, $attr[$attribute], -1, $count);
 
@@ -325,4 +325,3 @@ function html2bbcode($message)
 
 	return $message;
 }
-?>

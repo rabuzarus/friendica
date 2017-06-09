@@ -1,9 +1,10 @@
 <?php
 
-use \Friendica\Core\Config;
+use Friendica\Core\Config;
 
-require_once('include/socgraph.php');
-require_once('include/datetime.php');
+require_once 'include/probe.php';
+require_once 'include/socgraph.php';
+require_once 'include/datetime.php';
 
 function discover_poco_run(&$argv, &$argc) {
 
@@ -80,12 +81,12 @@ function discover_poco_run(&$argv, &$argc) {
 		logger($result, LOGGER_DEBUG);
 	} elseif ($mode == 3) {
 		update_suggestions();
-	} elseif (($mode == 2) AND get_config('system','poco_completion')) {
+	} elseif (($mode == 2) && get_config('system','poco_completion')) {
 		discover_users();
-	} elseif (($mode == 1) AND ($search != "") and get_config('system','poco_local_search')) {
+	} elseif (($mode == 1) && ($search != "") && get_config('system','poco_local_search')) {
 		discover_directory($search);
 		gs_search_user($search);
-	} elseif (($mode == 0) AND ($search == "") and (get_config('system','poco_discovery') > 0)) {
+	} elseif (($mode == 0) && ($search == "") && (get_config('system','poco_discovery') > 0)) {
 		// Query Friendica and Hubzilla servers for their users
 		poco_discover();
 
@@ -175,7 +176,7 @@ function discover_users() {
 			$server_url = $user["server_url"];
 		}
 
-		if ((($server_url == "") AND ($user["network"] == NETWORK_FEED)) OR $force_update OR poco_check_server($server_url, $user["network"])) {
+		if ((($server_url == "") && ($user["network"] == NETWORK_FEED)) || $force_update || poco_check_server($server_url, $user["network"])) {
 			logger('Check profile '.$user["url"]);
 			proc_run(PRIORITY_LOW, "include/discover_poco.php", "check_profile", base64_encode($user["url"]));
 
@@ -209,13 +210,13 @@ function discover_directory($search) {
 	$j = json_decode($x);
 
 	if (count($j->results)) {
-		foreach($j->results as $jj) {
+		foreach ($j->results as $jj) {
 			// Check if the contact already exists
 			$exists = q("SELECT `id`, `last_contact`, `last_failure`, `updated` FROM `gcontact` WHERE `nurl` = '%s'", normalise_link($jj->url));
-			if ($exists) {
+			if (dbm::is_result($exists)) {
 				logger("Profile ".$jj->url." already exists (".$search.")", LOGGER_DEBUG);
 
-				if (($exists[0]["last_contact"] < $exists[0]["last_failure"]) AND
+				if (($exists[0]["last_contact"] < $exists[0]["last_failure"]) &&
 					($exists[0]["updated"] < $exists[0]["last_failure"])) {
 					continue;
 				}
@@ -272,12 +273,16 @@ function gs_search_user($search) {
 	if (!$result["success"]) {
 		return false;
 	}
+
 	$contacts = json_decode($result["body"]);
 
 	if ($contacts->status == 'ERROR') {
 		return false;
 	}
-	foreach($contacts->data AS $user) {
+
+	/// @TODO AS is considered as a notation for constants (as they usually being written all upper-case)
+	/// @TODO find all those and convert to all lower-case which is a keyword then
+	foreach ($contacts->data AS $user) {
 		$contact = probe_url($user->site_address."/".$user->name);
 		if ($contact["network"] != NETWORK_PHANTOM) {
 			$contact["about"] = $user->description;

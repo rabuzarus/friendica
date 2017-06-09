@@ -1,10 +1,10 @@
 <?php
 
-use \Friendica\Core\Config;
+use Friendica\Core\Config;
 
-require_once('include/Scrape.php');
-require_once('include/socgraph.php');
-require_once('include/datetime.php');
+require_once 'include/probe.php';
+require_once 'include/socgraph.php';
+require_once 'include/datetime.php';
 
 function gprobe_run(&$argv, &$argc){
 	if ($argc != 2) {
@@ -33,11 +33,13 @@ function gprobe_run(&$argv, &$argc){
 
 		$arr = probe_url($url);
 
-		if (is_null($result))
+		if (is_null($result)) {
 			Cache::set("gprobe:".$urlparts["host"], $arr);
+		}
 
-		if (!in_array($arr["network"], array(NETWORK_FEED, NETWORK_PHANTOM)))
+		if (!in_array($arr["network"], array(NETWORK_FEED, NETWORK_PHANTOM))) {
 			update_gcontact($arr);
+		}
 
 		$r = q("SELECT `id`, `url`, `network` FROM `gcontact` WHERE `nurl` = '%s' ORDER BY `id` LIMIT 1",
 			dbesc(normalise_link($url))
@@ -45,7 +47,7 @@ function gprobe_run(&$argv, &$argc){
 	}
 	if (dbm::is_result($r)) {
 		// Check for accessibility and do a poco discovery
-		if (poco_last_updated($r[0]['url'], true) AND ($r[0]["network"] == NETWORK_DFRN))
+		if (poco_last_updated($r[0]['url'], true) && ($r[0]["network"] == NETWORK_DFRN))
 			poco_load(0,0,$r[0]['id'], str_replace('/profile/','/poco/',$r[0]['url']));
 	}
 

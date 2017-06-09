@@ -7,6 +7,8 @@
  * https://github.com/friendica/friendica/blob/master/spec/dfrn2.pdf
  */
 
+use Friendica\App;
+
 require_once("include/Contact.php");
 require_once("include/ostatus.php");
 require_once("include/enotify.php");
@@ -243,7 +245,7 @@ class dfrn {
 		/// @TODO This hook can't work anymore
 		//	call_hooks('atom_feed', $atom);
 
-		if (!dbm::is_result($items) OR $onlyheader) {
+		if (!dbm::is_result($items) || $onlyheader) {
 			$atom = trim($doc->saveXML());
 
 			call_hooks('atom_feed_end', $atom);
@@ -279,6 +281,62 @@ class dfrn {
 
 		call_hooks('atom_feed_end', $atom);
 
+		return $atom;
+	}
+
+	/**
+	 * @brief Generate an atom entry for a given item id
+	 *
+	 * @param int $item_id The item id
+	 *
+	 * @return string DFRN feed entry
+	 */
+	public static function itemFeed($item_id) {
+		$r = q("SELECT `item`.*, `item`.`id` AS `item_id`,
+			`contact`.`name`, `contact`.`network`, `contact`.`photo`, `contact`.`url`,
+			`contact`.`name-date`, `contact`.`uri-date`, `contact`.`avatar-date`,
+			`contact`.`thumb`, `contact`.`dfrn-id`, `contact`.`self`,
+			`sign`.`signed_text`, `sign`.`signature`, `sign`.`signer`
+			FROM `item`
+			STRAIGHT_JOIN `contact` ON `contact`.`id` = `item`.`contact-id`
+				AND (NOT `contact`.`blocked` OR `contact`.`pending`)
+			LEFT JOIN `sign` ON `sign`.`iid` = `item`.`id`
+			WHERE `item`.`id` = %d AND `item`.`visible` AND NOT `item`.`moderated` AND `item`.`parent` != 0
+			AND `item`.`wall` AND NOT `item`.`private`",
+			intval($item_id)
+		);
+
+		if (!dbm::is_result($r)) {
+			killme();
+		}
+
+		$item = $r[0];
+
+		$r = q("SELECT `contact`.*, `user`.`nickname`, `user`.`timezone`, `user`.`page-flags`, `user`.`account-type`
+			FROM `contact` INNER JOIN `user` ON `user`.`uid` = `contact`.`uid`
+			WHERE `contact`.`self` AND `user`.`uid` = %d LIMIT 1",
+			intval($item['uid'])
+		);
+
+		if (!dbm::is_result($r)) {
+			killme();
+		}
+
+		$owner = $r[0];
+
+		$doc = new DOMDocument('1.0', 'utf-8');
+		$doc->formatOutput = true;
+
+		$alternatelink = $owner['url'];
+
+		$root = self::add_header($doc, $owner, 'dfrn:owner', $alternatelink, true);
+
+		$type = 'html';
+
+		$entry = self::entry($doc, $type, $item, $owner, true);
+		$root->appendChild($entry);
+
+		$atom = trim($doc->saveXML());
 		return $atom;
 	}
 
@@ -370,7 +428,7 @@ class dfrn {
 		$ext = Photo::supportedTypes();
 
 		foreach ($rp as $p) {
-			$photos[$p['scale']] = app::get_baseurl().'/photo/'.$p['resource-id'].'-'.$p['scale'].'.'.$ext[$p['type']];
+			$photos[$p['scale']] = App::get_baseurl().'/photo/'.$p['resource-id'].'-'.$p['scale'].'.'.$ext[$p['type']];
 		}
 
 		unset($rp, $ext);
@@ -431,7 +489,7 @@ class dfrn {
 		$root->setAttribute("xmlns:ostatus", NAMESPACE_OSTATUS);
 		$root->setAttribute("xmlns:statusnet", NAMESPACE_STATUSNET);
 
-		xml::add_element($doc, $root, "id", app::get_baseurl()."/profile/".$owner["nick"]);
+		xml::add_element($doc, $root, "id", App::get_baseurl()."/profile/".$owner["nick"]);
 		xml::add_element($doc, $root, "title", $owner["name"]);
 
 		$attributes = array("uri" => "https://friendi.ca", "version" => FRIENDICA_VERSION."-".DB_UPDATE_VERSION);
@@ -448,13 +506,13 @@ class dfrn {
 			// DFRN itself doesn't uses this. But maybe someone else wants to subscribe to the public feed.
 			ostatus::hublinks($doc, $root);
 
-			$attributes = array("rel" => "salmon", "href" => app::get_baseurl()."/salmon/".$owner["nick"]);
+			$attributes = array("rel" => "salmon", "href" => App::get_baseurl()."/salmon/".$owner["nick"]);
 			xml::add_element($doc, $root, "link", "", $attributes);
 
-			$attributes = array("rel" => "http://salmon-protocol.org/ns/salmon-replies", "href" => app::get_baseurl()."/salmon/".$owner["nick"]);
+			$attributes = array("rel" => "http://salmon-protocol.org/ns/salmon-replies", "href" => App::get_baseurl()."/salmon/".$owner["nick"]);
 			xml::add_element($doc, $root, "link", "", $attributes);
 
-			$attributes = array("rel" => "http://salmon-protocol.org/ns/salmon-mention", "href" => app::get_baseurl()."/salmon/".$owner["nick"]);
+			$attributes = array("rel" => "http://salmon-protocol.org/ns/salmon-mention", "href" => App::get_baseurl()."/salmon/".$owner["nick"]);
 			xml::add_element($doc, $root, "link", "", $attributes);
 		}
 
@@ -506,18 +564,18 @@ class dfrn {
 
 		$attributes = array();
 
-		if (!$public OR !$hidewall) {
+		if (!$public || !$hidewall) {
 			$attributes = array("dfrn:updated" => $namdate);
 		}
 
 		xml::add_element($doc, $author, "name", $owner["name"], $attributes);
-		xml::add_element($doc, $author, "uri", app::get_baseurl().'/profile/'.$owner["nickname"], $attributes);
+		xml::add_element($doc, $author, "uri", App::get_baseurl().'/profile/'.$owner["nickname"], $attributes);
 		xml::add_element($doc, $author, "dfrn:handle", $owner["addr"], $attributes);
 
 		$attributes = array("rel" => "photo", "type" => "image/jpeg",
 					"media:width" => 175, "media:height" => 175, "href" => $owner['photo']);
 
-		if (!$public OR !$hidewall) {
+		if (!$public || !$hidewall) {
 			$attributes["dfrn:updated"] = $picdate;
 		}
 
@@ -554,8 +612,9 @@ class dfrn {
 			xml::add_element($doc, $author, "poco:displayName", $profile["name"]);
 			xml::add_element($doc, $author, "poco:updated", $namdate);
 
-			if (trim($profile["dob"]) != "0000-00-00")
+			if (trim($profile["dob"]) > '0001-01-01') {
 				xml::add_element($doc, $author, "poco:birthday", "0000-".date("m-d", strtotime($profile["dob"])));
+			}
 
 			xml::add_element($doc, $author, "poco:note", $profile["about"]);
 			xml::add_element($doc, $author, "poco:preferredUsername", $profile["nickname"]);
@@ -811,10 +870,32 @@ class dfrn {
 			$parent = q("SELECT `guid` FROM `item` WHERE `id` = %d", intval($item["parent"]));
 			$parent_item = (($item['thr-parent']) ? $item['thr-parent'] : $item['parent-uri']);
 			$attributes = array("ref" => $parent_item, "type" => "text/html",
-						"href" => app::get_baseurl().'/display/'.$parent[0]['guid'],
+						"href" => App::get_baseurl().'/display/'.$parent[0]['guid'],
 						"dfrn:diaspora_guid" => $parent[0]['guid']);
 			xml::add_element($doc, $entry, "thr:in-reply-to", "", $attributes);
 		}
+
+		// Add conversation data. This is used for OStatus
+		$conversation_href = App::get_baseurl()."/display/".$owner["nick"]."/".$item["parent"];
+		$conversation_uri = $conversation_href;
+
+		if (isset($parent_item)) {
+			$r = dba::fetch_first("SELECT `conversation-uri`, `conversation-href` FROM `conversation` WHERE `item-uri` = ?", $item['parent-uri']);
+			if (dbm::is_result($r)) {
+				if ($r['conversation-uri'] != '') {
+					$conversation_uri = $r['conversation-uri'];
+				}
+				if ($r['conversation-href'] != '') {
+					$conversation_href = $r['conversation-href'];
+				}
+			}
+		}
+
+		$attributes = array(
+				"href" => $conversation_href,
+				"ref" => $conversation_uri);
+
+		xml::add_element($doc, $entry, "ostatus:conversation", $conversation_uri, $attributes);
 
 		xml::add_element($doc, $entry, "id", $item["uri"]);
 		xml::add_element($doc, $entry, "title", $item["title"]);
@@ -831,7 +912,7 @@ class dfrn {
 
 		// We save this value in "plink". Maybe we should read it from there as well?
 		xml::add_element($doc, $entry, "link", "", array("rel" => "alternate", "type" => "text/html",
-								"href" => app::get_baseurl()."/display/".$item["guid"]));
+								"href" => App::get_baseurl()."/display/".$item["guid"]));
 
 		// "comment-allow" is some old fashioned stuff for old Friendica versions.
 		// It is included in the rewritten code for completeness
@@ -867,7 +948,7 @@ class dfrn {
 
 		// The signed text contains the content in Markdown, the sender handle and the signatur for the content
 		// It is needed for relayed comments to Diaspora.
-		if($item['signed_text']) {
+		if ($item['signed_text']) {
 			$sign = base64_encode(json_encode(array('signed_text' => $item['signed_text'],'signature' => $item['signature'],'signer' => $item['signer'])));
 			xml::add_element($doc, $entry, "dfrn:diaspora_signature", $sign);
 		}
@@ -896,7 +977,7 @@ class dfrn {
 
 		if (count($tags)) {
 			foreach ($tags as $t) {
-				if (($type != 'html') OR ($t[0] != "@")) {
+				if (($type != 'html') || ($t[0] != "@")) {
 					xml::add_element($doc, $entry, "category", "", array("scheme" => "X-DFRN:".$t[0].":".$t[1], "term" => $t[2]));
 				}
 			}
@@ -915,7 +996,7 @@ class dfrn {
 				intval($owner["uid"]),
 				dbesc(normalise_link($mention)));
 
-			if (dbm::is_result($r) AND ($r[0]["forum"] OR $r[0]["prv"])) {
+			if (dbm::is_result($r) && ($r[0]["forum"] || $r[0]["prv"])) {
 				xml::add_element($doc, $entry, "link", "", array("rel" => "mentioned",
 											"ostatus:object-type" => ACTIVITY_OBJ_GROUP,
 											"href" => $mention));
@@ -1287,7 +1368,7 @@ class dfrn {
 			$href = "";
 			$width = 0;
 			foreach ($avatar->attributes AS $attributes) {
-				/// @TODO Rewrite these similar if() to one switch
+				/// @TODO Rewrite these similar if () to one switch
 				if ($attributes->name == "href") {
 					$href = $attributes->textContent;
 				}
@@ -1298,7 +1379,7 @@ class dfrn {
 					$contact["avatar-date"] = $attributes->textContent;
 				}
 			}
-			if (($width > 0) AND ($href != "")) {
+			if (($width > 0) && ($href != "")) {
 				$avatarlist[$width] = $href;
 			}
 		}
@@ -1307,7 +1388,7 @@ class dfrn {
 			$author["avatar"] = current($avatarlist);
 		}
 
-		if (dbm::is_result($r) AND !$onlyfetch) {
+		if (dbm::is_result($r) && !$onlyfetch) {
 			logger("Check if contact details for contact " . $r[0]["id"] . " (" . $r[0]["nick"] . ") have to be updated.", LOGGER_DEBUG);
 
 			$poco = array("url" => $contact["url"]);
@@ -1402,7 +1483,7 @@ class dfrn {
 			// "poco:birthday" is the birthday in the format "yyyy-mm-dd"
 			$value = $xpath->evaluate($element . "/poco:birthday/text()", $context)->item(0)->nodeValue;
 
-			if (!in_array($value, array("", "0000-00-00"))) {
+			if (!in_array($value, array("", "0000-00-00", "0001-01-01"))) {
 				$bdyear = date("Y");
 				$value = str_replace("0000", $bdyear, $value);
 
@@ -1459,7 +1540,7 @@ class dfrn {
 					dbesc($contact["name"]), dbesc($contact["nick"]), dbesc($contact["about"]), dbesc($contact["location"]),
 					dbesc($contact["addr"]), dbesc($contact["keywords"]), dbesc($contact["bdyear"]),
 					dbesc($contact["bd"]), intval($contact["hidden"]), dbesc($contact["xmpp"]),
-					dbesc($contact["name-date"]), dbesc($contact["uri-date"]),
+					dbesc(dbm::date($contact["name-date"])), dbesc(dbm::date($contact["uri-date"])),
 					intval($contact["id"]), dbesc($contact["network"]));
 			}
 
@@ -1749,7 +1830,7 @@ class dfrn {
 		$relocate["poll"] = $xpath->query("dfrn:poll/text()", $relocation)->item(0)->nodeValue;
 		$relocate["sitepubkey"] = $xpath->query("dfrn:sitepubkey/text()", $relocation)->item(0)->nodeValue;
 
-		if (($relocate["avatar"] == "") AND ($relocate["photo"] != "")) {
+		if (($relocate["avatar"] == "") && ($relocate["photo"] != "")) {
 			$relocate["avatar"] = $relocate["photo"];
 		}
 
@@ -1897,7 +1978,7 @@ class dfrn {
 		}
 
 		// update last-child if it changes
-		if ($item["last-child"] AND ($item["last-child"] != $current["last-child"])) {
+		if ($item["last-child"] && ($item["last-child"] != $current["last-child"])) {
 			$r = q("UPDATE `item` SET `last-child` = 0, `changed` = '%s' WHERE `parent-uri` = '%s' AND `uid` = %d",
 				dbesc(datetime_convert()),
 				dbesc($item["parent-uri"]),
@@ -2164,7 +2245,7 @@ class dfrn {
 		$title = "";
 		foreach ($links AS $link) {
 			foreach ($link->attributes AS $attributes) {
-				/// @TODO Rewrite these repeated (same) if() statements to a switch()
+				/// @TODO Rewrite these repeated (same) if () statements to a switch()
 				if ($attributes->name == "href") {
 					$href = $attributes->textContent;
 				}
@@ -2181,7 +2262,7 @@ class dfrn {
 					$title = $attributes->textContent;
 				}
 			}
-			if (($rel != "") AND ($href != "")) {
+			if (($rel != "") && ($href != "")) {
 				switch ($rel) {
 					case "alternate":
 						$item["plink"] = $href;
@@ -2208,11 +2289,15 @@ class dfrn {
 	 * @param array $importer Record of the importer user mixed with contact of the content
 	 * @todo Add type-hints
 	 */
-	private static function process_entry($header, $xpath, $entry, $importer) {
+	private static function process_entry($header, $xpath, $entry, $importer, $xml) {
 
 		logger("Processing entries");
 
 		$item = $header;
+
+		$item["protocol"] = PROTOCOL_DFRN;
+
+		$item["source"] = $xml;
 
 		// Get the uri
 		$item["uri"] = $xpath->query("atom:id/text()", $entry)->item(0)->nodeValue;
@@ -2225,7 +2310,7 @@ class dfrn {
 		);
 
 		// Is there an existing item?
-		if (dbm::is_result($current) AND edited_timestamp_is_newer($current[0], $item) AND
+		if (dbm::is_result($current) && edited_timestamp_is_newer($current[0], $item) &&
 			(datetime_convert("UTC","UTC",$item["edited"]) < $current[0]["edited"])) {
 			logger("Item ".$item["uri"]." already existed.", LOGGER_DEBUG);
 			return;
@@ -2299,7 +2384,7 @@ class dfrn {
 		}
 
 		$notice_info = $xpath->query("statusnet:notice_info", $entry);
-		if ($notice_info AND ($notice_info->length > 0)) {
+		if ($notice_info && ($notice_info->length > 0)) {
 			foreach ($notice_info->item(0)->attributes AS $attributes) {
 				if ($attributes->name == "source") {
 					$item["app"] = strip_tags($attributes->textContent);
@@ -2349,9 +2434,9 @@ class dfrn {
 					}
 				}
 
-				if (($term != "") AND ($scheme != "")) {
+				if (($term != "") && ($scheme != "")) {
 					$parts = explode(":", $scheme);
-					if ((count($parts) >= 4) AND (array_shift($parts) == "X-DFRN")) {
+					if ((count($parts) >= 4) && (array_shift($parts) == "X-DFRN")) {
 						$termhash = array_shift($parts);
 						$termurl = implode(":", $parts);
 
@@ -2370,6 +2455,20 @@ class dfrn {
 		$links = $xpath->query("atom:link", $entry);
 		if ($links) {
 			self::parse_links($links, $item);
+		}
+
+		$item['conversation-uri'] = $xpath->query('ostatus:conversation/text()', $entry)->item(0)->nodeValue;
+
+		$conv = $xpath->query('ostatus:conversation', $entry);
+		if (is_object($conv->item(0))) {
+			foreach ($conv->item(0)->attributes AS $attributes) {
+				if ($attributes->name == "ref") {
+					$item['conversation-uri'] = $attributes->textContent;
+				}
+				if ($attributes->name == "href") {
+					$item['conversation-href'] = $attributes->textContent;
+				}
+			}
 		}
 
 		// Is it a reply or a top level posting?
@@ -2397,7 +2496,7 @@ class dfrn {
 				$item["contact-id"] = $owner["contact-id"];
 			}
 
-			if (($item["network"] != $owner["network"]) AND ($owner["network"] != "")) {
+			if (($item["network"] != $owner["network"]) && ($owner["network"] != "")) {
 				$item["network"] = $owner["network"];
 			}
 
@@ -2405,7 +2504,7 @@ class dfrn {
 				$item["contact-id"] = $author["contact-id"];
 			}
 
-			if (($item["network"] != $author["network"]) AND ($author["network"] != "")) {
+			if (($item["network"] != $author["network"]) && ($author["network"] != "")) {
 				$item["network"] = $author["network"];
 			}
 
@@ -2414,7 +2513,7 @@ class dfrn {
 			// When activated, forums don't work.
 			// And: Why should we disallow commenting by followers?
 			// the behaviour is now similar to the Diaspora part.
-			//if($importer["rel"] == CONTACT_IS_FOLLOWER) {
+			//if ($importer["rel"] == CONTACT_IS_FOLLOWER) {
 			//	logger("Contact ".$importer["id"]." is only follower. Quitting", LOGGER_DEBUG);
 			//	return;
 			//}
@@ -2505,7 +2604,7 @@ class dfrn {
 					);
 				}
 
-				if ($posted_id AND $parent AND ($entrytype == DFRN_REPLY_RC)) {
+				if ($posted_id && $parent && ($entrytype == DFRN_REPLY_RC)) {
 					logger("Notifying followers about comment ".$posted_id, LOGGER_DEBUG);
 					proc_run(PRIORITY_HIGH, "include/notifier.php", "comment-import", $posted_id);
 				}
@@ -2539,7 +2638,7 @@ class dfrn {
 
 			logger("Item was stored with id ".$posted_id, LOGGER_DEBUG);
 
-			if(stristr($item["verb"],ACTIVITY_POKE))
+			if (stristr($item["verb"],ACTIVITY_POKE))
 				self::do_poke($item, $importer, $posted_id);
 		}
 	}
@@ -2570,7 +2669,7 @@ class dfrn {
 			$when = datetime_convert("UTC", "UTC", "now", "Y-m-d H:i:s");
 		}
 
-		if (!$uri OR !$importer["id"]) {
+		if (!$uri || !$importer["id"]) {
 			return false;
 		}
 
@@ -2666,7 +2765,7 @@ class dfrn {
 				create_tags_from_itemuri($uri, $importer["uid"]);
 				create_files_from_itemuri($uri, $importer["uid"]);
 				update_thread_uri($uri, $importer["importer_uid"]);
-				if($item["last-child"]) {
+				if ($item["last-child"]) {
 					// ensure that last-child is set in case the comment that had it just got wiped.
 					q("UPDATE `item` SET `last-child` = 0, `changed` = '%s' WHERE `parent-uri` = '%s' AND `uid` = %d ",
 						dbesc(datetime_convert()),
@@ -2800,7 +2899,7 @@ class dfrn {
 		if (!$sort_by_date) {
 			$entries = $xpath->query("/atom:feed/atom:entry");
 			foreach ($entries AS $entry) {
-				self::process_entry($header, $xpath, $entry, $importer);
+				self::process_entry($header, $xpath, $entry, $importer, $xml);
 			}
 		} else {
 			$newentries = array();
@@ -2814,7 +2913,7 @@ class dfrn {
 			ksort($newentries);
 
 			foreach ($newentries AS $entry) {
-				self::process_entry($header, $xpath, $entry, $importer);
+				self::process_entry($header, $xpath, $entry, $importer, $xml);
 			}
 		}
 		logger("Import done for user " . $importer["uid"] . " from contact " . $importer["id"], LOGGER_DEBUG);

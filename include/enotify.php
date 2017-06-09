@@ -1,4 +1,7 @@
 <?php
+
+use Friendica\App;
+
 require_once('include/Emailer.php');
 require_once('include/email.php');
 require_once('include/bbcode.php');
@@ -96,7 +99,7 @@ function notification($params) {
 			intval($parent_id),
 			intval($params['uid'])
 		);
-		if ($p AND count($p) AND ($p[0]["ignored"])) {
+		if ($p && count($p) && ($p[0]["ignored"])) {
 			logger("Thread ".$parent_id." will be ignored", LOGGER_DEBUG);
 			return;
 		}
@@ -112,7 +115,7 @@ function notification($params) {
 			dbesc($params['link']),
 			intval($params['uid'])
 		);
-		if ($p and count($p)) {
+		if ($p && count($p)) {
 			pop_lang();
 			return;
 		}
@@ -411,10 +414,12 @@ function notification($params) {
 			$hash = random_string();
 			$r = q("SELECT `id` FROM `notify` WHERE `hash` = '%s' LIMIT 1",
 				dbesc($hash));
-			if (dbm::is_result($r))
+			if (dbm::is_result($r)) {
 				$dups = true;
-		} while($dups == true);
+			}
+		} while ($dups == true);
 
+		/// @TODO One statement is enough
 		$datarray = array();
 		$datarray['hash']  = $hash;
 		$datarray['name']  = $params['source_name'];
@@ -480,9 +485,7 @@ function notification($params) {
 		);
 		if ($p && (count($p) > 1)) {
 			for ($d = 1; $d < count($p); $d ++) {
-				q("DELETE FROM `notify` WHERE `id` = %d",
-					intval($p[$d]['id'])
-				);
+				dba::delete('notify', array('id' => $p[$d]['id']));
 			}
 
 			// only continue on if we stored the first one
@@ -512,7 +515,7 @@ function notification($params) {
 
 		logger('sending notification email');
 
-		if (isset($params['parent']) AND (intval($params['parent']) != 0)) {
+		if (isset($params['parent']) && (intval($params['parent']) != 0)) {
 			$id_for_parent = $params['parent']."@".$hostname;
 
 			// Is this the first email notification for this parent item and user?
@@ -673,7 +676,7 @@ function check_item_notification($itemid, $uid, $defaulttype = "") {
 		// Check for invalid profile urls. 13 should be the shortest possible profile length:
 		// http://a.bc/d
 		// Additionally check for invalid urls that would return the normalised value "http:"
-		if ((strlen($profile) >= 13) AND (normalise_link($profile) != "http:")) {
+		if ((strlen($profile) >= 13) && (normalise_link($profile) != "http:")) {
 			if (!in_array($profile, $profiles2))
 				$profiles2[] = $profile;
 
@@ -757,11 +760,11 @@ function check_item_notification($itemid, $uid, $defaulttype = "") {
 	$tagged = false;
 
 	foreach ($profiles AS $profile) {
-		if (strpos($item[0]["tag"], "=".$profile."]") OR strpos($item[0]["body"], "=".$profile."]"))
+		if (strpos($item[0]["tag"], "=".$profile."]") || strpos($item[0]["body"], "=".$profile."]"))
 			$tagged = true;
 	}
 
-	if ($item[0]["mention"] OR $tagged OR ($defaulttype == NOTIFY_TAGSELF)) {
+	if ($item[0]["mention"] || $tagged || ($defaulttype == NOTIFY_TAGSELF)) {
 		$params["type"] = NOTIFY_TAGSELF;
 		$params["verb"] = ACTIVITY_TAG;
 	}
@@ -773,7 +776,7 @@ function check_item_notification($itemid, $uid, $defaulttype = "") {
 			LIMIT 1",
 			intval($item[0]["parent"]), intval($uid));
 
-	if ($parent AND !isset($params["type"])) {
+	if ($parent && !isset($params["type"])) {
 		$params["type"] = NOTIFY_COMMENT;
 		$params["verb"] = ACTIVITY_POST;
 	}

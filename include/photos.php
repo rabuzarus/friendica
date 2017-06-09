@@ -4,15 +4,15 @@
  * @brief Functions related to photo handling.
  */
 
-use \Friendica\Core\Config;
-use \Friendica\Core\PConfig;
+use Friendica\Core\Config;
+use Friendica\Core\PConfig;
 
 function getGps($exifCoord, $hemi) {
 	$degrees = count($exifCoord) > 0 ? gps2Num($exifCoord[0]) : 0;
 	$minutes = count($exifCoord) > 1 ? gps2Num($exifCoord[1]) : 0;
 	$seconds = count($exifCoord) > 2 ? gps2Num($exifCoord[2]) : 0;
 
-	$flip = ($hemi == 'W' or $hemi == 'S') ? -1 : 1;
+	$flip = ($hemi == 'W' || $hemi == 'S') ? -1 : 1;
 
 	return floatval($flip * ($degrees + ($minutes / 60) + ($seconds / 3600)));
 }
@@ -44,11 +44,11 @@ function photo_albums($uid, $update = false) {
 
 	$key = "photo_albums:".$uid.":".local_user().":".remote_user();
 	$albums = Cache::get($key);
-	if (is_null($albums) OR $update) {
+	if (is_null($albums) || $update) {
 		if (!Config::get('system', 'no_count', false)) {
 			/// @todo This query needs to be renewed. It is really slow
 			// At this time we just store the data in the cache
-			$albums = qu("SELECT COUNT(DISTINCT `resource-id`) AS `total`, `album`
+			$albums = qu("SELECT COUNT(DISTINCT `resource-id`) AS `total`, `album`, ANY_VALUE(`created`) AS `created`
 				FROM `photo`
 				WHERE `uid` = %d  AND `album` != '%s' AND `album` != '%s' $sql_extra
 				GROUP BY `album` ORDER BY `created` DESC",
@@ -59,9 +59,8 @@ function photo_albums($uid, $update = false) {
 		} else {
 			// This query doesn't do the count and is much faster
 			$albums = qu("SELECT DISTINCT(`album`), '' AS `total`
-				FROM `photo`
-				WHERE `uid` = %d  AND `album` != '%s' AND `album` != '%s' $sql_extra
-				GROUP BY `album` ORDER BY `created` DESC",
+				FROM `photo` USE INDEX (`uid_album_scale_created`)
+				WHERE `uid` = %d  AND `album` != '%s' AND `album` != '%s' $sql_extra",
 				intval($uid),
 				dbesc('Contact Photos'),
 				dbesc(t('Contact Photos'))

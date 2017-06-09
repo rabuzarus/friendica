@@ -55,7 +55,7 @@ function feed_import($xml,$importer,&$contact, &$hub, $simulate = false) {
 	if ($xpath->query('/atom:feed')->length > 0) {
 		$alternate = $xpath->query("atom:link[@rel='alternate']")->item(0)->attributes;
 		if (is_object($alternate)) {
-			foreach($alternate AS $attributes) {
+			foreach ($alternate AS $attributes) {
 				if ($attributes->name == "href") {
 					$author["author-link"] = $attributes->textContent;
 				}
@@ -68,7 +68,7 @@ function feed_import($xml,$importer,&$contact, &$hub, $simulate = false) {
 		if ($author["author-link"] == "") {
 			$self = $xpath->query("atom:link[@rel='self']")->item(0)->attributes;
 			if (is_object($self)) {
-				foreach($self AS $attributes) {
+				foreach ($self AS $attributes) {
 					if ($attributes->name == "href") {
 						$author["author-link"] = $attributes->textContent;
 					}
@@ -163,7 +163,7 @@ function feed_import($xml,$importer,&$contact, &$hub, $simulate = false) {
 
 	$header["contact-id"] = $contact["id"];
 
-	if(!strlen($contact["notify"])) {
+	if (!strlen($contact["notify"])) {
 		// one way feed - no remote comment ability
 		$header["last-child"] = 0;
 	}
@@ -188,7 +188,7 @@ function feed_import($xml,$importer,&$contact, &$hub, $simulate = false) {
 			$alternate = $xpath->query("atom:link", $entry)->item(0)->attributes;
 		}
 		if (is_object($alternate)) {
-			foreach($alternate AS $attributes) {
+			foreach ($alternate AS $attributes) {
 				if ($attributes->name == "href") {
 					$item["plink"] = $attributes->textContent;
 				}
@@ -200,7 +200,6 @@ function feed_import($xml,$importer,&$contact, &$hub, $simulate = false) {
 		if ($item["plink"] == "") {
 			$item["plink"] = $xpath->evaluate('rss:link/text()', $entry)->item(0)->nodeValue;
 		}
-		$item["plink"] = original_url($item["plink"]);
 
 		$item["uri"] = $xpath->evaluate('atom:id/text()', $entry)->item(0)->nodeValue;
 
@@ -210,12 +209,17 @@ function feed_import($xml,$importer,&$contact, &$hub, $simulate = false) {
 		if ($item["uri"] == "") {
 			$item["uri"] = $item["plink"];
 		}
+
+		$orig_plink = $item["plink"];
+
+		$item["plink"] = original_url($item["plink"]);
+
 		$item["parent-uri"] = $item["uri"];
 
 		if (!$simulate) {
 			$r = q("SELECT `id` FROM `item` WHERE `uid` = %d AND `uri` = '%s' AND `network` IN ('%s', '%s')",
 				intval($importer["uid"]), dbesc($item["uri"]), dbesc(NETWORK_FEED), dbesc(NETWORK_DFRN));
-			if ($r) {
+			if (dbm::is_result($r)) {
 				logger("Item with uri ".$item["uri"]." for user ".$importer["uid"]." already existed under id ".$r[0]["id"], LOGGER_DEBUG);
 				continue;
 			}
@@ -267,6 +271,7 @@ function feed_import($xml,$importer,&$contact, &$hub, $simulate = false) {
 		if ($creator != "") {
 			$item["author-name"] = $creator;
 		}
+
 		/// @TODO ?
 		// <category>Ausland</category>
 		// <media:thumbnail width="152" height="76" url="http://www.taz.de/picture/667875/192/14388767.jpg"/>
@@ -280,7 +285,7 @@ function feed_import($xml,$importer,&$contact, &$hub, $simulate = false) {
 			$type = "";
 			$title = "";
 
-			foreach($enclosure->attributes AS $attributes) {
+			foreach ($enclosure->attributes AS $attributes) {
 				if ($attributes->name == "url") {
 					$href = $attributes->textContent;
 				} elseif ($attributes->name == "length") {
@@ -289,8 +294,9 @@ function feed_import($xml,$importer,&$contact, &$hub, $simulate = false) {
 					$type = $attributes->textContent;
 				}
 			}
-			if(strlen($item["attach"]))
+			if (strlen($item["attach"])) {
 				$item["attach"] .= ',';
+			}
 
 			$attachments[] = array("link" => $href, "type" => $type, "length" => $length);
 
@@ -340,6 +346,7 @@ function feed_import($xml,$importer,&$contact, &$hub, $simulate = false) {
 			// Distributed items should have a well formatted URI.
 			// Additionally we have to avoid conflicts with identical URI between imported feeds and these items.
 			if ($notify) {
+				$item['guid'] = uri_to_guid($orig_plink, $a->get_hostname());
 				unset($item['uri']);
 				unset($item['parent-uri']);
 			}
@@ -359,4 +366,3 @@ function feed_import($xml,$importer,&$contact, &$hub, $simulate = false) {
 		return array("header" => $author, "items" => $items);
 	}
 }
-?>

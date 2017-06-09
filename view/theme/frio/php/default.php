@@ -15,19 +15,41 @@
 <head>
 	<title><?php if(x($page,'title')) echo $page['title'] ?></title>
 	<meta request="<?php echo htmlspecialchars($_REQUEST['pagename']) ?>">
-	<script>var baseurl="<?php echo App::get_baseurl() ?>";</script>
+	<script>var baseurl="<?php echo Friendica\App::get_baseurl() ?>";</script>
 	<script>var frio="<?php echo "view/theme/frio"; ?>";</script>
-	<?php $baseurl = App::get_baseurl(); ?>
+	<?php $baseurl = Friendica\App::get_baseurl(); ?>
 	<?php $frio = "view/theme/frio"; ?>
-	<?php 
+	<?php
 		// Because we use minimal for modals the header and the included js stuff should be only loaded
 		// if the page is an standard page (so we don't have it twice for modals)
-		// 
+		//
 		/// @todo Think about to move js stuff in the footer
 		if(!$minimal) {
 			if(x($page,'htmlhead')) echo $page['htmlhead'];
 		}
 	?>
+	<?php
+		// Add the theme color meta
+		// It makes mobile Chrome UI match Frio's top bar color.
+		$uid = $a->profile_uid;
+		if (is_null($uid)) {
+			$uid = get_theme_uid();
+		}
+		$schema = get_pconfig($uid, 'frio', 'schema');
+		if (($schema) && ($schema != '---')) {
+			if (file_exists('view/theme/frio/schema/'.$schema.'.php')) {
+				$schemefile = 'view/theme/frio/schema/'.$schema.'.php';
+				require_once($schemefile);
+			}
+		} else {
+			$nav_bg = get_pconfig($uid, 'frio', 'nav_bg');
+		}
+		if (!$nav_bg) {
+			$nav_bg = "#708fa0";
+		}
+		echo '<meta name="theme-color" content="'.$nav_bg.'" />';
+	?>
+
 </head>
 <?php
 if(($_SERVER['REQUEST_URI'] != "/register") && ($_SERVER['REQUEST_URI'] != "/lostpass") && ($_SERVER['REQUEST_URI'] != "/login"))

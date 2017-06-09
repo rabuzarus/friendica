@@ -1,5 +1,7 @@
 <?php
-use \Friendica\Core\Config;
+
+use Friendica\App;
+use Friendica\Core\Config;
 
 require_once('include/items.php');
 require_once('include/ostatus.php');
@@ -15,7 +17,7 @@ function pubsubpublish_run(&$argv, &$argc){
 
 		foreach ($r as $rr) {
 			logger("Publish feed to ".$rr["callback_url"], LOGGER_DEBUG);
-			proc_run(PRIORITY_HIGH, 'include/pubsubpublish.php', $rr["id"]);
+			proc_run(array('priority' => PRIORITY_HIGH, 'dont_fork' => true), 'include/pubsubpublish.php', $rr["id"]);
 		}
 	}
 
@@ -28,10 +30,14 @@ function handle_pubsubhubbub($id) {
 	global $a;
 
 	$r = q("SELECT * FROM `push_subscriber` WHERE `id` = %d", intval($id));
-	if (!$r)
+	if (!dbm::is_result($r)) {
 		return;
-	else
-		$rr = $r[0];
+	}
+
+	$rr = $r[0];
+
+	/// @todo Check server status with poco_check_server()
+	// Before this can be done we need a way to safely detect the server url.
 
 	logger("Generate feed of user ".$rr['nickname']." to ".$rr['callback_url']." - last updated ".$rr['last_update'], LOGGER_DEBUG);
 

@@ -1,4 +1,7 @@
 <?php
+
+use Friendica\App;
+
 function network_init(App $a) {
 	if (! local_user()) {
 		notice( t('Permission denied.') . EOL);
@@ -395,7 +398,7 @@ function network_content(App $a, $update = 0) {
 	}
 	set_pconfig(local_user(), 'network.view', 'net.selected', ($nets ? $nets : 'all'));
 
-	if(!$update AND !$rawmode) {
+	if(!$update && !$rawmode) {
 		$tabs = network_tabs($a);
 		$o .= $tabs;
 
@@ -456,7 +459,7 @@ function network_content(App $a, $update = 0) {
 	$sql_table = "`thread`";
 	$sql_parent = "`iid`";
 
-	if ($nouveau OR strlen($file) OR $update) {
+	if ($nouveau || strlen($file) || $update) {
 		$sql_table = "`item`";
 		$sql_parent = "`parent`";
 		$sql_post_table = " INNER JOIN `thread` ON `thread`.`iid` = `item`.`parent`";
@@ -581,11 +584,7 @@ function network_content(App $a, $update = 0) {
 			$sql_order = "`item`.`id`";
 			$order_mode = "id";
 		} else {
-			// Disabled until final decision what to do with this
-			//if (get_config('system','use_fulltext_engine'))
-			//	$sql_extra = sprintf(" AND MATCH (`item`.`body`, `item`.`title`) AGAINST ('%s' in boolean mode) ", dbesc(protect_sprintf($search)));
-			//else
-				$sql_extra = sprintf(" AND `item`.`body` REGEXP '%s' ", dbesc(protect_sprintf(preg_quote($search))));
+			$sql_extra = sprintf(" AND `item`.`body` REGEXP '%s' ", dbesc(protect_sprintf(preg_quote($search))));
 			$sql_order = "`item`.`id`";
 			$order_mode = "id";
 		}
@@ -796,7 +795,7 @@ function network_content(App $a, $update = 0) {
 /**
  * @brief Get the network tabs menu
  *
- * @param app $a The global App
+ * @param App $a The global App
  * @return string Html of the networktab
  */
 function network_tabs(App $a) {
