@@ -167,6 +167,10 @@ $b is an array containing:
 	'profile' => profile (array) record from the database
 	'entry' => the (string) HTML of the generated entry
 
+### 'profile_advanced_end'
+* called at the end of function profile_advanced. It provides the possibility to change or to add profile information to the output.
+* $profile is an array with the profile information.
+
 ### 'profile_advanced'
 * called when the HTML is generated for the 'Advanced profile', corresponding to the 'Profile' tab within a person's profile page
 * $b is the (string) HTML representation of the generated profile

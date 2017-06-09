@@ -13,6 +13,14 @@
 	<div class="clear"></div>
 	{{/if}}
 
+	{{* Insert a cover photo if it is available *}}
+	{{if $profile.cover}}
+	<div class="profile-cover">
+		{{$profile.cover}}
+	</div>
+	<div class="clear"></div>
+	{{/if}}
+
 	{{* Frio does split the profile information in "standard" and "advanced". This is the tab menu for swithching between this modes *}}
 	<ul id="profile-menu" class="nav nav-tabs" role="tablist">
 		<li role="presentation" class="active">

@@ -48,6 +48,7 @@ function frio_install() {
 	register_hook('contact_photo_menu', 'view/theme/frio/theme.php', 'frio_contact_photo_menu');
 	register_hook('nav_info', 'view/theme/frio/theme.php', 'frio_remote_nav');
 	register_hook('acl_lookup_end', 'view/theme/frio/theme.php', 'frio_acl_lookup');
+	register_hook('profile_advanced_end', 'view/theme/frio/theme.php', 'frio_profile_advanced');
 
 	logger("installed theme frio");
 }
@@ -58,6 +59,7 @@ function frio_uninstall() {
 	unregister_hook('contact_photo_menu', 'view/theme/frio/theme.php', 'frio_contact_photo_menu');
 	unregister_hook('nav_info', 'view/theme/frio/theme.php', 'frio_remote_nav');
 	unregister_hook('acl_lookup_end', 'view/theme/frio/theme.php', 'frio_acl_lookup');
+	unregister_hook('profile_advanced_end', 'view/theme/frio/theme.php', 'frio_profile_advanced');
 
 	logger("uninstalled theme frio");
 }
@@ -455,4 +457,18 @@ function get_cover_photo($uid, $format = 'bbcode', $res = 7) {
 	}
 
 	return $output;
+}
+
+/**
+ * @brief Add the html formatted cover to the profile information
+ * @param App $a The app data
+ * @param array $profile The profile information
+ */
+function frio_profile_advanced(App $a, &$profile) {
+	$profile['cover'] = "";
+	$cover = get_cover_photo($a->profile, 'html');
+
+	if ($cover) {
+		$profile['cover'] = $cover;
+	}
 }

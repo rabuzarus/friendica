@@ -755,6 +755,8 @@ function advanced_profile(App $a) {
 			$profile['edit'] = array(App::get_baseurl(). '/profiles/'.$a->profile['id'], t('Edit profile'),"", t('Edit profile'));
 		}
 
+		call_hooks('profile_advanced_end', $profile);
+
 		return replace_macros($tpl, array(
 			'$title' => t('Profile'),
 			'$basic' => t('Basic'),
