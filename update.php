@@ -1730,7 +1730,7 @@ function update_1202() {
 		dbesc(ACCOUNT_TYPE_COMMUNITY), dbesc(PAGE_COMMUNITY), dbesc(PAGE_PRVGROUP));
 }
 
-function update_1230() {
+function update_1229() {
 	set_config('system', 'maintenance', 1);
 	$r = q("UPDATE `photo` SET `photo_usage` = %d WHERE `profile`",
 		intval(PHOTO_PROFILE)
