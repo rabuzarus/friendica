@@ -64,21 +64,33 @@ function cover_photo_post(&$a) {
 					dbesc($image_id),
 					intval(local_user())
 				);
+
 				// Scale these numbers to the original photo instead of the scaled photo we operated on
 				$scaled_width = $g[0]['width'];
 				$scaled_height = $g[0]['height'];
+
 				if ((! $scaled_width) || (! $scaled_height)) {
 					logger('potential divide by zero scaling cover photo');
 					return;
 				}
+
+				// Unset all other cover photos
+				q("UPDATE `photo` SET `photo_usage` = %d WHERE `photo_usage` = %d AND `uid` = %d",
+					intval(PHOTO_NORMAL),
+					intval(PHOTO_COVER),
+					intval(local_user())
+				);
+
 				$orig_srcx = ($r[0]['width'] / $scaled_width) * $srcX;
 				$orig_srcy = ($r[0]['height'] / $scaled_height) * $srcY;
  				$orig_srcw = ($srcW / $scaled_width) * $r[0]['width'];
  				$orig_srch = ($srcH / $scaled_height) * $r[0]['height'];
 
+				// Crop the image and scale it to a dimension of 1200px x 400px and store it
 				$im->cropImageRect(1200, 400, $orig_srcx, $orig_srcy, $orig_srcw, $orig_srch);
 				$r1 = $im->store(local_user(), 0, $base_image['resource-id'], $base_image['filename'], t('Cover Photos'), 7, PHOTO_COVER);
 
+				// We also store a smaler version with a dimension of 600px x 200px
 				$im->doScaleImage(600, 200);
 				$r2 = $im->store(local_user(), 0, $base_image['resource-id'], $base_image['filename'], t('Cover Photos'), 8, PHOTO_COVER);
 
