@@ -2,6 +2,8 @@
 /* @file cover_photo.php
    @brief Module-file with functions for handling of profile-photos
 */
+
+use Friendica\App;
 use Friendica\Core\Config;
 
 require_once "include/Photo.php";
@@ -103,7 +105,8 @@ function cover_photo_post(&$a) {
 					);
 					return;
 				}
-				///@todo Implement sending an activity
+
+				send_cover_photo_activity($base_image);
 			} else {
 				notice(t('Unable to process image') . EOL);
 			}
@@ -234,6 +237,91 @@ function cover_photo_content(&$a) {
 
 	return; // NOTREACHED
 }
+
+/**
+ * @brief Send an activity message for the cover photo
+ * @param array $photo Photo entry from the database<br>
+ *     string 'ressource-id' => The ressource ID of the photo<br>
+ *     string 'type' => The mimetype of the photo<br>
+ */
+function send_cover_photo_activity($photo) {
+	$a = get_app();
+
+	if ($a->user['hidewall'] || get_config('system', 'block_public')) {
+		return;
+	}
+
+	$s = q("SELECT * FROM `contact` WHERE `self` = 1 AND `uid` = %d LIMIT 1",
+		intval(local_user())
+	);
+
+	if (! dbm::is_result($s)) {
+		return;
+	}
+
+	$self = $s[0];
+
+	$r = q("SELECT `gender` FROM `profile` WHERE `uid` = %d AND `is-default` = 1 LIMIT 1",
+		intval(local_user())
+	);
+
+	if (dbm::is_result($r)) {
+		$profile = $r[0];
+	}
+
+	// Create the status text depending on gender
+	if ($profile && stripos($profile['gender'], t('Female')) !== false) {
+		$t = t('%1$s updated her %2$s');
+	} elseif ($profile && stripos($profile['gender'], t('Male')) !== false) {
+		$t = t('%1$s updated his %2$s');
+	} else {
+		$t = t('%1$s updated their %2$s');
+	}
+
+	$atext = '[url=' . $self['url'] . ']' . $self['name'] . '[/url]';
+	$ptext = '[url=' . App::get_baseurl() . '/photos/' . $self['nickname'] . '/image/' . $photo['resource-id'] . ']' . t('cover photo') . '[/url]';
+	$ltext = '[url=' . App::get_baseurl() . '/profile/' . $self['nickname'] . ']' . '[img]' . App::get_baseurl() . '/photo/' . $photo['resource-id'] . '-8[/img][/url]'; 
+	$btext = sprintf($t, $atext, $ptext) . "\n\n" . $ltext;
+
+	$arr = array();
+
+	$arr['guid']       = get_guid(32);
+	$arr['uri']        = $arr['parent-uri'] = item_new_uri($a->get_hostname(), $self['uid']);
+	$arr['uid']        = $self['uid'];
+	$arr['contact-id'] = $self['id'];
+	$arr['wall']       = 1;
+	$arr['type']       = 'wall';
+	$arr['gravity']    = 0;
+	$arr['origin']     = 1;
+	$arr['last-child'] = 1;
+
+	$arr['author-name']   = $arr['owner-name'] = $self['name'];
+	$arr['author-link']   = $arr['owner-link'] = $self['url'];
+	$arr['author-avatar'] = $arr['owner-avatar'] = $self['thumb'];
+
+	$arr['body'] = $btext;
+
+	$arr['verb']        = ACTIVITY_UPDATE;
+	$arr['object-type'] = ACTIVITY_OBJ_PHOTO;
+	$arr['object']      = '<object><type>' . ACTIVITY_OBJ_PHOTO . '</type><title>' . $self['name'] . '</title>'
+	. '<id>' . App::get_baseurl() . '/photo/' . $photo['resource-id'] . '-7</id>';
+	$arr['object']     .= '<link>' . xmlify('<link rel="photo" type="' . $photo['type'] . '" href="' . App::get_baseurl() . '/photo/' . $photo['resource-id'] . '-7" />' . "\n");
+	$arr['object']     .= '</link></object>' . "\n";
+
+	$arr['allow_cid'] = $self['allow_cid'];
+	$arr['allow_gid'] = $self['allow_gid'];
+	$arr['deny_cid']  = $self['deny_cid'];
+	$arr['deny_gid']  = $self['deny_gid'];
+
+	require_once 'include/items.php';
+
+	$i = item_store($arr);
+	if ($i) {
+		proc_run(PRIORITY_HIGH, "include/notifier.php", "activity", $i);
+	}
+
+}
+
 /* @brief Generate the UI for photo-cropping
  *
  * @param $a Current application

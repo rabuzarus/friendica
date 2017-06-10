@@ -466,8 +466,8 @@ function get_cover_photo($uid, $format = 'bbcode', $res = 7) {
  */
 function frio_profile_advanced(App $a, &$profile) {
 	$profile['cover'] = "";
-	$cover = get_cover_photo($a->profile, 'html');
-
+	$cover = get_cover_photo($a->profile['uid'], 'html');
+logger('hier sollte das profil sein '.print_r($a->profile, true));
 	if ($cover) {
 		$profile['cover'] = $cover;
 	}
