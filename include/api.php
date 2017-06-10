@@ -3501,7 +3501,7 @@ $called_api = null;
 		// now let's upload the new media in create-mode
 		if ($mode == "create") {
 			$media = $_FILES['media'];
-			$data = save_media_to_database("photo", $media, $type, $album, trim($allow_cid), trim($deny_cid), trim($allow_gid), trim($deny_gid), $desc, $visibility);
+			$data = save_media_to_database("photo", $media, $type, $album, trim($allow_cid), trim($deny_cid), trim($allow_gid), trim($deny_gid), $desc, PHOTO_NORMAL, $visibility);
 
 			// return success of updating or error message
 			if (!is_null($data)) {
@@ -3559,7 +3559,7 @@ $called_api = null;
 			if (x($_FILES,'media')) {
 				$nothingtodo = false;
 				$media = $_FILES['media'];
-				$data = save_media_to_database("photo", $media, $type, $album, $allow_cid, $deny_cid, $allow_gid, $deny_gid, $desc, 0, $visibility, $photo_id);
+				$data = save_media_to_database("photo", $media, $type, $album, $allow_cid, $deny_cid, $allow_gid, $deny_gid, $desc, PHOTO_NORMAL, $visibility, $photo_id);
 				if (!is_null($data)) {
 					return api_format_data("photo_update", $type, $data);
 				}
