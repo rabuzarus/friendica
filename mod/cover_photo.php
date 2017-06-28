@@ -52,13 +52,18 @@ function cover_photo_post(&$a) {
 		$srcW = $_POST['xfinal'] - $srcX;
 		$srcH = $_POST['yfinal'] - $srcY;
 
-		$r = q("SELECT * FROM `photo` WHERE `resource-id` = '%s' AND `uid` = %d AND `scale` = %d LIMIT 1",
-			dbesc($image_id),
-			dbesc(local_user()),
-			intval(0));
+		$r = dba::select('photo',
+			array(),
+			array(
+				'resource-id' => $image_id,
+				'uid' => local_user(),
+				'scale' => 0
+			),
+			array('limit' => 1)
+		);
 
 		if (dbm::is_result($r)) {
-			$base_image = $r[0];
+			$base_image = $r;
 
 			$im = new Photo($base_image['data'], $base_image['type']);
 			if ($im->is_valid()) {
@@ -66,6 +71,15 @@ function cover_photo_post(&$a) {
 					dbesc($image_id),
 					intval(local_user())
 				);
+				// The new dba::select funtion doesn't seem to work without params
+//				$g = dba::select('photo',
+//					array('width', 'height'),
+//					array(
+//						'resource-id' => $image_id,
+//						'uid' => local_user(),
+//						'scale' => 2
+//					)
+//				);
 
 				// Scale these numbers to the original photo instead of the scaled photo we operated on
 				$scaled_width = $g[0]['width'];
@@ -76,17 +90,25 @@ function cover_photo_post(&$a) {
 					return;
 				}
 
-				// Unset all other cover photos
+				// Unset all other cover photos for the specific user
 				q("UPDATE `photo` SET `photo_usage` = %d WHERE `photo_usage` = %d AND `uid` = %d",
 					intval(PHOTO_NORMAL),
 					intval(PHOTO_COVER),
 					intval(local_user())
 				);
+				// The new dba::update funtion doesn't seem to work without params
+//				dba::update('photo',
+//					array('photo_usage' => PHOTO_NORMAL),
+//					array(
+//						'photo-usage' => PHOTO_COVER,
+//						'uid' => local_user()
+//					)
+//				);
 
-				$orig_srcx = ($r[0]['width'] / $scaled_width) * $srcX;
-				$orig_srcy = ($r[0]['height'] / $scaled_height) * $srcY;
- 				$orig_srcw = ($srcW / $scaled_width) * $r[0]['width'];
- 				$orig_srch = ($srcH / $scaled_height) * $r[0]['height'];
+				$orig_srcx = ($r['width'] / $scaled_width) * $srcX;
+				$orig_srcy = ($r['height'] / $scaled_height) * $srcY;
+ 				$orig_srcw = ($srcW / $scaled_width) * $r['width'];
+ 				$orig_srch = ($srcH / $scaled_height) * $r['height'];
 
 				// Crop the image and scale it to a dimension of 1200px x 400px and store it
 				$im->cropImageRect(1200, 400, $orig_srcx, $orig_srcy, $orig_srcw, $orig_srch);
@@ -98,7 +120,7 @@ function cover_photo_post(&$a) {
 
 				if ($r1 === false || $r2 === false) {
 					// If one failed, delete them all so we can start over.
-					notice(t('Image resize failed.') . EOL );
+					notice(t('Image resize failed.') . EOL);
 					$x = q("DELETE FROM `photo` WHERE `resource-id` = '%s' AND `uid` = %d AND `scale` >= 7 ",
 						dbesc($base_image['resource_id']),
 						local_user()
@@ -171,9 +193,10 @@ function cover_photo_content(&$a) {
 
 		$resource_id = $a->argv[2];
 		$r = q("SELECT `id`, `album`, `scale` FROM `photo` WHERE `uid` = %d AND `resource-id` = '%s' ORDER BY `scale` ASC",
-			intval(local_user()),
+			local_user(),
 			dbesc($resource_id)
 		);
+
 		if (! dbm::is_result($r)) {
 			notice(t('Photo not available.') . EOL);
 			return;
@@ -185,22 +208,28 @@ function cover_photo_content(&$a) {
 				$havescale = true;
 			}
 		}
-		$r = q("SELECT `data`, `type`, `resource-id`, FROM `photo` WHERE `id` = %d AND `uid` = %d LIMIT 1",
-			intval($r[0]['id']),
-			intval(local_user())
+
+		$r = dba::select('photo',
+			array('data', 'type', 'resource-id'),
+			array(
+				'id' => $r[0]['id'],
+				'uid' => local_user()
+			),
+			array('limit' => 1)
 		);
 		if (! dbm::is_result($r)) {
 			notice(t('Photo not available.') . EOL);
 			return;
 		}
-		$ph = new Photo($r[0]['data'], $r[0]['type']);
+		$ph = new Photo($r['data'], $r['type']);
  
 		cover_photo_crop_ui_head($a, $ph);
 	}
 
 	$profiles = q("SELECT `id`,`profile-name` AS `name`,`is-default` AS `default` FROM profile WHERE uid = %d",
-		intval(local_user())
+		local_user()
 	);
+
 	if (! x($a->data,'imagecrop')) {
 		$tpl = get_markup_template('cover_photo.tpl');
 		$o .= replace_macros($tpl, array(
@@ -251,23 +280,26 @@ function send_cover_photo_activity($photo) {
 		return;
 	}
 
-	$s = q("SELECT * FROM `contact` WHERE `self` = 1 AND `uid` = %d LIMIT 1",
-		intval(local_user())
+	$self = dba::select('contact',
+		array(),
+		array('self' => 1, 'uid' => local_user()),
+		array('limit' => 1)
 	);
 
-	if (! dbm::is_result($s)) {
+	if (! dbm::is_result($self)) {
 		return;
 	}
 
-	$self = $s[0];
-
-	$r = q("SELECT `gender` FROM `profile` WHERE `uid` = %d AND `is-default` = 1 LIMIT 1",
-		intval(local_user())
+	$profile = dba::select('profile',
+		array('gender'),
+		array('uid' => local_user(), 'is-default' => 1),
+		array('limit' => 1)
 	);
 
-	if (dbm::is_result($r)) {
-		$profile = $r[0];
+	if (! dbm::is_result($profile)) {
+		return;
 	}
+
 
 	// Create the status text depending on gender
 	if ($profile && stripos($profile['gender'], t('Female')) !== false) {
