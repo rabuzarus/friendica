@@ -81,8 +81,20 @@ $(window).resize(function () {
 
 // Slide to the end of the cover
 function slideUpCover() {
-	var secondNavPos = $("#topbar-second").position().top;
-	$("html, body").animate({scrollTop: secondNavPos - 50 + "px"});
+	var activateSlideUp = false;
+	var clickElm = this.activeElement.tagName;
+
+	// By default we have deactivated the slideUp cover function to avoid some
+	// annoying behavior.
+	// Under certain conditions we will enable the function
+	if (clickElm !== 'A' && clickElm !== "INPUT" && coverSlid === false) {
+		activateSlideUp = true;
+	}
+
+	if(activateSlideUp) {
+		var secondNavPos = $("#topbar-second").position().top;
+		$("html, body").animate({scrollTop: secondNavPos - 50 + "px"});
+	}
 }
 
 // Initialize the Scrollspy for the cover element

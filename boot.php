@@ -22,6 +22,7 @@ require_once(__DIR__ . DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR . 'a
 
 use Friendica\App;
 use Friendica\Core\Config;
+use Friendica\Util\Lock;
 
 require_once 'include/config.php';
 require_once 'include/network.php';
@@ -39,9 +40,9 @@ require_once 'include/poller.php';
 
 define ( 'FRIENDICA_PLATFORM',     'Friendica');
 define ( 'FRIENDICA_CODENAME',     'Asparagus');
-define ( 'FRIENDICA_VERSION',      '3.5.3-dev');
-define ( 'DFRN_PROTOCOL_VERSION',  '2.23'     );
-define ( 'DB_UPDATE_VERSION',      1230       );
+define ( 'FRIENDICA_VERSION',      '3.5.3-dev' );
+define ( 'DFRN_PROTOCOL_VERSION',  '2.23'    );
+define ( 'DB_UPDATE_VERSION',      1232      );
 
 /**
  * @brief Constant with a HTML line break.
@@ -1084,12 +1085,16 @@ function proc_run($cmd) {
 
 	$priority = PRIORITY_MEDIUM;
 	$dont_fork = get_config("system", "worker_dont_fork");
+	$created = datetime_convert();
 
 	if (is_int($run_parameter)) {
 		$priority = $run_parameter;
 	} elseif (is_array($run_parameter)) {
 		if (isset($run_parameter['priority'])) {
 			$priority = $run_parameter['priority'];
+		}
+		if (isset($run_parameter['created'])) {
+			$created = $run_parameter['created'];
 		}
 		if (isset($run_parameter['dont_fork'])) {
 			$dont_fork = $run_parameter['dont_fork'];
@@ -1100,10 +1105,10 @@ function proc_run($cmd) {
 	array_shift($argv);
 
 	$parameters = json_encode($argv);
-	$found = dba::select('workerqueue', array('id'), array('parameter' => $parameters), array('limit' => 1));
+	$found = dba::select('workerqueue', array('id'), array('parameter' => $parameters, 'done' => false), array('limit' => 1));
 
 	if (!dbm::is_result($found)) {
-		dba::insert('workerqueue', array('parameter' => $parameters, 'created' => datetime_convert(), 'priority' => $priority));
+		dba::insert('workerqueue', array('parameter' => $parameters, 'created' => $created, 'priority' => $priority));
 	}
 
 	// Should we quit and wait for the poller to be called as a cronjob?
@@ -1111,8 +1116,16 @@ function proc_run($cmd) {
 		return;
 	}
 
+	// If there is a lock then we don't have to check for too much worker
+	if (!Lock::set('poller_worker', 0)) {
+		return;
+	}
+
 	// If there are already enough workers running, don't fork another one
-	if (poller_too_much_workers()) {
+	$quit = poller_too_much_workers();
+	Lock::remove('poller_worker');
+
+	if ($quit) {
 		return;
 	}
 

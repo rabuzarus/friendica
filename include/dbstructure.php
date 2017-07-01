@@ -30,7 +30,7 @@ function convert_to_innodb() {
 		$sql = sprintf("ALTER TABLE `%s` engine=InnoDB;", dbesc($table['TABLE_NAME']));
 		echo $sql."\n";
 
-		$result = @$db->q($sql);
+		$result = $db->q($sql);
 		if (!dbm::is_result($result)) {
 			print_update_error($db, $sql);
 		}
@@ -85,6 +85,7 @@ function update_fail($update_id, $error_message) {
 
 
 	/*
+	 @TODO deprecated code?
 	$email_tpl = get_intltext_template("update_fail_eml.tpl");
 	$email_msg = replace_macros($email_tpl, array(
 		'$sitename' => $a->config['sitename'],
@@ -1740,12 +1741,14 @@ function db_definition() {
 					"created" => array("type" => "datetime", "not null" => "1", "default" => NULL_DATE),
 					"pid" => array("type" => "int(11)", "not null" => "1", "default" => "0"),
 					"executed" => array("type" => "datetime", "not null" => "1", "default" => NULL_DATE),
+					"done" => array("type" => "tinyint(1)", "not null" => "1", "default" => "0"),
 					),
 			"indexes" => array(
 					"PRIMARY" => array("id"),
 					"pid" => array("pid"),
 					"parameter" => array("parameter(64)"),
 					"priority_created" => array("priority", "created"),
+					"executed" => array("executed"),
 					)
 			);
 
@@ -1764,10 +1767,10 @@ function dbstructure_run(&$argv, &$argc) {
 	}
 
 	if (is_null($db)) {
-		@include(".htconfig.php");
-		require_once("include/dba.php");
+		@include ".htconfig.php";
+		require_once "include/dba.php";
 		$db = new dba($db_host, $db_user, $db_pass, $db_data);
-			unset($db_host, $db_user, $db_pass, $db_data);
+		unset($db_host, $db_user, $db_pass, $db_data);
 	}
 
 	if ($argc == 2) {
