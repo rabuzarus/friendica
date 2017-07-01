@@ -264,7 +264,8 @@ function frio_remote_nav($a,&$nav) {
 
 	// insert a cover photo (only show it for the profile wall)
 	if ($a->argc == 2 && $a->module == 'profile' && !x($_GET, 'tab')) {
-		$nav['cover_photo'] = cover_photo_widget($a->profile);
+		require_once 'include/CoverPhoto.php';
+		$nav['cover_photo'] = CoverPhoto::constructWidget($a->profile);
 	}
 }
 /**
@@ -330,144 +331,14 @@ function frio_acl_lookup(App $a, &$results) {
 }
 
 /**
- * @brief Construct the cover photo widget
- * 
- * @param array $arr Array with user data
- *    int 'profile_uid' => The serID of the profile owner
- *    string 'style'    => String with style infromation
- *    string 'title'    => The cover title
- *    string 'subtitle' => The cover subtitle
- *    string 'name'     => The name of the profile owner (used as title)
- *    string 'addr'     => The address of the profile owner (used as subtitle)
- * 
- * @return string Formatted html
- */
-function cover_photo_widget($arr) {
-
-	$o = '';
-	$a = get_app();
-
-	if($a->module != 'profile') {
-		return '';
-	}
-
-	$profile_uid = 0;
-
-	if(array_key_exists('profile_uid', $arr) && intval($arr['profile_uid'])) {
-		$profile_uid = intval($arr['profile_uid']);
-		$profile = $arr;
-	}
-	if(! profile_uid) {
-		$profile_uid = $a->profile_uid;
-		$profile = $a->profile;
-	}
-	if(! profile_uid && $a->argc > 1) {
-		$nick = $a->argv[1];
-		$user = qu("SELECT * FROM `user` WHERE `nickname` = '%s' AND `blocked` = 0 LIMIT 1",
-			dbesc($nick)
-		);
-
-		if (! dbm::is_result($user)) {
-			return;
-		}
-		$profile = get_profiledata_by_nick($nick, $user[0]['uid']);
-		$profile_uid = $user[0]['uid'];;
-	}
-	if(! $profile_uid) {
-		return '';
-	}
-
-	//$channel = channelx_by_n($profile_uid);
-
-	if(array_key_exists('style', $arr) && isset($arr['style'])) {
-		$style = $arr['style'];
-	} else {
-		$style = 'width:100%; height: auto;';
-	}
-
-	// ensure they can't sneak in an eval(js) function
-	if(strpbrk($style,'(\'"<>') !== false) {
-		$style = '';
-	}
-	if(array_key_exists('title', $arr) && isset($arr['title'])) {
-		$title = $arr['title'];
-	} else {
-		$title = $profile['name'];
-	}
-	if(array_key_exists('subtitle', $arr) && isset($arr['subtitle'])) {
-		$subtitle = $arr['subtitle'];
-	} else {
-		$subtitle = str_replace('@', '&#x40;', $profile['addr']);
-	}
-
-	$c = get_cover_photo($profile_uid, 'html');
-	if($c) {
-		$photo_html = (($style) ? str_replace('alt=', ' style="' . $style . '" alt=', $c) : $c);
-		$o = replace_macros(get_markup_template('cover_photo_widget.tpl'), array(
-			'$photo_html' => $photo_html,
-			'$title'      => $title,
-			'$subtitle'   => $subtitle,
-			'$hovertitle' => t('Click to show more'),
-		));
-	}
-	return $o;
-}
-
-/**
- * @bref Get the cover photo (as bbcode, html or array)
- * 
- * @param int $uid The user ID
- * @param string $format The output format of the cover photo
- *    (supported types: 'bbcode', 'html', 'array'
- * @param int $res The resolution of the cover
- *    (supported resolutions: 7 for large, 8 for small)
- * 
- * @return string|array|bool Output as bbcode, html, or array. False if no
- *    cover photo is available
- */
-function get_cover_photo($uid, $format = 'bbcode', $res = 7) {
-	$r = q("SELECT `height`, `width`, `resource-id`, `type` FROM `photo` WHERE `uid` = %d AND `scale` = %d AND `photo_usage` = %d",
-		intval($uid),
-		intval($res),
-		intval(PHOTO_COVER)
-	);
-	if(! dbm::is_result($r)) {
-		return false;
-	}
-
-	$output = false;
-	$url = App::get_baseurl() . '/photo/' . $r[0]['resource-id'] . '-' . $res ;
-
-	switch($format) {
-		case 'bbcode':
-			$output = '[url=' . $r[0]['width'] . 'x' . $r[0]['height'] . ']' . $url . '[/url]';
-			break;
-		case 'html':
- 			$output = '<img class="cover" width="' . $r[0]['width'] . '" height="' . $r[0]['height'] . '" src="' . $url . '" alt="' . t('cover photo') . '" />';
-			break;
-		case 'array':
-		default:
-			$output = array(
-				'width'  => $r[0]['width'],
-				'height' => $r[0]['height'],
-				'type'   => $r[0]['type'],
-				'url'    => $url
-			);
-			break;
-	}
-
-	return $output;
-}
-
-/**
  * @brief Add the html formatted cover to the profile information
  * @param App $a The app data
  * @param array $profile The profile information
  */
 function frio_profile_advanced(App $a, &$profile) {
+	require_once 'include/CoverPhoto.php';
 	$profile['cover'] = "";
-	$cover = get_cover_photo($a->profile['uid'], 'html');
-logger('hier sollte das profil sein '.print_r($a->profile, true));
+	$cover = CoverPhoto::get($a->profile['uid'], 'html');
 	if ($cover) {
 		$profile['cover'] = $cover;
 	}
