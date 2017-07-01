@@ -1,6 +1,6 @@
 <?php
 
-define('UPDATE_VERSION' , 1232);
+define('UPDATE_VERSION' , 1233);
 
 /**
  *
@@ -1730,7 +1730,12 @@ function update_1202() {
 		dbesc(ACCOUNT_TYPE_COMMUNITY), dbesc(PAGE_COMMUNITY), dbesc(PAGE_PRVGROUP));
 }
 
-function update_1229() {
+function update_1231() {
+	// For this special case we have to use the old update routine
+	$r = q("ALTER TABLE `workerqueue` ADD `done` tinyint(1) NOT NULL DEFAULT 0");
+}
+
+function update_1232() {
 	set_config('system', 'maintenance', 1);
 	$r = q("UPDATE `photo` SET `photo_usage` = %d WHERE `profile`",
 		intval(PHOTO_PROFILE)
@@ -1750,7 +1755,4 @@ function update_1229() {
 	set_config('system', 'maintenance', 0);
 
 	return UPDATE_SUCCESS;
-function update_1231() {
-	// For this special case we have to use the old update routine
-	$r = q("ALTER TABLE `workerqueue` ADD `done` tinyint(1) NOT NULL DEFAULT 0");
 }
