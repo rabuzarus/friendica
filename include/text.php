@@ -1,6 +1,7 @@
 <?php
 
 use Friendica\App;
+use Friendica\Core\System;
 
 require_once "include/template_processor.php";
 require_once "include/friendica_smarty.php";
@@ -24,7 +25,7 @@ function replace_macros($s, $r) {
 	$a = get_app();
 
 	// pass $baseurl to all templates
-	$r['$baseurl'] = App::get_baseurl();
+	$r['$baseurl'] = System::baseUrl();
 
 	$t = $a->template_engine();
 	try {
@@ -488,8 +489,6 @@ if (! function_exists('item_new_uri')) {
 function item_new_uri($hostname, $uid, $guid = "") {
 
 	do {
-		$dups = false;
-
 		if ($guid == "") {
 			$hash = get_guid(32);
 		} else {
@@ -499,11 +498,7 @@ function item_new_uri($hostname, $uid, $guid = "") {
 
 		$uri = "urn:X-dfrn:" . $hostname . ':' . $uid . ':' . $hash;
 
-		$r = q("SELECT `id` FROM `item` WHERE `uri` = '%s' LIMIT 1",
-			dbesc($uri));
-		if (dbm::is_result($r)) {
-			$dups = true;
-		}
+		$dups = dba::exists('item', array('uri' => $uri));
 	} while ($dups == true);
 
 	return $uri;
@@ -753,7 +748,7 @@ function logger($msg, $level = 0) {
 
 	$callers = debug_backtrace();
 	$logline = sprintf("%s@%s\t[%s]:%s:%s:%s\t%s\n",
-			datetime_convert(),
+			datetime_convert('UTC', 'UTC', 'now', 'Y-m-d\TH:i:s\Z'),
 			$process_id,
 			$LOGGER_LEVELS[$level],
 			basename($callers[0]['file']),
@@ -1290,9 +1285,9 @@ function put_item_in_cache(&$item, $update = false) {
 		$item["rendered-hash"] = hash("md5", $item["body"]);
 		$item["body"] = $body;
 
-		if ($update && ($item["id"] != 0)) {
-			q("UPDATE `item` SET `rendered-html` = '%s', `rendered-hash` = '%s' WHERE `id` = %d",
-				dbesc($item["rendered-html"]), dbesc($item["rendered-hash"]), intval($item["id"]));
+		if ($update && ($item["id"] > 0)) {
+			dba::update('item', array('rendered-html' => $item["rendered-html"], 'rendered-hash' => $item["rendered-hash"]),
+					array('id' => $item["id"]), false);
 		}
 	}
 }
@@ -1317,23 +1312,29 @@ function prepare_body(&$item, $attach = false, $preview = false) {
 	$a = get_app();
 	call_hooks('prepare_body_init', $item);
 
-	$searchpath = z_root() . "/search?tag=";
+	$searchpath = System::baseUrl() . "/search?tag=";
 
 	$tags = array();
 	$hashtags = array();
 	$mentions = array();
 
 	if (!get_config('system','suppress_tags')) {
-		$taglist = q("SELECT `type`, `term`, `url` FROM `term` WHERE `otype` = %d AND `oid` = %d AND `type` IN (%d, %d) ORDER BY `tid`",
+		$taglist = dba::p("SELECT `type`, `term`, `url` FROM `term` WHERE `otype` = ? AND `oid` = ? AND `type` IN (?, ?) ORDER BY `tid`",
 				intval(TERM_OBJ_POST), intval($item['id']), intval(TERM_HASHTAG), intval(TERM_MENTION));
 
-		foreach ($taglist as $tag) {
-
+		while ($tag = dba::fetch($taglist)) {
 			if ($tag["url"] == "") {
 				$tag["url"] = $searchpath.strtolower($tag["term"]);
 			}
 
+			$orig_tag = $tag["url"];
+
+			$tag["url"] = best_link_url($item, $sp, $tag["url"]);
+
 			if ($tag["type"] == TERM_HASHTAG) {
+				if ($orig_tag != $tag["url"]) {
+					$item['body'] = str_replace($orig_tag, $tag["url"], $item['body']);
+				}
 				$hashtags[] = "#<a href=\"".$tag["url"]."\" target=\"_blank\">".$tag["term"]."</a>";
 				$prefix = "#";
 			} elseif ($tag["type"] == TERM_MENTION) {
@@ -1342,6 +1343,7 @@ function prepare_body(&$item, $attach = false, $preview = false) {
 			}
 			$tags[] = $prefix."<a href=\"".$tag["url"]."\" target=\"_blank\">".$tag["term"]."</a>";
 		}
+		dba::close($taglist);
 	}
 
 	$item['tags'] = $tags;
@@ -1374,7 +1376,6 @@ function prepare_body(&$item, $attach = false, $preview = false) {
 	$vhead = false;
 	$arr = explode('[/attach],', $item['attach']);
 	if (count($arr)) {
-		$as .= '<div class="body-attach">';
 		foreach ($arr as $r) {
 			$matches = false;
 			$icon = '';
@@ -1393,10 +1394,10 @@ function prepare_body(&$item, $attach = false, $preview = false) {
 						if (!$vhead) {
 							$vhead = true;
 							$a->page['htmlhead'] .= replace_macros(get_markup_template('videos_head.tpl'), array(
-								'$baseurl' => z_root(),
+								'$baseurl' => System::baseUrl(),
 							));
 							$a->page['end'] .= replace_macros(get_markup_template('videos_end.tpl'), array(
-								'$baseurl' => z_root(),
+								'$baseurl' => System::baseUrl(),
 							));
 						}
 
@@ -1411,39 +1412,27 @@ function prepare_body(&$item, $attach = false, $preview = false) {
 						));
 					}
 
-					$filetype = strtolower(substr( $mime, 0, strpos($mime,'/') ));
+					$filetype = strtolower(substr($mime, 0, strpos($mime,'/')));
 					if ($filetype) {
-						$filesubtype = strtolower(substr( $mime, strpos($mime,'/') + 1 ));
+						$filesubtype = strtolower(substr($mime, strpos($mime,'/') + 1));
 						$filesubtype = str_replace('.', '-', $filesubtype);
 					} else {
 						$filetype = 'unkn';
 						$filesubtype = 'unkn';
 					}
 
-					$icon = '<div class="attachtype icon s22 type-' . $filetype . ' subtype-' . $filesubtype . '"></div>';
-					/*$icontype = strtolower(substr($mtch[3],0,strpos($mtch[3],'/')));
-					switch($icontype) {
-						case 'video':
-						case 'audio':
-						case 'image':
-						case 'text':
-							$icon = '<div class="attachtype icon s22 type-' . $icontype . '"></div>';
-							break;
-						default:
-							$icon = '<div class="attachtype icon s22 type-unkn"></div>';
-							break;
-					}*/
-
 					$title = ((strlen(trim($mtch[4]))) ? escape_tags(trim($mtch[4])) : escape_tags($mtch[1]));
 					$title .= ' ' . $mtch[2] . ' ' . t('bytes');
 
+					$icon = '<div class="attachtype icon s22 type-' . $filetype . ' subtype-' . $filesubtype . '"></div>';
 					$as .= '<a href="' . strip_tags($the_url) . '" title="' . $title . '" class="attachlink" target="_blank" >' . $icon . '</a>';
 				}
 			}
 		}
-		$as .= '<div class="clear"></div></div>';
 	}
-	$s = $s . $as;
+	if ($as != '') {
+		$s .= '<div class="body-attach">'.$as.'<div class="clear"></div></div>';
+	}
 
 	// map
 	if (strpos($s, '<div class="map">') !== false && x($item, 'coord')) {
@@ -1672,7 +1661,7 @@ function generate_user_guid() {
 		if (! dbm::is_result($x)) {
 			$found = false;
 		}
-	} while ($found == true );
+	} while ($found == true);
 
 	return $guid;
 }

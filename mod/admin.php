@@ -7,10 +7,12 @@
  */
 
 use Friendica\App;
+use Friendica\Core\System;
 use Friendica\Core\Config;
 
 require_once("include/enotify.php");
 require_once("include/text.php");
+require_once('include/items.php');
 
 /**
  * @brief Process send data from the admin panels subpages
@@ -113,6 +115,9 @@ function admin_post(App $a) {
 			case 'blocklist':
 				admin_page_blocklist_post($a);
 				break;
+			case 'deleteitem':
+				admin_page_deleteitem_post($a);
+				break;
 		}
 	}
 
@@ -172,6 +177,7 @@ function admin_content(App $a) {
 		'queue'	 =>	array("admin/queue/", t('Inspect Queue'), "queue"),
 		'blocklist' => array("admin/blocklist/", t('Server Blocklist'), "blocklist"),
 		'federation' => array("admin/federation/", t('Federation Statistics'), "federation"),
+		'deleteitem' => array("admin/deleteitem/", t('Delete Item'), 'deleteitem'),
 	);
 
 	/* get plugins admin page */
@@ -244,6 +250,9 @@ function admin_content(App $a) {
 			case 'blocklist':
 				$o = admin_page_blocklist($a);
 				break;
+			case 'deleteitem':
+				$o = admin_page_deleteitem($a);
+				break;
 			default:
 				notice(t("Item not found."));
 		}
@@ -299,7 +308,7 @@ function admin_page_blocklist(App $a) {
 		'$threason' => t('Reason for the block'),
 		'$delentry' => t('Delete entry from blocklist'),
 		'$entries' => $blocklistform,
-		'$baseurl' => App::get_baseurl(true),
+		'$baseurl' => System::baseUrl(true),
 		'$confirm_delete' => t('Delete entry from blocklist?'),
 		'$form_security_token'	=> get_form_security_token("admin_blocklist")
 	));
@@ -349,6 +358,67 @@ function admin_page_blocklist_post(App $a) {
 }
 
 /**
+ * @brief Subpage where the admin can delete an item from their node given the GUID
+ *
+ * This subpage of the admin panel offers the nodes admin to delete an item from
+ * the node, given the GUID or the display URL such as http://example.com/display/123456.
+ * The item will then be marked as deleted in the database and processed accordingly.
+ *
+ * @param App $a
+ * @return string
+ */
+function admin_page_deleteitem(App $a) {
+	$t = get_markup_template("admin_deleteitem.tpl");
+
+	return replace_macros($t, array(
+		'$title' => t('Administration'),
+		'$page' => t('Delete Item'),
+		'$submit' => t('Delete this Item'),
+		'$intro1' => t('On this page you can delete an item from your node. If the item is a top level posting, the entire thread will be deleted.'),
+		'$intro2' => t('You need to know the GUID of the item. You can find it e.g. by looking at the display URL. The last part of http://example.com/display/123456 is the GUID, here 123456.'),
+		'$deleteitemguid' => array('deleteitemguid', t("GUID"), '', t("The GUID of the item you want to delete."), 'required', 'autofocus'),
+		'$baseurl' => System::baseUrl(),
+		'$form_security_token'	=> get_form_security_token("admin_deleteitem")
+	));
+}
+/**
+ * @brief Process send data from Admin Delete Item Page
+ *
+ * The GUID passed through the form should be only the GUID. But we also parse
+ * URLs like the full /display URL to make the process more easy for the admin.
+ *
+ * @param App $a
+ */
+function admin_page_deleteitem_post(App $a) {
+	if (!x($_POST['page_deleteitem_submit'])) {
+		return;
+	}
+
+	check_form_security_token_redirectOnErr('/admin/deleteitem/', 'admin_deleteitem');
+
+	if (x($_POST['page_deleteitem_submit'])) {
+		$guid = trim(notags($_POST['deleteitemguid']));
+		// The GUID should not include a "/", so if there is one, we got an URL
+		// and the last part of it is most likely the GUID.
+		if (strpos($guid, '/')) {
+			$guid = substr($guid, strrpos($guid, '/')+1);
+		}
+		// Now that we have the GUID get all IDs of the associated entries in the
+		// item table of the DB and drop those items, which will also delete the
+		// associated threads.
+		$r = dba::select('item', array('id'), array('guid'=>$guid));
+		while ($row = dba::fetch($r)) {
+			drop_item($row['id'], false);
+		}
+		dba::close($r);
+	}
+
+	info(t('Item marked for deletion.').EOL);
+	goaway('admin/deleteitem');
+	return; // NOTREACHED
+}
+
+/**
  * @brief Subpage with some stats about "the federation" network
  *
  * This function generates the "Federation Statistics" subpage for the admin
@@ -371,7 +441,7 @@ function admin_page_federation(App $a) {
 	// off one % two of them are needed in the query
 	// Add more platforms if you like, when one returns 0 known nodes it is not
 	// displayed on the stats page.
-	$platforms = array('Friendi%%a', 'Diaspora', '%%red%%', 'Hubzilla', 'BlaBlaNet', 'GNU Social', 'StatusNet', 'Mastodon');
+	$platforms = array('Friendi%%a', 'Diaspora', '%%red%%', 'Hubzilla', 'BlaBlaNet', 'GNU Social', 'StatusNet', 'Mastodon', 'Pleroma');
 	$colors    = array('Friendi%%a' => '#ffc018',     // orange from the logo
 			   'Diaspora'  => '#a1a1a1',     // logo is black and white, makes a gray
 			   '%%red%%'   => '#c50001',     // fire red from the logo
@@ -379,14 +449,15 @@ function admin_page_federation(App $a) {
 			   'BlaBlaNet' => '#3B5998',     // blue from the navbar at blablanet-dot-com
 			   'GNU Social'=> '#a22430',     // dark red from the logo
 			   'StatusNet' => '#789240',     // the green from the logo (red and blue have already others
-			   'Mastodon'  => '#1a9df9');    // blue from the Mastodon logo
+			   'Mastodon'  => '#1a9df9',    // blue from the Mastodon logo
+			   'Pleroma'  => '#E46F0F');    // Orange from the text that is used on Pleroma instances
 	$counts = array();
 	$total = 0;
 
 	foreach ($platforms as $p) {
 		// get a total count for the platform, the name and version of the
 		// highest version and the protocol tpe
-		$c = qu('SELECT COUNT(*) AS `total`, ANY_VALUE(`platform`) AS `platform`,
+		$c = q('SELECT COUNT(*) AS `total`, ANY_VALUE(`platform`) AS `platform`,
 				ANY_VALUE(`network`) AS `network`, MAX(`version`) AS `version` FROM `gserver`
 				WHERE `platform` LIKE "%s" AND `last_contact` >= `last_failure`
 				ORDER BY `version` ASC;', $p);
@@ -394,7 +465,7 @@ function admin_page_federation(App $a) {
 
 		// what versions for that platform do we know at all?
 		// again only the active nodes
-		$v = qu('SELECT COUNT(*) AS `total`, `version` FROM `gserver`
+		$v = q('SELECT COUNT(*) AS `total`, `version` FROM `gserver`
 				WHERE `last_contact` >= `last_failure` AND `platform` LIKE "%s"
 				GROUP BY `version`
 				ORDER BY `version`;', $p);
@@ -483,7 +554,7 @@ function admin_page_federation(App $a) {
 		'$counts' => $counts,
 		'$version' => FRIENDICA_VERSION,
 		'$legendtext' => sprintf(t('Currently this node is aware of %d nodes from the following platforms:'), $total),
-		'$baseurl' => App::get_baseurl(),
+		'$baseurl' => System::baseUrl(),
 	));
 }
 
@@ -555,6 +626,15 @@ function admin_page_summary(App $a) {
 		$warningtext[] = t('The database update failed. Please run "php include/dbstructure.php update" from the command line and have a look at the errors that might appear.');
 	}
 
+	$last_worker_call = Config::get('system', 'last_poller_execution', false);
+	if (!$last_worker_call) {
+		$showwarning = true;
+		$warningtext[] = t('The worker was never executed. Please check your database structure!');
+	} elseif ((strtotime(datetime_convert()) - strtotime($last_worker_call)) > 60 * 60) {
+		$showwarning = true;
+		$warningtext[] = sprintf(t('The last worker execution was on %s UTC. This is older than one hour. Please check your crontab settings.'), $last_worker_call);
+	}
+
 	$r = q("SELECT `page-flags`, COUNT(`uid`) AS `count` FROM `user` GROUP BY `page-flags`");
 	$accounts = array(
 		array(t('Normal Account'), 0),
@@ -573,13 +653,13 @@ function admin_page_summary(App $a) {
 
 	logger('accounts: '.print_r($accounts,true),LOGGER_DATA);
 
-	$r = qu("SELECT COUNT(`id`) AS `count` FROM `register`");
+	$r = q("SELECT COUNT(`id`) AS `count` FROM `register`");
 	$pending = $r[0]['count'];
 
-	$r = qu("SELECT COUNT(*) AS `total` FROM `queue` WHERE 1");
+	$r = q("SELECT COUNT(*) AS `total` FROM `queue` WHERE 1");
 	$queue = (($r) ? $r[0]['total'] : 0);
 
-	$r = qu("SELECT COUNT(*) AS `total` FROM `workerqueue` WHERE NOT `done`");
+	$r = q("SELECT COUNT(*) AS `total` FROM `workerqueue` WHERE NOT `done`");
 	$workerqueue = (($r) ? $r[0]['total'] : 0);
 
 	// We can do better, but this is a quick queue status
@@ -596,7 +676,7 @@ function admin_page_summary(App $a) {
 		'$accounts' => $accounts,
 		'$pending' => array(t('Pending registrations'), $pending),
 		'$version' => array(t('Version'), FRIENDICA_VERSION),
-		'$baseurl' => App::get_baseurl(),
+		'$baseurl' => System::baseUrl(),
 		'$platform' => FRIENDICA_PLATFORM,
 		'$codename' => FRIENDICA_CODENAME,
 		'$build' =>  get_config('system','build'),
@@ -612,11 +692,16 @@ function admin_page_summary(App $a) {
  * @param App $a
  */
 function admin_page_site_post(App $a) {
-	if (!x($_POST,"page_site")) {
+	check_form_security_token_redirectOnErr('/admin/site', 'admin_site');
+
+	if (!empty($_POST['republish_directory'])) {
+		proc_run(PRIORITY_LOW, 'include/directory.php');
 		return;
 	}
 
-	check_form_security_token_redirectOnErr('/admin/site', 'admin_site');
+	if (!x($_POST,"page_site")) {
+		return;
+	}
 
 	// relocate
 	if (x($_POST,'relocate') && x($_POST,'relocate_url') && $_POST['relocate_url'] != "") {
@@ -634,7 +719,7 @@ function admin_page_site_post(App $a) {
 		 * send relocate for every local user
 		 * */
 
-		$old_url = App::get_baseurl(true);
+		$old_url = System::baseUrl(true);
 
 		// Generate host names for relocation the addresses in the format user@address.tld
 		$new_host = str_replace("http://", "@", normalise_link($new_url));
@@ -748,7 +833,6 @@ function admin_page_site_post(App $a) {
 	$nodeinfo		=	((x($_POST,'nodeinfo'))			? intval(trim($_POST['nodeinfo']))		: false);
 	$dfrn_only		=	((x($_POST,'dfrn_only'))		? True						: False);
 	$ostatus_disabled	=	!((x($_POST,'ostatus_disabled'))	? True  					: False);
-	$ostatus_poll_interval	=	((x($_POST,'ostatus_poll_interval'))	? intval(trim($_POST['ostatus_poll_interval']))	:  0);
 	$ostatus_full_threads	=	((x($_POST,'ostatus_full_threads'))	? True  					: False);
 	$diaspora_enabled	=	((x($_POST,'diaspora_enabled'))		? True   					: False);
 	$ssl_policy		=	((x($_POST,'ssl_policy'))		? intval($_POST['ssl_policy']) 			: 0);
@@ -857,16 +941,16 @@ function admin_page_site_post(App $a) {
 	set_config('system','language', $language);
 	set_config('system','theme', $theme);
 
-	if ($theme_mobile === '---') {
+	if ($theme_mobile == '---') {
 		del_config('system','mobile-theme');
 	} else {
 		set_config('system','mobile-theme', $theme_mobile);
-		}
-		if ($singleuser === '---') {
-			del_config('system','singleuser');
-		} else {
-			set_config('system','singleuser', $singleuser);
-		}
+	}
+	if ($singleuser == '---') {
+		del_config('system','singleuser');
+	} else {
+		set_config('system','singleuser', $singleuser);
+	}
 	set_config('system', 'maximagesize', $maximagesize);
 	set_config('system', 'max_image_length', $maximagelength);
 	set_config('system', 'jpeg_quality', $jpegimagequality);
@@ -896,7 +980,6 @@ function admin_page_site_post(App $a) {
 	set_config('system', 'curl_timeout', $timeout);
 	set_config('system', 'dfrn_only', $dfrn_only);
 	set_config('system', 'ostatus_disabled', $ostatus_disabled);
-	set_config('system', 'ostatus_poll_interval', $ostatus_poll_interval);
 	set_config('system', 'ostatus_full_threads', $ostatus_full_threads);
 	set_config('system', 'diaspora_enabled', $diaspora_enabled);
 
@@ -904,10 +987,25 @@ function admin_page_site_post(App $a) {
 
 	set_config('system', 'force_ssl', $force_ssl);
 	set_config('system', 'hide_help', $hide_help);
+
+	if ($itemcache != '') {
+		$itemcache = App::realpath($itemcache);
+	}
+
 	set_config('system', 'itemcache', $itemcache);
 	set_config('system', 'itemcache_duration', $itemcache_duration);
 	set_config('system', 'max_comments', $max_comments);
+
+	if ($temppath != '') {
+		$temppath = App::realpath($temppath);
+	}
+
 	set_config('system', 'temppath', $temppath);
+
+	if ($basepath != '') {
+		$basepath = App::realpath($basepath);
+	}
+
 	set_config('system', 'basepath', $basepath);
 	set_config('system', 'proxy_disabled', $proxy_disabled);
 	set_config('system', 'only_tag_search', $only_tag_search);
@@ -1014,7 +1112,7 @@ function admin_page_site(App $a) {
 	/* Banner */
 	$banner = get_config('system','banner');
 	if ($banner == false) {
-		$banner = '<a href="http://friendica.com"><img id="logo-img" src="images/friendica-32.png" alt="logo" /></a><span id="logo-text"><a href="http://friendica.com">Friendica</a></span>';
+		$banner = '<a href="https://friendi.ca"><img id="logo-img" src="images/friendica-32.png" alt="logo" /></a><span id="logo-text"><a href="https://friendi.ca">Friendica</a></span>';
 	}
 	$banner = htmlspecialchars($banner);
 	$info = get_config('config','info');
@@ -1059,6 +1157,7 @@ function admin_page_site(App $a) {
 		'$title' => t('Administration'),
 		'$page' => t('Site'),
 		'$submit' => t('Save Settings'),
+		'$republish' => t('Republish users to directory'),
 		'$registration' => t('Registration'),
 		'$upload' => t('File upload'),
 		'$corporate' => t('Policies'),
@@ -1067,7 +1166,7 @@ function admin_page_site(App $a) {
 		'$performance' => t('Performance'),
 		'$worker_title' => t('Worker'),
 		'$relocate'=> t('Relocate - WARNING: advanced function. Could make this server unreachable.'),
-		'$baseurl' => App::get_baseurl(true),
+		'$baseurl' => System::baseUrl(true),
 		// name, label, value, help string, extra data...
 		'$sitename' 		=> array('sitename', t("Site name"), $a->config['sitename'],''),
 		'$hostname' 		=> array('hostname', t("Host name"), $a->config['hostname'], ""),
@@ -1078,11 +1177,11 @@ function admin_page_site(App $a) {
 		'$info'			=> array('info', t('Additional Info'), $info, sprintf(t('For public servers: you can add additional information here that will be listed at %s/siteinfo.'), get_server())),
 		'$language' 		=> array('language', t("System language"), get_config('system','language'), "", $lang_choices),
 		'$theme' 		=> array('theme', t("System theme"), get_config('system','theme'), t("Default system theme - may be over-ridden by user profiles - <a href='#' id='cnftheme'>change theme settings</a>"), $theme_choices),
-		'$theme_mobile' 	=> array('theme_mobile', t("Mobile system theme"), get_config('system','mobile-theme'), t("Theme for mobile devices"), $theme_choices_mobile),
+		'$theme_mobile' 	=> array('theme_mobile', t("Mobile system theme"), Config::get('system', 'mobile-theme', '---'), t("Theme for mobile devices"), $theme_choices_mobile),
 		'$ssl_policy'		=> array('ssl_policy', t("SSL link policy"), (string) intval(get_config('system','ssl_policy')), t("Determines whether generated links should be forced to use SSL"), $ssl_choices),
 		'$force_ssl'		=> array('force_ssl', t("Force SSL"), get_config('system','force_ssl'), t("Force all Non-SSL requests to SSL - Attention: on some systems it could lead to endless loops.")),
 		'$hide_help'		=> array('hide_help', t("Hide help entry from navigation menu"), get_config('system','hide_help'), t("Hides the menu entry for the Help pages from the navigation menu. You can still access it calling /help directly.")),
-		'$singleuser' 		=> array('singleuser', t("Single user instance"), get_config('system','singleuser'), t("Make this instance multi-user or single-user for the named user"), $user_names),
+		'$singleuser' 		=> array('singleuser', t("Single user instance"), Config::get('system', 'singleuser', '---'), t("Make this instance multi-user or single-user for the named user"), $user_names),
 		'$maximagesize'		=> array('maximagesize', t("Maximum image size"), get_config('system','maximagesize'), t("Maximum size in bytes of uploaded images. Default is 0, which means no limits.")),
 		'$maximagelength'	=> array('maximagelength', t("Maximum image length"), get_config('system','max_image_length'), t("Maximum length in pixels of the longest side of uploaded images. Default is -1, which means no limits.")),
 		'$jpegimagequality'	=> array('jpegimagequality', t("JPEG image quality"), get_config('system','jpeg_quality'), t("Uploaded JPEGS will be saved at this quality setting [0-100]. Default is 100, which is full quality.")),
@@ -1108,7 +1207,6 @@ function admin_page_site(App $a) {
 		'$community_page_style' => array('community_page_style', t("Community Page Style"), get_config('system','community_page_style'), t("Type of community page to show. 'Global community' shows every public posting from an open distributed network that arrived on this server."), $community_page_style_choices),
 		'$max_author_posts_community_page' => array('max_author_posts_community_page', t("Posts per user on community page"), get_config('system','max_author_posts_community_page'), t("The maximum number of posts per user on the community page. (Not valid for 'Global Community')")),
 		'$ostatus_disabled' 	=> array('ostatus_disabled', t("Enable OStatus support"), !get_config('system','ostatus_disabled'), t("Provide built-in OStatus \x28StatusNet, GNU Social etc.\x29 compatibility. All communications in OStatus are public, so privacy warnings will be occasionally displayed.")),
-		'$ostatus_poll_interval' => array('ostatus_poll_interval', t("OStatus conversation completion interval"), (string) intval(get_config('system','ostatus_poll_interval')), t("How often shall the poller check for new entries in OStatus conversations? This can be a very ressource task."), $ostatus_poll_choices),
 		'$ostatus_full_threads'	=> array('ostatus_full_threads', t("Only import OStatus threads from our contacts"), get_config('system','ostatus_full_threads'), t("Normally we import every content from our OStatus contacts. With this option we only store threads that are started by a contact that is known on our system.")),
 		'$ostatus_not_able'	=> t("OStatus support can only be enabled if threading is enabled."),
 		'$diaspora_able'	=> $diaspora_able,
@@ -1142,14 +1240,14 @@ function admin_page_site(App $a) {
 		'$proxy_disabled'	=> array('proxy_disabled', t("Disable picture proxy"), get_config('system','proxy_disabled'), t("The picture proxy increases performance and privacy. It shouldn't be used on systems with very low bandwith.")),
 		'$only_tag_search'	=> array('only_tag_search', t("Only search in tags"), get_config('system','only_tag_search'), t("On large systems the text search can slow down the system extremely.")),
 
-		'$relocate_url'		=> array('relocate_url', t("New base url"), App::get_baseurl(), t("Change base url for this server. Sends relocate message to all DFRN contacts of all users.")),
+		'$relocate_url'		=> array('relocate_url', t("New base url"), System::baseUrl(), t("Change base url for this server. Sends relocate message to all DFRN contacts of all users.")),
 
 		'$rino' 		=> array('rino', t("RINO Encryption"), intval(get_config('system','rino_encrypt')), t("Encryption layer between nodes."), array("Disabled", "RINO1 (deprecated)", "RINO2")),
 
 		'$worker_queues' 	=> array('worker_queues', t("Maximum number of parallel workers"), get_config('system','worker_queues'), t("On shared hosters set this to 2. On larger systems, values of 10 are great. Default value is 4.")),
 		'$worker_dont_fork'	=> array('worker_dont_fork', t("Don't use 'proc_open' with the worker"), get_config('system','worker_dont_fork'), t("Enable this if your system doesn't allow the use of 'proc_open'. This can happen on shared hosters. If this is enabled you should increase the frequency of poller calls in your crontab.")),
 		'$worker_fastlane'	=> array('worker_fastlane', t("Enable fastlane"), get_config('system','worker_fastlane'), t("When enabed, the fastlane mechanism starts an additional worker if processes with higher priority are blocked by processes of lower priority.")),
-		'$worker_frontend'	=> array('worker_frontend', t('Enable frontend worker'), get_config('system','frontend_worker'), t('When enabled the Worker process is triggered when backend access is performed (e.g. messages being delivered). On smaller sites you might want to call yourdomain.tld/worker on a regular basis via an external cron job. You should only enable this option if you cannot utilize cron/scheduled jobs on your server. The worker background process needs to be activated for this.')),
+		'$worker_frontend'	=> array('worker_frontend', t('Enable frontend worker'), get_config('system','frontend_worker'), sprintf(t('When enabled the Worker process is triggered when backend access is performed (e.g. messages being delivered). On smaller sites you might want to call %s/worker on a regular basis via an external cron job. You should only enable this option if you cannot utilize cron/scheduled jobs on your server.'), System::baseUrl())),
 
 		'$form_security_token'	=> get_form_security_token("admin_site")
 
@@ -1232,13 +1330,13 @@ function admin_page_dbsync(App $a) {
 	}
 	if (! count($failed)) {
 		$o = replace_macros(get_markup_template('structure_check.tpl'),array(
-			'$base'   => App::get_baseurl(true),
+			'$base'   => System::baseUrl(true),
 			'$banner' => t('No failed updates.'),
 			'$check'  => t('Check database structure'),
 		));
 	} else {
 		$o = replace_macros(get_markup_template('failed_updates.tpl'),array(
-			'$base'   => App::get_baseurl(true),
+			'$base'   => System::baseUrl(true),
 			'$banner' => t('Failed Updates'),
 			'$desc'   => t('This does not include updates prior to 1139, which did not return a status.'),
 			'$mark'   => t('Mark success (if update was manually applied)'),
@@ -1306,10 +1404,10 @@ function admin_page_users_post(App $a) {
 			Thank you and welcome to %4$s.'));
 
 		$preamble = sprintf($preamble, $nu['username'], $a->config['sitename']);
-		$body = sprintf($body, App::get_baseurl(), $nu['email'], $result['password'], $a->config['sitename']);
+		$body = sprintf($body, System::baseUrl(), $nu['email'], $result['password'], $a->config['sitename']);
 
 		notification(array(
-			'type' => "SYSTEM_EMAIL",
+			'type' => SYSTEM_EMAIL,
 			'to_email' => $nu['email'],
 			'subject'=> sprintf(t('Registration details for %s'), $a->config['sitename']),
 			'preamble'=> $preamble,
@@ -1401,7 +1499,7 @@ function admin_page_users(App $a) {
 
 
 	/* get users */
-	$total = qu("SELECT COUNT(*) AS `total` FROM `user` WHERE 1");
+	$total = q("SELECT COUNT(*) AS `total` FROM `user` WHERE 1");
 	if (count($total)) {
 		$a->set_pager_total($total[0]['total']);
 		$a->set_pager_itemspage(100);
@@ -1436,7 +1534,7 @@ function admin_page_users(App $a) {
 	$sql_order = "`".str_replace('.','`.`',$order)."`";
 	$sql_order_direction = ($order_direction === "+")?"ASC":"DESC";
 
-	$users = qu("SELECT `user`.*, `contact`.`name`, `contact`.`url`, `contact`.`micro`, `user`.`account_expired`, `contact`.`last-item` AS `lastitem_date`
+	$users = q("SELECT `user`.*, `contact`.`name`, `contact`.`url`, `contact`.`micro`, `user`.`account_expired`, `contact`.`last-item` AS `lastitem_date`
 				FROM `user`
 				INNER JOIN `contact` ON `contact`.`uid` = `user`.`uid` AND `contact`.`self`
 				WHERE `user`.`verified`
@@ -1530,7 +1628,7 @@ function admin_page_users(App $a) {
 		'$form_security_token' => get_form_security_token("admin_users"),
 
 		// values //
-		'$baseurl' => App::get_baseurl(true),
+		'$baseurl' => System::baseUrl(true),
 
 		'$pending' => $pending,
 		'deleted' => $deleted,
@@ -1603,7 +1701,7 @@ function admin_page_plugins(App $a) {
 		$readme=Null;
 		if (is_file("addon/$plugin/README.md")) {
 			$readme = file_get_contents("addon/$plugin/README.md");
-			$readme = Markdown($readme);
+			$readme = Markdown($readme, false);
 		} elseif (is_file("addon/$plugin/README")) {
 			$readme = "<pre>". file_get_contents("addon/$plugin/README") ."</pre>";
 		}
@@ -1622,7 +1720,7 @@ function admin_page_plugins(App $a) {
 			'$page' => t('Plugins'),
 			'$toggle' => t('Toggle'),
 			'$settings' => t('Settings'),
-			'$baseurl' => App::get_baseurl(true),
+			'$baseurl' => System::baseUrl(true),
 
 			'$plugin' => $plugin,
 			'$status' => $status,
@@ -1647,10 +1745,10 @@ function admin_page_plugins(App $a) {
 	 */
 
 	if (x($_GET,"a") && $_GET['a']=="r") {
-		check_form_security_token_redirectOnErr(App::get_baseurl().'/admin/plugins', 'admin_themes', 't');
+		check_form_security_token_redirectOnErr(System::baseUrl().'/admin/plugins', 'admin_themes', 't');
 		reload_plugins();
 		info("Plugins reloaded");
-		goaway(App::get_baseurl().'/admin/plugins');
+		goaway(System::baseUrl().'/admin/plugins');
 	}
 
 	$plugins = array();
@@ -1685,7 +1783,7 @@ function admin_page_plugins(App $a) {
 		'$page' => t('Plugins'),
 		'$submit' => t('Save Settings'),
 		'$reload' => t('Reload active plugins'),
-		'$baseurl' => App::get_baseurl(true),
+		'$baseurl' => System::baseUrl(true),
 		'$function' => 'plugins',
 		'$plugins' => $plugins,
 		'$pcount' => count($plugins),
@@ -1855,7 +1953,7 @@ function admin_page_themes(App $a) {
 		$readme = Null;
 		if (is_file("view/theme/$theme/README.md")) {
 			$readme = file_get_contents("view/theme/$theme/README.md");
-			$readme = Markdown($readme);
+			$readme = Markdown($readme, false);
 		} elseif (is_file("view/theme/$theme/README")) {
 			$readme = "<pre>". file_get_contents("view/theme/$theme/README") ."</pre>";
 		}
@@ -1898,7 +1996,7 @@ function admin_page_themes(App $a) {
 			'$page' => t('Themes'),
 			'$toggle' => t('Toggle'),
 			'$settings' => t('Settings'),
-			'$baseurl' => App::get_baseurl(true),
+			'$baseurl' => System::baseUrl(true),
 			'$plugin' => $theme,
 			'$status' => $status,
 			'$action' => $action,
@@ -1917,7 +2015,7 @@ function admin_page_themes(App $a) {
 
 	// reload active themes
 	if (x($_GET,"a") && $_GET['a']=="r") {
-		check_form_security_token_redirectOnErr(App::get_baseurl().'/admin/themes', 'admin_themes', 't');
+		check_form_security_token_redirectOnErr(System::baseUrl().'/admin/themes', 'admin_themes', 't');
 		if ($themes) {
 			foreach ($themes as $th) {
 				if ($th['allowed']) {
@@ -1927,7 +2025,7 @@ function admin_page_themes(App $a) {
 			}
 		}
 		info("Themes reloaded");
-		goaway(App::get_baseurl().'/admin/themes');
+		goaway(System::baseUrl().'/admin/themes');
 	}
 
 	/*
@@ -1948,7 +2046,7 @@ function admin_page_themes(App $a) {
 		'$page'                => t('Themes'),
 		'$submit'              => t('Save Settings'),
 		'$reload'              => t('Reload active themes'),
-		'$baseurl'             => App::get_baseurl(true),
+		'$baseurl'             => System::baseUrl(true),
 		'$function'            => 'themes',
 		'$plugins'             => $xthemes,
 		'$pcount'              => count($themes),
@@ -2022,7 +2120,7 @@ function admin_page_logs(App $a) {
 		'$page' => t('Logs'),
 		'$submit' => t('Save Settings'),
 		'$clear' => t('Clear'),
-		'$baseurl' => App::get_baseurl(true),
+		'$baseurl' => System::baseUrl(true),
 		'$logname' =>  get_config('system','logfile'),
 
 		// name, label, value, help string, extra data...

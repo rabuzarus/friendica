@@ -37,7 +37,7 @@ local .htaccess file
 		- PHP *command line* access with register_argc_argv set to true in the 
 php.ini file [or see 'poormancron' in section 8]
 
-		- curl, gd (with at least jpeg support), mysql, mbstring and openssl extensions
+		- curl, gd (with at least jpeg support), mysql, mbstring, xml and openssl extensions
 
 		- some form of email server or email gateway such that PHP mail() works
 
@@ -140,7 +140,17 @@ $a->config['system']['addon'] = 'js_upload,poormancron';
 
 and save your changes.
 
-9. (Optional) Reverse-proxying and HTTPS
+9. (Recommended) Set up a backup plan
+
+Bad things will happen. Let there be a hardware failure, a corrupted
+database or whatever you can think of. So once the installation of your
+Friendica node is done, you should make yoursef a backup plan.
+
+The most important file is the `.htconfig.php` file in the base directory.
+As it stores all your data, you should also have a recent dump of your
+Friendica database at hand, should you have to recover your node.
+
+10. (Optional) Reverse-proxying and HTTPS
 
 Friendica looks for some well-known HTTP headers indicating a reverse-proxy
 terminating an HTTPS connection. While the standard from RFC 7239 specifies

@@ -21,6 +21,7 @@
 require_once(__DIR__ . DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR . 'autoload.php');
 
 use Friendica\App;
+use Friendica\Core\System;
 use Friendica\Core\Config;
 use Friendica\Util\Lock;
 
@@ -40,9 +41,9 @@ require_once 'include/poller.php';
 
 define ( 'FRIENDICA_PLATFORM',     'Friendica');
 define ( 'FRIENDICA_CODENAME',     'Asparagus');
-define ( 'FRIENDICA_VERSION',      '3.5.3-dev');
-define ( 'DFRN_PROTOCOL_VERSION',  '2.23'     );
-define ( 'DB_UPDATE_VERSION',      1233       );
+define ( 'FRIENDICA_VERSION',      '3.6-dev' );
+define ( 'DFRN_PROTOCOL_VERSION',  '2.23'    );
+define ( 'DB_UPDATE_VERSION',      1234      );
 
 /**
  * @brief Constant with a HTML line break.
@@ -243,8 +244,9 @@ define('PROTOCOL_UNKNOWN',         0);
 define('PROTOCOL_DFRN',            1);
 define('PROTOCOL_DIASPORA',        2);
 define('PROTOCOL_OSTATUS_SALMON',  3);
-define('PROTOCOL_OSTATUS_FEED',    4);
-define('PROTOCOL_GS_CONVERSATION', 5);
+define('PROTOCOL_OSTATUS_FEED',    4); // Deprecated
+define('PROTOCOL_GS_CONVERSATION', 5); // Deprecated
+define('PROTOCOL_SPLITTED_CONV',   6);
 /** @}*/
 
 /**
@@ -334,6 +336,8 @@ define ( 'NOTIFY_TAGSHARE', 0x0100 );
 define ( 'NOTIFY_POKE',     0x0200 );
 define ( 'NOTIFY_SHARE',    0x0400 );
 
+define ( 'SYSTEM_EMAIL',    0x4000 );
+
 define ( 'NOTIFY_SYSTEM',   0x8000 );
 /* @}*/
 
@@ -405,6 +409,7 @@ define ( 'ACTIVITY_POST',        NAMESPACE_ACTIVITY_SCHEMA . 'post' );
 define ( 'ACTIVITY_UPDATE',      NAMESPACE_ACTIVITY_SCHEMA . 'update' );
 define ( 'ACTIVITY_TAG',         NAMESPACE_ACTIVITY_SCHEMA . 'tag' );
 define ( 'ACTIVITY_FAVORITE',    NAMESPACE_ACTIVITY_SCHEMA . 'favorite' );
+define ( 'ACTIVITY_UNFAVORITE',  NAMESPACE_ACTIVITY_SCHEMA . 'unfavorite' );
 define ( 'ACTIVITY_SHARE',       NAMESPACE_ACTIVITY_SCHEMA . 'share' );
 define ( 'ACTIVITY_DELETE',      NAMESPACE_ACTIVITY_SCHEMA . 'delete' );
 
@@ -566,31 +571,16 @@ function system_unavailable() {
 	killme();
 }
 
-function clean_urls() {
-	$a = get_app();
-	return true;
-}
-
-function z_path() {
-	$base = App::get_baseurl();
-
-	if (!clean_urls()) {
-		$base .= '/?q=';
-	}
-
-	return $base;
-}
-
 /**
  * @brief Returns the baseurl.
  *
- * @see App::get_baseurl()
+ * @see System::baseUrl()
  *
  * @return string
- * @TODO Maybe super-flous and deprecated? Seems to only wrap App::get_baseurl()
+ * @TODO Function is deprecated and only used in some addons
  */
 function z_root() {
-	return App::get_baseurl();
+	return System::baseUrl();
 }
 
 /**
@@ -616,7 +606,12 @@ function is_ajax() {
 	return (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest');
 }
 
-function check_db() {
+/**
+ * @brief Function to check if request was an AJAX (xmlhttprequest) request.
+ *
+ * @param $via_worker boolean Is the check run via the poller?
+ */
+function check_db($via_worker) {
 
 	$build = get_config('system', 'build');
 	if (!x($build)) {
@@ -624,7 +619,10 @@ function check_db() {
 		$build = DB_UPDATE_VERSION;
 	}
 	if ($build != DB_UPDATE_VERSION) {
-		proc_run(PRIORITY_CRITICAL, 'include/dbupdate.php');
+		// When we cannot execute the database update via the worker, we will do it directly
+		if (!proc_run(PRIORITY_CRITICAL, 'include/dbupdate.php') && $via_worker) {
+			update_db(get_app());
+		}
 	}
 }
 
@@ -643,10 +641,10 @@ function check_url(App $a) {
 	// We will only change the url to an ip address if there is no existing setting
 
 	if (!x($url)) {
-		$url = set_config('system', 'url', App::get_baseurl());
+		$url = set_config('system', 'url', System::baseUrl());
 	}
-	if ((!link_compare($url, App::get_baseurl())) && (!preg_match("/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/", $a->get_hostname))) {
-		$url = set_config('system', 'url', App::get_baseurl());
+	if ((!link_compare($url, System::baseUrl())) && (!preg_match("/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/", $a->get_hostname))) {
+		$url = set_config('system', 'url', System::baseUrl());
 	}
 
 	return;
@@ -928,7 +926,7 @@ function killme() {
  */
 function goaway($s) {
 	if (!strstr(normalise_link($s), "http://")) {
-		$s = App::get_baseurl() . "/" . $s;
+		$s = System::baseUrl() . "/" . $s;
 	}
 
 	header("Location: $s");
@@ -976,6 +974,10 @@ function public_contact() {
  * @return int|bool visitor_id or false
  */
 function remote_user() {
+	// You cannot be both local and remote
+	if (local_user()) {
+		return false;
+	}
 	if ((x($_SESSION, 'authenticated')) && (x($_SESSION, 'visitor_id'))) {
 		return intval($_SESSION['visitor_id']);
 	}
@@ -1045,6 +1047,8 @@ function get_max_import_size() {
  *
  * @hooks 'proc_run'
  * 	array $arr
+ *
+ * @return boolean "false" if proc_run couldn't be executed
  */
 function proc_run($cmd) {
 
@@ -1054,7 +1058,7 @@ function proc_run($cmd) {
 
 	$args = array();
 	if (!count($proc_args)) {
-		return;
+		return false;
 	}
 
 	// Preserve the first parameter
@@ -1080,7 +1084,7 @@ function proc_run($cmd) {
 
 	call_hooks("proc_run", $arr);
 	if (!$arr['run_cmd'] || ! count($args)) {
-		return;
+		return true;
 	}
 
 	$priority = PRIORITY_MEDIUM;
@@ -1105,20 +1109,25 @@ function proc_run($cmd) {
 	array_shift($argv);
 
 	$parameters = json_encode($argv);
-	$found = dba::select('workerqueue', array('id'), array('parameter' => $parameters, 'done' => false), array('limit' => 1));
+	$found = dba::exists('workerqueue', array('parameter' => $parameters, 'done' => false));
 
-	if (!dbm::is_result($found)) {
+	// Quit if there was a database error - a precaution for the update process to 3.5.3
+	if (dba::errorNo() != 0) {
+		return false;
+	}
+
+	if (!$found) {
 		dba::insert('workerqueue', array('parameter' => $parameters, 'created' => $created, 'priority' => $priority));
 	}
 
 	// Should we quit and wait for the poller to be called as a cronjob?
 	if ($dont_fork) {
-		return;
+		return true;
 	}
 
 	// If there is a lock then we don't have to check for too much worker
 	if (!Lock::set('poller_worker', 0)) {
-		return;
+		return true;
 	}
 
 	// If there are already enough workers running, don't fork another one
@@ -1126,13 +1135,15 @@ function proc_run($cmd) {
 	Lock::remove('poller_worker');
 
 	if ($quit) {
-		return;
+		return true;
 	}
 
 	// Now call the poller to execute the jobs that we just added to the queue
 	$args = array("include/poller.php", "no_cron");
 
 	$a->proc_run($args);
+
+	return true;
 }
 
 function current_theme() {
@@ -1407,6 +1418,46 @@ function get_server() {
 	return($server);
 }
 
+function get_temppath() {
+	$a = get_app();
+
+	$temppath = get_config("system", "temppath");
+
+	if (($temppath != "") && App::directory_usable($temppath)) {
+		// We have a temp path and it is usable
+		return App::realpath($temppath);
+	}
+
+	// We don't have a working preconfigured temp path, so we take the system path.
+	$temppath = sys_get_temp_dir();
+
+	// Check if it is usable
+	if (($temppath != "") && App::directory_usable($temppath)) {
+		// Always store the real path, not the path through symlinks
+		$temppath = App::realpath($temppath);
+
+		// To avoid any interferences with other systems we create our own directory
+		$new_temppath = $temppath . "/" . $a->get_hostname();
+		if (!is_dir($new_temppath)) {
+			/// @TODO There is a mkdir()+chmod() upwards, maybe generalize this (+ configurable) into a function/method?
+			mkdir($new_temppath);
+		}
+
+		if (App::directory_usable($new_temppath)) {
+			// The new path is usable, we are happy
+			set_config("system", "temppath", $new_temppath);
+			return $new_temppath;
+		} else {
+			// We can't create a subdirectory, strange.
+			// But the directory seems to work, so we use it but don't store it.
+			return $temppath;
+		}
+	}
+
+	// Reaching this point means that the operating system is configured badly.
+	return '';
+}
+
 function get_cachefile($file, $writemode = true) {
 	$cache = get_itemcachepath();
 
@@ -1473,7 +1524,7 @@ function get_itemcachepath() {
 
 	$itemcache = get_config('system', 'itemcache');
 	if (($itemcache != "") && App::directory_usable($itemcache)) {
-		return $itemcache;
+		return App::realpath($itemcache);
 	}
 
 	$temppath = get_temppath();
@@ -1527,43 +1578,6 @@ function get_spoolpath() {
 
 	// Reaching this point means that the operating system is configured badly.
 	return "";
-}
-
-function get_temppath() {
-	$a = get_app();
-
-	$temppath = get_config("system", "temppath");
-
-	if (($temppath != "") && App::directory_usable($temppath)) {
-		// We have a temp path and it is usable
-		return $temppath;
-	}
-
-	// We don't have a working preconfigured temp path, so we take the system path.
-	$temppath = sys_get_temp_dir();
-
-	// Check if it is usable
-	if (($temppath != "") && App::directory_usable($temppath)) {
-		// To avoid any interferences with other systems we create our own directory
-		$new_temppath = $temppath . "/" . $a->get_hostname();
-		if (!is_dir($new_temppath)) {
-			/// @TODO There is a mkdir()+chmod() upwards, maybe generalize this (+ configurable) into a function/method?
-			mkdir($new_temppath);
-		}
-
-		if (App::directory_usable($new_temppath)) {
-			// The new path is usable, we are happy
-			set_config("system", "temppath", $new_temppath);
-			return $new_temppath;
-		} else {
-			// We can't create a subdirectory, strange.
-			// But the directory seems to work, so we use it but don't store it.
-			return $temppath;
-		}
-	}
-
-	// Reaching this point means that the operating system is configured badly.
-	return '';
 }
 
 /// @deprecated
