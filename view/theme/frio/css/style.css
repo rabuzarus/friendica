@@ -1420,6 +1420,35 @@ section #jotOpen {
    margin:0px auto;
 }
 
+/* Event reminder */
+#event-reminder #event-notice {
+    font-weight: bold;
+    font-size: 15px;
+}
+#event-reminder #event-wrapper {
+    padding-top: 5px;
+    font-size: 13px;
+}
+#event-reminder #event-reminder-counter.envent-today,
+#event-reminder .event-list.event-today .event-reminder-date {
+    color: #4080ff;
+}
+#event-reminder .event-list {
+    cursor: pointer;
+    padding: 3px 0;
+}
+.event-reminder-title {
+    font-weight: bold;
+}
+#event-reminder:hover .event-reminder-title {
+    color: $link_color;
+    -webkit-transition: all 0.25s ease-in-out;
+    -moz-transition: all 0.25s ease-in-out;
+    -o-transition: all 0.25s ease-in-out;
+    -ms-transition: all 0.25s ease-in-out;
+    transition: all 0.25s ease-in-out;
+}
+
 /*
 /* Stream
 */

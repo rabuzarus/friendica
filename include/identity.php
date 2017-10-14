@@ -547,21 +547,15 @@ function get_events() {
 		return $o;
 	}
 
-//		$mobile_detect = new Mobile_Detect();
-//		$is_mobile = $mobile_detect->isMobile() || $mobile_detect->isTablet();
-
-//		if ($is_mobile)
-//			return $o;
-
 	$bd_format = t('g A l F d') ; // 8 AM Friday January 18
-	$bd_short = t('F d');
+	$bd_short = t('D g:i A'); // Fri 8:01 AM;
 
 	$s = dba::p("SELECT `event`.* FROM `event`
 			WHERE `event`.`uid` = ? AND `type` != 'birthday' AND `start` < ? AND `start` >= ?
 			ORDER BY `start` ASC ",
 			local_user(),
-			datetime_convert('UTC','UTC','now + 7 days'),
-			datetime_convert('UTC','UTC','now - 1 days')
+			datetime_convert('UTC', 'UTC', 'now + 7 days'),
+			datetime_convert('UTC', 'UTC', 'now - 1 days')
 	);
 
 	$r = array();
@@ -575,35 +569,36 @@ function get_events() {
 				$total ++;
 			}
 
-			$strt = datetime_convert('UTC',$rr['convert'] ? $a->timezone : 'UTC',$rr['start'],'Y-m-d');
-			if ($strt === datetime_convert('UTC',$a->timezone,'now','Y-m-d')) {
+			$strt = datetime_convert('UTC', $rr['convert'] ? $a->timezone : 'UTC', $rr['start'], 'Y-m-d');
+			if ($strt === datetime_convert('UTC', $a->timezone,'now', 'Y-m-d')) {
 				$istoday = true;
 			}
 
-			$title = strip_tags(html_entity_decode(bbcode($rr['summary']),ENT_QUOTES,'UTF-8'));
+			$title = strip_tags(html_entity_decode(bbcode($rr['summary']), ENT_QUOTES, 'UTF-8'));
 
 			if (strlen($title) > 35) {
-				$title = substr($title,0,32) . '... ';
+				$title = substr($title, 0, 32) . '... ';
 			}
 
-			$description = substr(strip_tags(bbcode($rr['desc'])),0,32) . '... ';
+			$description = substr(strip_tags(bbcode($rr['desc'])), 0, 32) . '... ';
 			if (! $description) {
 				$description = t('[No description]');
 			}
 
-			$strt = datetime_convert('UTC',$rr['convert'] ? $a->timezone : 'UTC',$rr['start']);
+			$strt = datetime_convert('UTC', $rr['convert'] ? $a->timezone : 'UTC', $rr['start']);
 
-			if (substr($strt,0,10) < datetime_convert('UTC',$a->timezone,'now','Y-m-d')) {
+			if (substr($strt, 0, 10) < datetime_convert('UTC', $a->timezone, 'now', 'Y-m-d')) {
 				continue;
 			}
 
-			$today = ((substr($strt,0,10) === datetime_convert('UTC',$a->timezone,'now','Y-m-d')) ? true : false);
+			$today = ((substr($strt, 0, 10) === datetime_convert('UTC', $a->timezone, 'now', 'Y-m-d')) ? true : false);
 
 			$rr['title'] = $title;
 			$rr['description'] = $desciption;
-			$rr['date'] = day_translate(datetime_convert('UTC', $rr['adjust'] ? $a->timezone : 'UTC', $rr['start'], $bd_format)) . (($today) ?  ' ' . t('[today]') : '');
+			$rr['date'] = day_translate(datetime_convert('UTC', $rr['adjust'] ? $a->timezone : 'UTC', $rr['start'], $bd_format));
+			$rr['date_short'] = day_translate(datetime_convert('UTC', $rr['adjust'] ? $a->timezone : 'UTC', $rr['start'], $bd_short));
 			$rr['startime'] = $strt;
-			$rr['today'] = $today;
+			$rr['today'] = (($today) ? t('today') : '');
 
 			$r[] = $rr;
 		}
@@ -612,12 +607,12 @@ function get_events() {
 	}
 	$tpl = get_markup_template("events_reminder.tpl");
 	return replace_macros($tpl, array(
-		'$baseurl' => System::baseUrl(),
-		'$classtoday' => $classtoday,
-		'$count' => count($r),
+		'$baseurl'         => System::baseUrl(),
+		'$classtoday'      => $classtoday,
+		'$count'           => count($r),
 		'$event_reminders' => t('Event Reminders'),
-		'$event_title' => t('Events this week:'),
-		'$events' => $r,
+		'$event_title'     => t('Events this week:'),
+		'$events'          => $r,
 	));
 }
 
