@@ -65,7 +65,7 @@ function fetch_url($url,$binary = false, &$redirects = 0, $timeout = 0, $accept_
  *    string 'body' => fetched content
  */
 function z_fetch_url($url, $binary = false, &$redirects = 0, $opts = array()) {
-	$ret = array('return_code' => 0, 'success' => false, 'header' => '', 'body' => '');
+	$ret = array('return_code' => 0, 'success' => false, 'header' => '', 'info' => '', 'body' => '');
 
 	$stamp1 = microtime(true);
 
@@ -164,6 +164,15 @@ function z_fetch_url($url, $binary = false, &$redirects = 0, $opts = array()) {
 	// if it throws any errors.
 
 	$s = @curl_exec($ch);
+	$curl_info = @curl_getinfo($ch);
+
+	// Special treatment for HTTP Code 416
+	// See https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/416
+	if (($curl_info['http_code'] == 416) && ($range > 0)) {
+		@curl_setopt($ch, CURLOPT_RANGE, '');
+		$s = @curl_exec($ch);
+		$curl_info = @curl_getinfo($ch);
+	}
 
 	if (curl_errno($ch) !== CURLE_OK) {
 		logger('fetch_url error fetching ' . $url . ': ' . curl_error($ch), LOGGER_NORMAL);
@@ -172,9 +181,10 @@ function z_fetch_url($url, $binary = false, &$redirects = 0, $opts = array()) {
 	$ret['errno'] = curl_errno($ch);
 
 	$base = $s;
-	$curl_info = @curl_getinfo($ch);
+	$ret['info'] = $curl_info;
 
 	$http_code = $curl_info['http_code'];
+
 	logger('fetch_url ' . $url . ': ' . $http_code . " " . $s, LOGGER_DATA);
 	$header = '';
 
