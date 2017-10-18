@@ -924,36 +924,16 @@ function widget_events() {
  * @return string HTML output.
  */
 function format_event_item($item) {
-	$same_date = false;
-	$finish    = false;
 
-	// Set the different time formats.
-	$dformat       = t('l F d, Y \@ g:i A'); // Friday January 18, 2011 @ 8:01 AM.
-	$dformat_short = t('D g:i A'); // Fri 8:01 AM.
-	$tformat       = t('g:i A'); // 8:01 AM.
+	$ev_date = array(
+		'start'    => $item['event-start'],
+		'finish'   => $item['event-finish'],
+		'adjust'   => $item['event-adjust'],
+		'nofinish' => $item['event-nofinish']
+	);
 
-	// Convert the time to different formats.
-	$dtstart_dt = (($item['event-adjust']) ? day_translate(datetime_convert('UTC', date_default_timezone_get(), $item['event-start'], $dformat)) : day_translate(datetime_convert('UTC', 'UTC', $item['event-start'], $dformat)));
-	$dtstart_title = datetime_convert('UTC', 'UTC', $item['event-start'], (($item['event-adjust']) ? ATOM_TIME : 'Y-m-d\TH:i:s'));
-	// Format: Jan till Dec.
-	$month_short = (($item['event-adjust']) ? day_short_translate(datetime_convert('UTC', date_default_timezone_get(), $item['event-start'], 'M')) : day_short_translate(datetime_convert('UTC', 'UTC', $item['event-start'], 'M')));
-	// Format: 1 till 31.
-	$date_short = (($item['event-adjust']) ? datetime_convert('UTC', date_default_timezone_get(), $item['event-start'], 'j') : datetime_convert('UTC', 'UTC', $item['event-start'], 'j'));
-	$start_time = (($item['event-adjust']) ? datetime_convert('UTC', date_default_timezone_get(), $item['event-start'], $tformat) : datetime_convert('UTC', 'UTC', $item['event-start'], $tformat));
-	$start_short = (($item['event-adjust']) ? day_short_translate(datetime_convert('UTC', date_default_timezone_get(), $item['event-start'], $dformat_short)) : day_short_translate(datetime_convert('UTC', 'UTC', $item['event-start'], $dformat_short)));
-
-	// If the option 'nofinisch' isn't set, we need to format the finish date/time.
-	if (!$item['event-nofinish']) {
-		$finish = true;
-		$dtend_dt  = (($item['event-adjust']) ? day_translate(datetime_convert('UTC', date_default_timezone_get(), $item['event-finish'], $dformat)) : day_translate(datetime_convert('UTC', 'UTC', $item['event-finish'], $dformat)));
-		$dtend_title = datetime_convert('UTC', 'UTC', $item['event-finish'], (($item['event-adjust'])   ? ATOM_TIME : 'Y-m-d\TH:i:s'));
-		$end_short = (($item['event-adjust']) ? day_short_translate(datetime_convert('UTC', date_default_timezone_get(), $item['event-finish'], $dformat_short)) : day_short_translate(datetime_convert('UTC', 'UTC', $item['event-finish'], $dformat_short)));
-		$end_time = (($item['event-adjust']) ? datetime_convert('UTC', date_default_timezone_get(), $item['event-finish'], $tformat) : datetime_convert('UTC', 'UTC', $item['event-finish'], $tformat));
-		// Check if start and finish time is at the same day.
-		if (substr($dtstart_title, 0, 10) === substr($dtend_title, 0, 10)) {
-			$same_date = true;
-		}
-	}
+	// Format the event start/finish time to a readable format.
+	$date = format_event_date($ev_date, true);
 
 	// Format the event location.
 	$evloc = event_location2array($item['event-location']);
@@ -971,19 +951,8 @@ function format_event_item($item) {
 		'$id'             => $item['event-id'],
 		'$title'          => prepare_text($item['event-summary']),
 		'$dtstart_label'  => t('Starts:'),
-		'$dtstart_title'  => $dtstart_title,
-		'$dtstart_dt'     => $dtstart_dt,
-		'$finish'         => $finish,
 		'$dtend_label'    => t('Finishes:'),
-		'$dtend_title'    => $dtend_title,
-		'$dtend_dt'       => $dtend_dt,
-		'$month_short'    => $month_short,
-		'$date_short'     => $date_short,
-		'$same_date'      => $same_date,
-		'$start_time'     => $start_time,
-		'$start_short'    => $start_short,
-		'$end_time'       => $end_time,
-		'$end_short'      => $end_short,
+		'$date'           => $date,
 		'$author_name'    => $item['author-name'],
 		'$author_link'    => $item['author-link'],
 		'$author_avatar'  => $item['author-avatar'],
@@ -1037,4 +1006,63 @@ function event_location2array($s = '') {
 	}
 
 	return $location;
+}
+
+/**
+ * @brief Format an array with time data from events to an array with readable time format.
+ * 
+ * @param array $event Array with time data (e.g. from the event table).
+ * @param bool $use_short If true the time will also added with a short format.
+ * @param type $bd_format The output time format.
+ * 
+ * @return array<br>
+ *     array 'iso' => Array with ISO datetime format.<br>
+ *     array 'local' => Array with readable datetime.<br>
+ *     array 'short' => Array with shortend datetime (only available if $use_short was set to true).<br>
+ *     array 'time' => Array with the start and finish time (only available if $use_short was set to true).<br>
+ *     string 'nofinish' => 1 if the event doesn't have a finish time.</br>
+ *     bool 'same_date' => True if start time and finsih time does have the same date.<br>
+ */
+function format_event_date($event, $use_short = false, $bd_format = 'l F d, Y \@ g:i A') {
+	$time      = array(
+		'nofinish'  => $event['nofinish'],
+		'adjust'    => $event['adjust'],
+		'same_date' => false
+	);
+
+	// Set the different time formats.
+	$dformat       = t($bd_format); // Friday January 18, 2011 @ 8:01 AM.
+	$dformat_short = t('D g:i A'); // Fri 8:01 AM.
+	$tformat       = t('g:i A'); // 8:01 AM.
+
+	// Convert the time to different formats.
+	$time['local']['start'] = (($event['adjust']) ? day_translate(datetime_convert('UTC', date_default_timezone_get(), $event['start'], $dformat)) : day_translate(datetime_convert('UTC', 'UTC', $event['start'], $dformat)));
+	$time['iso']['start'] = datetime_convert('UTC', 'UTC', $event['start'], (($event['adjust']) ? ATOM_TIME : 'Y-m-d\TH:i:s'));
+
+	if ($use_short) {
+		$time['short']['start'] = (($event['adjust']) ? day_short_translate(datetime_convert('UTC', date_default_timezone_get(), $event['start'], $dformat_short)) : day_short_translate(datetime_convert('UTC', 'UTC', $event['start'], $dformat_short)));
+		// Format: Jan till Dec.
+		$time['short']['month'] = (($event['adjust']) ? day_short_translate(datetime_convert('UTC', date_default_timezone_get(), $event['start'], 'M')) : day_short_translate(datetime_convert('UTC', 'UTC', $event['start'], 'M')));
+		// Format: 1 till 31.
+		$time['short']['date'] = (($event['adjust']) ? datetime_convert('UTC', date_default_timezone_get(), $event['start'], 'j') : datetime_convert('UTC', 'UTC', $event['start'], 'j'));
+		$time['time']['start'] = (($event['adjust']) ? datetime_convert('UTC', date_default_timezone_get(), $event['start'], $tformat) : datetime_convert('UTC', 'UTC', $event['start'], $tformat));
+	}
+
+	// If the option 'nofinisch' isn't set, we need to format the finish date/time.
+	if (!$event['nofinish']) {
+		$time['local']['finish'] = (($event['adjust']) ? day_translate(datetime_convert('UTC', date_default_timezone_get(), $event['finish'], $dformat)) : day_translate(datetime_convert('UTC', 'UTC', $event['finish'], $dformat)));
+		$time['iso']['finish'] = datetime_convert('UTC', 'UTC', $event['finish'], (($event['adjust'])   ? ATOM_TIME : 'Y-m-d\TH:i:s'));
+
+		if ($use_short) {
+			$time['short']['finish'] = (($event['adjust']) ? day_short_translate(datetime_convert('UTC', date_default_timezone_get(), $event['finish'], $dformat_short)) : day_short_translate(datetime_convert('UTC', 'UTC', $event['finish'], $dformat_short)));
+			$time['time']['finish'] = (($event['adjust']) ? datetime_convert('UTC', date_default_timezone_get(), $event['finish'], $tformat) : datetime_convert('UTC', 'UTC', $event['finish'], $tformat));
+		}
+
+		// Check if start and finish time is at the same day.
+		if (substr($time['iso']['start'], 0, 10) === substr($time['iso']['finish'], 0, 10)) {
+			$time['same_date'] = true;
+		}
+	}
+
+	return $time;
 }

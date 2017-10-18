@@ -544,7 +544,7 @@ function get_events() {
 	$a = get_app();
 
 	if (! local_user() || $a->is_mobile || $a->is_tablet) {
-		return $o;
+		return;
 	}
 
 	$bd_format = t('g A l F d') ; // 8 AM Friday January 18
@@ -569,7 +569,7 @@ function get_events() {
 				$total ++;
 			}
 
-			$strt = datetime_convert('UTC', $rr['convert'] ? $a->timezone : 'UTC', $rr['start'], 'Y-m-d');
+			$strt = datetime_convert('UTC', $rr['adjust'] ? $a->timezone : 'UTC', $rr['start'], 'Y-m-d');
 			if ($strt === datetime_convert('UTC', $a->timezone,'now', 'Y-m-d')) {
 				$istoday = true;
 			}
@@ -585,7 +585,7 @@ function get_events() {
 				$description = t('[No description]');
 			}
 
-			$strt = datetime_convert('UTC', $rr['convert'] ? $a->timezone : 'UTC', $rr['start']);
+			$strt = datetime_convert('UTC', $rr['adjust'] ? $a->timezone : 'UTC', $rr['start']);
 
 			if (substr($strt, 0, 10) < datetime_convert('UTC', $a->timezone, 'now', 'Y-m-d')) {
 				continue;
@@ -595,8 +595,7 @@ function get_events() {
 
 			$rr['title'] = $title;
 			$rr['description'] = $desciption;
-			$rr['date'] = day_translate(datetime_convert('UTC', $rr['adjust'] ? $a->timezone : 'UTC', $rr['start'], $bd_format));
-			$rr['date_short'] = day_translate(datetime_convert('UTC', $rr['adjust'] ? $a->timezone : 'UTC', $rr['start'], $bd_short));
+			$rr['date'] = format_event_date($rr, true, $bd_format);
 			$rr['startime'] = $strt;
 			$rr['today'] = (($today) ? t('today') : '');
 

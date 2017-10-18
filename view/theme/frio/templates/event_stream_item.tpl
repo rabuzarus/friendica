@@ -5,8 +5,8 @@
 			<div class="event-card-header">
 				<div class="event-card-left-date">
 					<span class="event-date-wrapper medium">
-						<span class="event-card-short-month">{{$month_short}}</span>
-						<span class="event-card-short-date">{{$date_short}}</span>
+						<span class="event-card-short-month">{{$date.short.month}}</span>
+						<span class="event-card-short-date">{{$date.short.date}}</span>
 					</span>
 				</div>
 				<div class="event-card-content media-body">
@@ -14,8 +14,8 @@
 					{{if $location.map}}<button id="event-map-btn-{{$id}}" class="event-map-btn btn-link fakelink nav nav-pills preferences" data-map-id="event-location-map-{{$id}}" data-show-label="{{$show_map_label}}" data-hide-label="{{$hide_map_label}}">{{$map_btn_label}}</button>{{/if}}
 					<div class="event-property">
 						<span class="event-date">
-							<span class="event-start dtstart" title="{{$dtstart_title}}">{{$start_short}}</span>
-							{{if $finish}} - <span class="event-end dtend" title="{{$dtend_title}}">{{if $same_date}}{{$end_time}}{{else}}{{$end_short}}{{/if}}</span>{{/if}}
+							<span class="event-start dtstart" title="{{$date.iso.start}}">{{$date.short.start}}</span>
+							{{if !$date.nofinish}} - <span class="event-end dtend" title="{{$date.iso.finish}}">{{if $date.same_date}}{{$date.time.finish}}{{else}}{{$date.short.finish}}{{/if}}</span>{{/if}}
 						</span>
 						{{if $location.name}}
 						<span role="presentation" aria-hidden="true"> · </span>
