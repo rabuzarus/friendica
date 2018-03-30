@@ -383,12 +383,12 @@ function showHide(theID) {
 function showHideComments(id) {
 	if( $('#collapsed-comments-' + id).is(':visible')) {
 		$('#collapsed-comments-' + id).slideUp();
-		$('#hide-comments-' + id).html(window.showMore);
+		$('#hide-comments-' + id).html(aStr.showMore);
 		$('#hide-comments-total-' + id).show();
 	}
 	else {
 		$('#collapsed-comments-' + id).slideDown();
-		$('#hide-comments-' + id).html(window.showFewer);
+		$('#hide-comments-' + id).html(aStr.showFewer);
 		$('#hide-comments-total-' + id).hide();
 	}
 }

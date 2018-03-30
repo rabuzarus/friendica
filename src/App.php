@@ -15,6 +15,7 @@ use Detection\MobileDetect;
 use Exception;
 
 require_once 'boot.php';
+require_once 'include/js_strings.php';
 require_once 'include/text.php';
 
 /**
@@ -514,14 +515,12 @@ class App
 			'$baseurl'         => $this->get_baseurl(),
 			'$local_user'      => local_user(),
 			'$generator'       => 'Friendica' . ' ' . FRIENDICA_VERSION,
-			'$delitem'         => L10n::t('Delete this item?'),
-			'$showmore'        => L10n::t('show more'),
-			'$showfewer'       => L10n::t('show fewer'),
 			'$update_interval' => $interval,
 			'$shortcut_icon'   => $shortcut_icon,
 			'$touch_icon'      => $touch_icon,
 			'$stylesheet'      => $stylesheet,
 			'$infinite_scroll' => $invinite_scroll,
+			'$js_strings'      => js_strings()
 		]) . $this->page['htmlhead'];
 	}
 

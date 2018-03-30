@@ -1716,6 +1716,9 @@ code > .hl-main {
 .oembed.video .embed_video > div:hover {
     background-color: rgba(0,0,0,0);
 }
+.autotime time {
+    pointer-events: none;
+}
 .wall-item-tags,
 .itemedited {
     margin-top: 10px;

@@ -24,7 +24,12 @@
 		<div class="wall-item-actions-author">
 			<a href="{{$item.profile_url}}" target="redir" title="{{$item.linktitle}}" class="wall-item-name-link"><span class="wall-item-name{{$item.sparkle}}">{{$item.name}}</span></a>
 			<span class="wall-item-ago">
-				{{if $item.plink}}<a class="link" title="{{$item.plink.title}}" href="{{$item.plink.href}}" style="color: #999">{{$item.ago}}</a>{{else}} {{$item.ago}} {{/if}}
+				{{if $item.plink}}
+				<a class="link autotime" title="{{$item.plink.title}}" href="{{$item.plink.href}}" style="color: #999"><time class="dt-published" datetime="{{$item.isotime}}">{{$item.ago}}</time></a>
+				{{else}}
+				<span class="autotime"><time class="dt-published" datetime="{{$item.isotime}}">{{$item.ago}}</time></span>
+				{{/if}}
+
 				{{if $item.lock}}<span class="fakelink" style="color: #999" onclick="lockview(event,{{$item.id}});">{{$item.lock}}</span> {{/if}}
 			</span>
 		</div>

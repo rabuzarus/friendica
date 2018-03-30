@@ -3,11 +3,11 @@
 function showHideDates() {
 	if( $('#posted-date-selector-drop').is(':visible')) {
 		$('#posted-date-selector-drop').hide();
-		$('#posted-date-collapse').html(window.showMore);
+		$('#posted-date-collapse').html(aStr.showMore);
 
 	} else {
 		$('#posted-date-selector-drop').show();
-		$('#posted-date-collapse').html(window.showFewer);
+		$('#posted-date-collapse').html(aStr.showFewer);
 	}
 }
 

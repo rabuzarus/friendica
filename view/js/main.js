@@ -66,6 +66,28 @@ var lockLoadContent = false;
 $(function() {
 	$.ajaxSetup({cache: false});
 
+	jQuery.timeago.settings.strings = {
+		prefixAgo     : aStr['t01'],
+		prefixFromNow : aStr['t02'],
+		suffixAgo     : aStr['t03'],
+		suffixFromNow : aStr['t04'],
+		seconds       : aStr['t05'],
+		minute        : aStr['t06'],
+		minutes       : aStr['t07'],
+		hour          : aStr['t08'],
+		hours         : aStr['t09'],
+		day           : aStr['t10'],
+		days          : aStr['t11'],
+		month         : aStr['t12'],
+		months        : aStr['t13'],
+		year          : aStr['t14'],
+		years         : aStr['t15'],
+		wordSeparator : aStr['t16'],
+		numbers       : aStr['t17']
+	};
+
+	jQuery.timeago.settings.cutoff = 1000*60*60*24;
+
 	/* setup comment textarea buttons */
 	/* comment textarea buttons needs some "data-*" attributes to work:
 	 * 		data-role="insert-formatting" : to mark the element as a formatting button
@@ -163,6 +185,9 @@ $(function() {
 		'transition' : 'elastic',
 		'maxWidth' : '100%'
 	});
+
+	// Initialize the timeago for relative time in the stream
+	$(".autotime > time").timeago();
 
 	/* notifications template */
 	var notifications_tpl= unescape($("#nav-notifications-template[rel=template]").html());
@@ -458,6 +483,9 @@ function liveUpdate(src) {
 				$('html').height('auto');
 			}
 			prev = ident;
+
+			// Trigger the autotime function on all newly created content.
+			$("#" + ident + " .autotime > time").timeago();
 		});
 
 		$('.like-rotator').hide();
@@ -625,6 +653,7 @@ function preview_comment(id) {
 		function(data) {
 			if (data.preview) {
 				$("#comment-edit-preview-" + id).html(data.preview);
+				$("#comment-edit-preview-" + id + " .autotime > time").timeago();
 				$("#comment-edit-preview-" + id + " a").click(function() {return false;});
 			}
 		},
@@ -636,10 +665,10 @@ function preview_comment(id) {
 function showHideComments(id) {
 	if ($("#collapsed-comments-" + id).is(":visible")) {
 		$("#collapsed-comments-" + id).hide();
-		$("#hide-comments-" + id).html(window.showMore);
+		$("#hide-comments-" + id).html(aStr.showMore);
 	} else {
 		$("#collapsed-comments-" + id).show();
-		$("#hide-comments-" + id).html(window.showFewer);
+		$("#hide-comments-" + id).html(aStr.showFewer);
 	}
 }
 
@@ -652,6 +681,7 @@ function preview_post() {
 		function(data) {
 			if (data.preview) {
 				$("#jot-preview-content").html(data.preview);
+				$("#jot-preview-content .autotime > time").timeago();
 				$("#jot-preview-content" + " a").click(function() {return false;});
 			}
 		},
@@ -715,6 +745,12 @@ function loadScrollContent() {
 		$("#scroll-loader").hide();
 		if ($(data).length > 0) {
 			$(data).insertBefore('#conversation-end');
+			var html = '<!DOCTYPE html><html><body><section>' + data + "</section></body></html>";
+			$('.toplevel_item',html).each(function() {
+				var ident = $(this).attr('id');
+				// Trigger the autotime function on all newly created content
+				$("#" + ident + " .autotime > time").timeago();
+			});
 			lockLoadContent = false;
 		} else {
 			$("#scroll-end").fadeIn('normal');

@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#composer-lock-the-lock-file",
         "This file is @generated automatically"
     ],
-    "content-hash": "12b8df66213734281765cb6e2c5a786e",
+    "content-hash": "e0a143b0695f7e315a47a186a9b69785",
     "packages": [
         {
             "name": "asika/simple-console",
@@ -1292,6 +1292,41 @@
             "description": "A Javascript datetime formatting and manipulation library using PHP date-time formats.",
             "homepage": "https://github.com/kartik-v/php-date-formatter",
             "time": "2016-02-18T15:15:55+00:00"
+        },
+        {
+            "name": "npm-asset/timeago",
+            "version": "1.6.3",
+            "dist": {
+                "type": "tar",
+                "url": "https://registry.npmjs.org/timeago/-/timeago-1.6.3.tgz",
+                "reference": null,
+                "shasum": "162a1adae99356297df59339837d09f1b0f36465"
+            },
+            "require": {
+                "npm-asset/jquery": ">=1.2.3"
+            },
+            "type": "npm-asset-library",
+            "extra": {
+                "npm-asset-bugs": {
+                    "url": "https://github.com/rmm5t/jquery-timeago/issues"
+                },
+                "npm-asset-main": "jquery.timeago.js",
+                "npm-asset-directories": []
+            },
+            "authors": [
+                {
+                    "name": "Ryan McGeary",
+                    "email": "ryan@mcgeary.org",
+                    "url": "http://ryan.mcgeary.org/"
+                }
+            ],
+            "description": "jQuery plugin that makes it easy to support automatically updating fuzzy timestamps (e.g. \"4 minutes ago\" or \"about 1 day ago\").",
+            "homepage": "http://timeago.yarp.com/",
+            "keywords": [
+                "microformat",
+                "time"
+            ],
+            "time": "2018-02-23T15:28:39+00:00"
         },
         {
             "name": "paragonie/certainty",

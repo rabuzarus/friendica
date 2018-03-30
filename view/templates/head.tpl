@@ -30,6 +30,10 @@
          type="application/opensearchdescription+xml"
          title="Search in Friendica" />
 
+{{* Strings which are needed for some js functions (e.g. translation or the interval for page update)
+They are loaded into the html <head> so that js functions can use them *}}
+{{$js_strings}}
+
 <!--[if IE]>
 <script type="text/javascript" src="https://html5shiv.googlecode.com/svn/trunk/html5.js"></script>
 <![endif]-->
@@ -41,6 +45,7 @@
 <script type="text/javascript" src="view/asset/jquery-colorbox/jquery.colorbox-min.js"></script>
 <script type="text/javascript" src="view/asset/jgrowl/jquery.jgrowl.min.js"></script>
 <script type="text/javascript" src="view/asset/jquery-datetimepicker/build/jquery.datetimepicker.full.min.js"></script>
+<script type="text/javascript" src="view/asset/timeago/jquery.timeago.js"></script>
 <script type="text/javascript" src="view/asset/perfect-scrollbar/js/perfect-scrollbar.jquery.min.js" ></script>
 <script type="text/javascript" src="view/js/acl.js" ></script>
 <script type="text/javascript" src="view/asset/base64/base64.min.js" ></script>
@@ -59,7 +64,7 @@
 	}
 	{{/if}}
 
-	function confirmDelete() { return confirm("{{$delitem}}"); }
+	function confirmDelete() { return confirm("aStr.delitem"); }
 	function commentExpand(id) {
 		$("#comment-edit-text-" + id).value = "";
 		$("#comment-edit-text-" + id).addClass("comment-edit-text-full");
@@ -121,9 +126,6 @@
 		$("#comment-edit-text-" + id).val(tmpStr + ins);
 		$(obj).val("");
 	}
-
-	window.showMore = "{{$showmore}}";
-	window.showFewer = "{{$showfewer}}";
 
 	function showHideCommentBox(id) {
 		if ($("#comment-edit-form-" + id).is(":visible")) {

@@ -12,6 +12,7 @@ use Friendica\Core\Config;
 use Friendica\Core\L10n;
 use Friendica\Core\PConfig;
 
+
 require_once 'boot.php';
 require_once 'include/text.php';
 
@@ -496,5 +497,49 @@ class Temporal
 		$o .= '</tr></table>' . "\r\n";
 
 		return $o;
+	}
+
+	/**
+	 * @brief Format the creation time of an item to a readable format.
+	 * 
+	 * If the time span is less than 24h, return a relative date string.
+	 * If the date is in the same month, use the format: F j at g:ia.
+	 * If the date isn't in the same year, use the format: F j, Y. 
+	 * Based on $posted_date, (UTC).
+	 * 
+	 * @param string $posted_date MySQL-formatted date string (YYYY-MM-DD HH:MM:SS).
+	 * @return string with relative date.
+	 */
+	public static function getReadableDate($posted_date)
+	{
+		$ptime = $posted_date . ' UTC';
+
+		$abs = strtotime($ptime);
+		$etime = time() - $abs;
+		$d = 24 * 60 * 60;
+		
+		// If the date is less than 24h ago, use the relative date.
+		if ($etime < $d) {
+			return self::getRelativeDate($posted_date);
+		}
+
+		$bdformat = L10n::t('F j, Y');
+		$bdthisyear = L10n::t('F j');
+		$bdthismonth = L10n::t('F j \a\t g:ia');
+
+		$now = DateTimeFormat::localNow();
+		$pdate = DateTimeFormat::local($posted_date);
+
+		// Check if it's the current month.
+		if (substr($pdate, 0, 4) < substr($now, 0, 4)) {
+			return day_translate(DateTimeFormat::local($posted_date, $bdformat));
+		}
+
+		// Check if it's the current year.
+		if (substr($pdate, 5, 2) < substr($now, 5, 2)) {
+			return day_translate(DateTimeFormat::local($posted_date, $bdthisyear));
+		}
+
+		return DateTimeFormat::local($posted_date, $bdthismonth);
 	}
 }

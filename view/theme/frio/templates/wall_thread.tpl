@@ -203,7 +203,7 @@ as the value of $top_child_total (this is done at the end of this file)
 
 			<div class="additional-info text-muted">
 				<div id="wall-item-ago-{{$item.id}}" class="wall-item-ago">
-					<small><a href="{{$item.plink.orig}}"><span class="time" title="{{$item.localtime}}" data-toggle="tooltip"><time class="dt-published" datetime="{{$item.localtime}}">{{$item.ago}}</time></span></a></small>
+					<small><a href="{{$item.plink.orig}}"><span class="time autotime" title="{{$item.localtime}}" data-toggle="tooltip"><time class="dt-published" datetime="{{$item.isotime}}">{{$item.ago}}</time></span></a></small>
 				</div>
 
 				{{if $item.location}}
@@ -220,7 +220,7 @@ as the value of $top_child_total (this is done at the end of this file)
 			<h5 class="media-heading">
 				<a href="{{$item.profile_url}}" title="{{$item.linktitle}}" class="wall-item-name-link userinfo"><span>{{$item.name}}</span></a>
 				<p class="text-muted">
-					<small><a class="time" href="{{$item.plink.orig}}"><span class="wall-item-ago">{{$item.ago}}</span></a> {{if $item.location}}&nbsp;&mdash;&nbsp;({{$item.location}}){{/if}}</small>
+					<small><a class="time" href="{{$item.plink.orig}}"><span class="wall-item-ago autotime"><time class="dt-published" datetime="{{$item.isotime}}">{{$item.ago}}</time></span></a> {{if $item.location}}&nbsp;&mdash;&nbsp;({{$item.location}}){{/if}}</small>
 				</p>
 			</h5>
 		</div>
@@ -233,7 +233,7 @@ as the value of $top_child_total (this is done at the end of this file)
 			<h5 class="media-heading">
 				<a href="{{$item.profile_url}}" title="{{$item.linktitle}}" class="wall-item-name-link userinfo"><span class="fakelink">{{$item.name}}</span></a>
 				<span class="text-muted">
-					<small><a class="time" href="{{$item.plink.orig}}" title="{{$item.localtime}}" data-toggle="tooltip">{{$item.ago}}</a> {{if $item.location}}&nbsp;&mdash;&nbsp;({{$item.location}}){{/if}}</small>
+					<small><a class="time autotime" href="{{$item.plink.orig}}" title="{{$item.localtime}}" data-toggle="tooltip"><time class="dt-published" datetime="{{$item.isotime}}">{{$item.ago}}</time></a> {{if $item.location}}&nbsp;&mdash;&nbsp;({{$item.location}}){{/if}}</small>
 				</span>
 			</h5>
 		</div>
