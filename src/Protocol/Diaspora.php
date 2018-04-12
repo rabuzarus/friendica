@@ -49,10 +49,12 @@ class Diaspora
 	 *
 	 * The list contains not only the official relays but also servers that we serve directly
 	 *
-	 * @param integer $item_id   The id of the item that is sent
+	 * @param integer $item_id  The id of the item that is sent
+	 * @param array   $contacts The previously fetched contacts
+	 *
 	 * @return array of relay servers
 	 */
-	public static function relayList($item_id)
+	public static function relayList($item_id, $contacts = [])
 	{
 		$serverlist = [];
 
@@ -82,24 +84,42 @@ class Diaspora
 
 			// All servers who wants content with this tag
 			$tagserverlist = [];
-			$tagserver = dba::select('gserver-tag', ['gserver-id'], ['tag' => $taglist]);
-			while ($server = dba::fetch($tagserver)) {
-				$tagserverlist[] = $server['gserver-id'];
+			if (!empty($taglist)) {
+				$tagserver = dba::select('gserver-tag', ['gserver-id'], ['tag' => $taglist]);
+				while ($server = dba::fetch($tagserver)) {
+					$tagserverlist[] = $server['gserver-id'];
+				}
 			}
 
 			// All adresses with the given id
-			$servers = dba::select('gserver', ['url'], ['relay-subscribe' => true, 'relay-scope' => 'tags', 'id' => $tagserverlist]);
-			while ($server = dba::fetch($servers)) {
-				$serverlist[$server['url']] = $server['url'];
+			if (!empty($tagserverlist)) {
+				$servers = dba::select('gserver', ['url'], ['relay-subscribe' => true, 'relay-scope' => 'tags', 'id' => $tagserverlist]);
+				while ($server = dba::fetch($servers)) {
+					$serverlist[$server['url']] = $server['url'];
+				}
 			}
 		}
 
 		// Now we are collecting all relay contacts
-		$contacts = [];
 		foreach ($serverlist as $server_url) {
 			// We don't send messages to ourselves
-			if (!link_compare($server_url, System::baseUrl())) {
-				$contacts[] = self::getRelayContactId($server_url);
+			if (link_compare($server_url, System::baseUrl())) {
+				continue;
+			}
+			$contact = self::getRelayContact($server_url);
+			if (is_bool($contact)) {
+				continue;
+			}
+
+			$exists = false;
+			foreach ($contacts as $entry) {
+				if ($entry['batch'] == $contact['batch']) {
+					$exists = true;
+				}
+			}
+
+			if (!$exists) {
+				$contacts[] = $contact;
 			}
 		}
 
@@ -112,15 +132,34 @@ class Diaspora
 	 * @param string $server_url The url of the server
 	 * @return array with the contact
 	 */
-	private static function getRelayContactId($server_url)
+	private static function getRelayContact($server_url)
 	{
 		$batch = $server_url . '/receive/public';
 
-		$fields = ['batch', 'id', 'name', 'network'];
+		$fields = ['batch', 'id', 'name', 'network', 'archive', 'blocked'];
+
+		// Fetch the relay contact
 		$condition = ['uid' => 0, 'network' => NETWORK_DIASPORA, 'batch' => $batch,
-				'archive' => false, 'blocked' => false];
+			'contact-type' => ACCOUNT_TYPE_RELAY];
 		$contact = dba::selectFirst('contact', $fields, $condition);
+
+		// If there is nothing found, we check if there is some unmarked relay
+		// This code segment can be removed before the release 2018-05
+		if (!DBM::is_result($contact)) {
+			$condition = ['uid' => 0, 'network' => NETWORK_DIASPORA, 'batch' => $batch,
+				'name' => 'relay', 'nick' => 'relay', 'url' => $server_url];
+			$contact = dba::selectFirst('contact', $fields, $condition);
+
+			if (DBM::is_result($contact)) {
+				// Mark the relay account as a relay account
+				$fields = ['contact-type' => ACCOUNT_TYPE_RELAY];
+				dba::update('contact', $fields, ['id' => $contact['id']]);
+			}
+		}
 		if (DBM::is_result($contact)) {
+			if ($contact['archive'] || $contact['blocked']) {
+				return false;
+			}
 			return $contact;
 		} else {
 			$fields = ['uid' => 0, 'created' => DateTimeFormat::utcNow(),
@@ -128,6 +167,7 @@ class Diaspora
 				'url' => $server_url, 'nurl' => normalise_link($server_url),
 				'batch' => $batch, 'network' => NETWORK_DIASPORA,
 				'rel' => CONTACT_IS_FOLLOWER, 'blocked' => false,
+				'contact-type' => ACCOUNT_TYPE_RELAY,
 				'pending' => false, 'writable' => true];
 			dba::insert('contact', $fields);
 
@@ -3205,7 +3245,7 @@ class Diaspora
 	 *
 	 * @return string The message that will be transmitted to other servers
 	 */
-	private static function buildMessage($msg, $user, $contact, $prvkey, $pubkey, $public = false)
+	public static function buildMessage($msg, $user, $contact, $prvkey, $pubkey, $public = false)
 	{
 		// The message is put into an envelope with the sender's signature
 		$envelope = self::buildMagicEnvelope($msg, $user);
@@ -3260,13 +3300,15 @@ class Diaspora
 
 		$logid = random_string(4);
 
+		$dest_url = ($public_batch ? $contact["batch"] : $contact["notify"]);
+
 		// We always try to use the data from the fcontact table.
 		// This is important for transmitting data to Friendica servers.
-		if (!empty($contact['addr']) && ($contact['network'] != NETWORK_DIASPORA)) {
+		if (!empty($contact['addr'])) {
 			$fcontact = self::personByHandle($contact['addr']);
-			$dest_url = ($public_batch ? $fcontact["batch"] : $fcontact["notify"]);
-		} else {
-			$dest_url = ($public_batch ? $contact["batch"] : $contact["notify"]);
+			if (!empty($fcontact)) {
+				$dest_url = ($public_batch ? $fcontact["batch"] : $fcontact["notify"]);
+			}
 		}
 
 		if (!$dest_url) {
@@ -3290,10 +3332,10 @@ class Diaspora
 			}
 		}
 
-		logger("transmit: ".$logid."-".$guid." returns: ".$return_code);
+		logger("transmit: ".$logid."-".$guid." to ".$dest_url." returns: ".$return_code);
 
 		if (!$return_code || (($return_code == 503) && (stristr($a->get_curl_headers(), "retry-after")))) {
-			if (!$no_queue) {
+			if (!$no_queue && ($contact['contact-type'] != ACCOUNT_TYPE_RELAY)) {
 				logger("queue message");
 				// queue message for redelivery
 				Queue::add($contact["id"], NETWORK_DIASPORA, $envelope, $public_batch, $guid);

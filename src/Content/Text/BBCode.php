@@ -243,6 +243,9 @@ class BBCode extends BaseObject
 			$body = preg_replace("/\[img\=([0-9]*)x([0-9]*)\](.*?)\[\/img\]/ism", '[img]$3[/img]', $body);
 
 			$URLSearchString = "^\[\]";
+
+			$body = preg_replace("/\[img\=([$URLSearchString]*)\](.*?)\[\/img\]/ism", '[img]$1[/img]', $body);
+
 			if (preg_match_all("(\[url=([$URLSearchString]*)\]\s*\[img\]([$URLSearchString]*)\[\/img\]\s*\[\/url\])ism", $body, $pictures, PREG_SET_ORDER)) {
 				if ((count($pictures) == 1) && !$has_title) {
 					// Checking, if the link goes to a picture
@@ -1580,7 +1583,7 @@ class BBCode extends BaseObject
 		$text = preg_replace("(\[u\](.*?)\[\/u\])ism", '<u>$1</u>', $text);
 
 		// Check for strike-through text
-		$text = preg_replace("(\[s\](.*?)\[\/s\])ism", '<strike>$1</strike>', $text);
+		$text = preg_replace("(\[s\](.*?)\[\/s\])ism", '<s>$1</s>', $text);
 
 		// Check for over-line text
 		$text = preg_replace("(\[o\](.*?)\[\/o\])ism", '<span class="overline">$1</span>', $text);
@@ -1721,6 +1724,14 @@ class BBCode extends BaseObject
 		$text = preg_replace("/\[img\=([0-9]*)x([0-9]*)\](.*?)\[\/img\]/ism", '<img src="$3" style="width: $1px;" >', $text);
 		$text = preg_replace("/\[zmg\=([0-9]*)x([0-9]*)\](.*?)\[\/zmg\]/ism", '<img class="zrl" src="$3" style="width: $1px;" >', $text);
 
+		$text = preg_replace_callback("/\[img\=([$URLSearchString]*)\](.*?)\[\/img\]/ism",
+			function ($matches) {
+				$matches[1] = proxy_url($matches[1]);
+				$matches[2] = htmlspecialchars($matches[2], ENT_COMPAT);
+				return '<img src="' . $matches[1] . '" alt="' . $matches[2] . '">';
+			},
+			$text);
+
 		// Images
 		// [img]pathtoimage[/img]
 		$text = preg_replace_callback(
@@ -1852,10 +1863,12 @@ class BBCode extends BaseObject
 		$text = preg_replace_callback("/\[nobb\](.*?)\[\/nobb\]/ism", 'self::unescapeNoparseCallback', $text);
 		$text = preg_replace_callback("/\[pre\](.*?)\[\/pre\]/ism", 'self::unescapeNoparseCallback', $text);
 
-
+		/// @todo What is the meaning of these lines?
 		$text = preg_replace('/\[\&amp\;([#a-z0-9]+)\;\]/', '&$1;', $text);
 		$text = preg_replace('/\&\#039\;/', '\'', $text);
-		$text = preg_replace('/\&quot\;/', '"', $text);
+
+		// Currently deactivated, it made problems with " inside of alt texts.
+		//$text = preg_replace('/\&quot\;/', '"', $text);
 
 		// fix any escaped ampersands that may have been converted into links
 		$text = preg_replace('/\<([^>]*?)(src|href)=(.*?)\&amp\;(.*?)\>/ism', '<$1$2=$3&$4>', $text);
