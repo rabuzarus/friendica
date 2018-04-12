@@ -530,16 +530,16 @@ class Temporal
 		$now = DateTimeFormat::localNow();
 		$pdate = DateTimeFormat::local($posted_date);
 
-		// Check if it's the current month.
+		// Check if it's the current year.
 		if (substr($pdate, 0, 4) < substr($now, 0, 4)) {
 			return day_translate(DateTimeFormat::local($posted_date, $bdformat));
 		}
 
-		// Check if it's the current year.
+		// Check if it's the current month.
 		if (substr($pdate, 5, 2) < substr($now, 5, 2)) {
 			return day_translate(DateTimeFormat::local($posted_date, $bdthisyear));
 		}
 
-		return DateTimeFormat::local($posted_date, $bdthismonth);
+		return day_translate(DateTimeFormat::local($posted_date, $bdthismonth));
 	}
 }
