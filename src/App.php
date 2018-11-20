@@ -9,6 +9,7 @@ use DOMDocument;
 use DOMXPath;
 use Exception;
 use Friendica\Database\DBA;
+use Friendica\Network\HTTPException;
 use Friendica\Network\HTTPException\InternalServerErrorException;
 
 require_once 'boot.php';
@@ -1684,46 +1685,55 @@ class App
 
 		// Call module functions
 		if ($this->module_loaded) {
-			$this->page['page_title'] = $this->module;
-			$placeholder = '';
+			try {
+				$this->page['page_title'] = $this->module;
+				$placeholder = '';
 
-			Core\Addon::callHooks($this->module . '_mod_init', $placeholder);
+				Core\Addon::callHooks($this->module . '_mod_init', $placeholder);
 
-			call_user_func([$this->module_class, 'init']);
+				call_user_func([$this->module_class, 'init']);
 
-			// "rawContent" is especially meant for technical endpoints.
-			// This endpoint doesn't need any theme initialization or other comparable stuff.
-			if (!$this->error) {
-				call_user_func([$this->module_class, 'rawContent']);
-			}
+				// "rawContent" is especially meant for technical endpoints.
+				// This endpoint doesn't need any theme initialization or other comparable stuff.
+				if (!$this->error) {
+					call_user_func([$this->module_class, 'rawContent']);
+				}
 
-			if (function_exists(str_replace('-', '_', $this->getCurrentTheme()) . '_init')) {
-				$func = str_replace('-', '_', $this->getCurrentTheme()) . '_init';
-				$func($this);
-			}
+				if (function_exists(str_replace('-', '_', $this->getCurrentTheme()) . '_init')) {
+					$func = str_replace('-', '_', $this->getCurrentTheme()) . '_init';
+					$func($this);
+				}
 
-			if (! $this->error && $_SERVER['REQUEST_METHOD'] === 'POST') {
-				Core\Addon::callHooks($this->module . '_mod_post', $_POST);
-				call_user_func([$this->module_class, 'post']);
-			}
+				if (! $this->error && $_SERVER['REQUEST_METHOD'] === 'POST') {
+					Core\Addon::callHooks($this->module . '_mod_post', $_POST);
+					call_user_func([$this->module_class, 'post']);
+				}
 
-			if (! $this->error) {
-				Core\Addon::callHooks($this->module . '_mod_afterpost', $placeholder);
-				call_user_func([$this->module_class, 'afterpost']);
-			}
+				if (! $this->error) {
+					Core\Addon::callHooks($this->module . '_mod_afterpost', $placeholder);
+					call_user_func([$this->module_class, 'afterpost']);
+				}
 
-			if (! $this->error) {
-				$arr = ['content' => $this->page['content']];
-				Core\Addon::callHooks($this->module . '_mod_content', $arr);
-				$this->page['content'] = $arr['content'];
-				$arr = ['content' => call_user_func([$this->module_class, 'content'])];
-				Core\Addon::callHooks($this->module . '_mod_aftercontent', $arr);
-				$this->page['content'] .= $arr['content'];
-			}
+				if (! $this->error) {
+					$arr = ['content' => $this->page['content']];
+					Core\Addon::callHooks($this->module . '_mod_content', $arr);
+					$this->page['content'] = $arr['content'];
+					$arr = ['content' => call_user_func([$this->module_class, 'content'])];
+					Core\Addon::callHooks($this->module . '_mod_aftercontent', $arr);
+					$this->page['content'] .= $arr['content'];
+				}
 
-			if (function_exists(str_replace('-', '_', $this->getCurrentTheme()) . '_content_loaded')) {
-				$func = str_replace('-', '_', $this->getCurrentTheme()) . '_content_loaded';
-				$func($this);
+				if (function_exists(str_replace('-', '_', $this->getCurrentTheme()) . '_content_loaded')) {
+					$func = str_replace('-', '_', $this->getCurrentTheme()) . '_content_loaded';
+					$func($this);
+				}
+			} catch (HTTPException $e) {
+				header($_SERVER["SERVER_PROTOCOL"] . " " . $e->httpcode . " " . $e->httpdesc , true, $e->httpcode);
+				$error = ($e->getMessage() !== "" ? $e->getMessage() : $e->httpdesc);
+				$tpl = Core\Renderer::getMarkupTemplate("404.tpl");
+				$this->page['content'] = Core\Renderer::replaceMacros($tpl, [
+					'$message' => $error
+				]);
 			}
 		}
 
