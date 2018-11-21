@@ -1,6 +1,6 @@
 -- ------------------------------------------
 -- Friendica 2018.12-dev (The Tazmans Flax-lily)
--- DB_UPDATE_VERSION 1290
+-- DB_UPDATE_VERSION 1291
 -- ------------------------------------------
 
 
@@ -869,6 +869,8 @@ CREATE TABLE IF NOT EXISTS `photo` (
 	`allow_gid` mediumtext COMMENT 'Access Control - list of allowed groups',
 	`deny_cid` mediumtext COMMENT 'Access Control - list of denied contact.id',
 	`deny_gid` mediumtext COMMENT 'Access Control - list of denied groups',
+	`backend-class` tinytext COMMENT 'Storage backend class',
+	`backend-ref` text COMMENT 'Storage backend data reference',
 	 PRIMARY KEY(`id`),
 	 INDEX `contactid` (`contact-id`),
 	 INDEX `uid_contactid` (`uid`,`contact-id`),
