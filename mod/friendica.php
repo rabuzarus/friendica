@@ -13,10 +13,16 @@ use Friendica\Database\DBA;
 function friendica_init(App $a)
 {
 	if (!empty($a->argv[1]) && ($a->argv[1] == "json")) {
-		$register_policy = ['REGISTER_CLOSED', 'REGISTER_APPROVE', 'REGISTER_OPEN'];
+		$register_policies = ['REGISTER_CLOSED', 'REGISTER_APPROVE', 'REGISTER_OPEN'];
+
+		$register_policy = $register_policies[intval(Config::get('config', 'register_policy'))];
+
+		if ($register_policy == 'REGISTER_OPEN' && Config::get('config', 'invitation_only')) {
+			$register_policy = 'REGISTER_INVITATION';
+		}
 
 		$sql_extra = '';
-		if (x($a->config, 'admin_nickname')) {
+		if (!empty($a->config['admin_nickname'])) {
 			$sql_extra = sprintf(" AND `nickname` = '%s' ", DBA::escape(Config::get('config', 'admin_nickname')));
 		}
 		if (!empty(Config::get('config', 'admin_email'))) {
@@ -35,7 +41,7 @@ function friendica_init(App $a)
 
 		Config::load('feature_lock');
 		$locked_features = [];
-		if (!empty($a->config['feature_lock']) && count($a->config['feature_lock'])) {
+		if (!empty($a->config['feature_lock'])) {
 			foreach ($a->config['feature_lock'] as $k => $v) {
 				if ($k === 'config_loaded') {
 					continue;
@@ -52,7 +58,7 @@ function friendica_init(App $a)
 			'locked_features'  => $locked_features,
 			'explicit_content' => (int)Config::get('system', 'explicit_content', false),
 			'language'         => Config::get('system','language'),
-			'register_policy'  => $register_policy[intval(Config::get('config', 'register_policy'))],
+			'register_policy'  => $register_policy,
 			'admin'            => $admin,
 			'site_name'        => Config::get('config', 'sitename'),
 			'platform'         => FRIENDICA_PLATFORM,

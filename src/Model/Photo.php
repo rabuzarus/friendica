@@ -272,7 +272,6 @@ class Photo extends BaseObject
 			$backend_ref = $backend_class::put($Image->asString(), $backend_ref);
 		}
 
-
 		$fields = [
 			"uid" => $uid,
 			"contact-id" => $cid,
@@ -370,8 +369,8 @@ class Photo extends BaseObject
 		$photo = DBA::selectFirst(
 			"photo", ["resource-id"], ["uid" => $uid, "contact-id" => $cid, "scale" => 4, "album" => "Contact Photos"]
 		);
-		if (x($photo["resource-id"])) {
-			$hash = $photo["resource-id"];
+		if (!empty($photo['resource-id'])) {
+			$hash = $photo['resource-id'];
 		} else {
 			$hash = self::newResource();
 		}

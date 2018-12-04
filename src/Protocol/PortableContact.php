@@ -84,7 +84,7 @@ class PortableContact
 			return;
 		}
 
-		$url = $url . (($uid) ? '/@me/@all?fields=displayName,urls,photos,updated,network,aboutMe,currentLocation,tags,gender,contactType,generation' : '?fields=displayName,urls,photos,updated,network,aboutMe,currentLocation,tags,gender,contactType,generation') ;
+		$url = $url . (($uid) ? '/@me/@all?fields=displayName,urls,photos,updated,network,aboutMe,currentLocation,tags,gender,contactType,generation' : '?fields=displayName,urls,photos,updated,network,aboutMe,currentLocation,tags,gender,contactType,generation');
 
 		Logger::log('load: ' . $url, Logger::DEBUG);
 
@@ -734,7 +734,7 @@ class PortableContact
 			}
 		}
 
-		if (is_array($nodeinfo['metadata']) && isset($nodeinfo['metadata']['nodeName'])) {
+		if (isset($nodeinfo['metadata']['nodeName'])) {
 			$server['site_name'] = $nodeinfo['metadata']['nodeName'];
 		}
 
@@ -817,7 +817,7 @@ class PortableContact
 			}
 		}
 
-		if (is_array($nodeinfo['metadata']) && isset($nodeinfo['metadata']['nodeName'])) {
+		if (isset($nodeinfo['metadata']['nodeName'])) {
 			$server['site_name'] = $nodeinfo['metadata']['nodeName'];
 		}
 

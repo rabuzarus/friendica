@@ -30,7 +30,7 @@ function dirfind_init(App $a) {
 		return;
 	}
 
-	if (! x($a->page,'aside')) {
+	if (empty($a->page['aside'])) {
 		$a->page['aside'] = '';
 	}
 
@@ -235,7 +235,7 @@ function dirfind_content(App $a, $prefix = "") {
 					'alt_text' => $alt_text,
 					'url' => Model\Contact::magicLink($jj->url),
 					'itemurl' => $itemurl,
-					'name' => htmlentities($jj->name),
+					'name' => $jj->name,
 					'thumb' => ProxyUtils::proxifyUrl($jj->photo, false, ProxyUtils::SIZE_THUMB),
 					'img_hover' => $jj->tags,
 					'conntxt' => $conntxt,

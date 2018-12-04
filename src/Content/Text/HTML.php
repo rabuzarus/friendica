@@ -908,7 +908,7 @@ class HTML
 	public static function micropro($contact, $redirect = false, $class = '', $textmode = false)
 	{
 		// Use the contact URL if no address is available
-		if (!x($contact, "addr")) {
+		if (empty($contact['addr'])) {
 			$contact["addr"] = $contact["url"];
 		}
 
@@ -924,7 +924,7 @@ class HTML
 		}
 
 		// If there is some js available we don't need the url
-		if (x($contact, 'click')) {
+		if (!empty($contact['click'])) {
 			$url = '';
 		}
 
@@ -951,7 +951,7 @@ class HTML
 	 *
 	 * @return string Formatted HTML.
 	 */
-	public static function search($s, $id = 'search-box', $url = 'search', $save = false, $aside = true)
+	public static function search($s, $id = 'search-box', $url = 'search', $aside = true)
 	{
 		$mode = 'text';
 
@@ -966,7 +966,7 @@ class HTML
 				'$action_url' => $url,
 				'$search_label' => L10n::t('Search'),
 				'$save_label' => $save_label,
-				'$savedsearch' => local_user() && Feature::isEnabled(local_user(), 'savedsearch'),
+				'$savedsearch' => 'savedsearch',
 				'$search_hint' => L10n::t('@name, !forum, #tags, content'),
 				'$mode' => $mode
 			];

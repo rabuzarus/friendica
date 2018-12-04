@@ -290,6 +290,7 @@ function photos_post(App $a)
 				return; // NOTREACHED
 			}
 
+
 			// remove the associated photos
 			Photo::delete(['resource-id' => $res, 'uid' => $page_owner_uid]);
 
@@ -346,7 +347,10 @@ function photos_post(App $a)
 		}
 
 		if (DBA::isResult($r)) {
-			Photo::delete(['resource-id' => $r[0]['resource-id'], 'uid' => $page_owner_uid]);
+			q("DELETE FROM `photo` WHERE `uid` = %d AND `resource-id` = '%s'",
+				intval($page_owner_uid),
+				DBA::escape($r[0]['resource-id'])
+			);
 
 			Item::deleteForUser(['resource-id' => $r[0]['resource-id'], 'uid' => $page_owner_uid], $page_owner_uid);
 
@@ -379,10 +383,13 @@ function photos_post(App $a)
 		if (!empty($_POST['rotate']) && (intval($_POST['rotate']) == 1 || intval($_POST['rotate']) == 2)) {
 			Logger::log('rotate');
 
-			$photo = Photo::getPhotoForUser($page_owner_uid, $resource_id);
+			$r = q("SELECT * FROM `photo` WHERE `resource-id` = '%s' AND `uid` = %d AND `scale` = 0 LIMIT 1",
+				DBA::escape($resource_id),
+				intval($page_owner_uid)
+			);
 
-			if (DBA::isResult($photo)) {
-				$image = Photo::getImageForPhoto($photo);
+			if (DBA::isResult($r)) {
+				$image = new Image($r[0]['data'], $r[0]['type']);
 
 				if ($image->isValid()) {
 					$rotate_deg = ((intval($_POST['rotate']) == 1) ? 270 : 90);
@@ -391,14 +398,26 @@ function photos_post(App $a)
 					$width  = $image->getWidth();
 					$height = $image->getHeight();
 
-					Photo::update(['height' => $height, 'width' => $width], ['resource-id' => $resource_id, 'uid' => $page_owner_uid, 'scale' => 0], $image);
+					$x = q("UPDATE `photo` SET `data` = '%s', `height` = %d, `width` = %d WHERE `resource-id` = '%s' AND `uid` = %d AND `scale` = 0",
+						DBA::escape($image->asString()),
+						intval($height),
+						intval($width),
+						DBA::escape($resource_id),
+						intval($page_owner_uid)
+					);
 
 					if ($width > 640 || $height > 640) {
 						$image->scaleDown(640);
 						$width  = $image->getWidth();
 						$height = $image->getHeight();
 
-						Photo::update(['height' => $height, 'width' => $width], ['resource-id' => $resource_id, 'uid' => $page_owner_uid, 'scale' => 1], $image);
+						$x = q("UPDATE `photo` SET `data` = '%s', `height` = %d, `width` = %d WHERE `resource-id` = '%s' AND `uid` = %d AND `scale` = 1",
+							DBA::escape($image->asString()),
+							intval($height),
+							intval($width),
+							DBA::escape($resource_id),
+							intval($page_owner_uid)
+						);
 					}
 
 					if ($width > 320 || $height > 320) {
@@ -406,19 +425,34 @@ function photos_post(App $a)
 						$width  = $image->getWidth();
 						$height = $image->getHeight();
 
-						Photo::update(['height' => $height, 'width' => $width], ['resource-id' => $resource_id, 'uid' => $page_owner_uid, 'scale' => 2], $image);
+						$x = q("UPDATE `photo` SET `data` = '%s', `height` = %d, `width` = %d WHERE `resource-id` = '%s' AND `uid` = %d AND `scale` = 2",
+							DBA::escape($image->asString()),
+							intval($height),
+							intval($width),
+							DBA::escape($resource_id),
+							intval($page_owner_uid)
+						);
 					}
 				}
 			}
 		}
 
-		$photo = Photo::getPhotoForUser($page_owner_uid, $resource_id);
+		$p = q("SELECT * FROM `photo` WHERE `resource-id` = '%s' AND `uid` = %d ORDER BY `scale` DESC",
+			DBA::escape($resource_id),
+			intval($page_owner_uid)
+		);
 
-		if (DBA::isResult($photo)) {
-			$ext = $phototypes[$photo['type']];
-			Photo::update(
-				['desc' => $desc, 'album' => $albname, 'allow_cid' => $str_contact_allow, 'allow_gid' => $str_group_allow, 'deny_cid' => $str_contact_deny, 'deny_gid' => $str_group_deny],
-				['resource-id' => $resource_id, 'uid' => $page_owner_uid]
+		if (DBA::isResult($p)) {
+			$ext = $phototypes[$p[0]['type']];
+			$r = q("UPDATE `photo` SET `desc` = '%s', `album` = '%s', `allow_cid` = '%s', `allow_gid` = '%s', `deny_cid` = '%s', `deny_gid` = '%s' WHERE `resource-id` = '%s' AND `uid` = %d",
+				DBA::escape($desc),
+				DBA::escape($albname),
+				DBA::escape($str_contact_allow),
+				DBA::escape($str_group_allow),
+				DBA::escape($str_contact_deny),
+				DBA::escape($str_group_deny),
+				DBA::escape($resource_id),
+				intval($page_owner_uid)
 			);
 
 			// Update the photo albums cache if album name was changed
@@ -430,7 +464,7 @@ function photos_post(App $a)
 		/* Don't make the item visible if the only change was the album name */
 
 		$visibility = 0;
-		if ($photo['desc'] !== $desc || strlen($rawtags)) {
+		if ($p[0]['desc'] !== $desc || strlen($rawtags)) {
 			$visibility = 1;
 		}
 
@@ -446,7 +480,7 @@ function photos_post(App $a)
 			$arr['parent-uri']    = $uri;
 			$arr['post-type']     = Item::PT_IMAGE;
 			$arr['wall']          = 1;
-			$arr['resource-id']   = $photo['resource-id'];
+			$arr['resource-id']   = $p[0]['resource-id'];
 			$arr['contact-id']    = $owner_record['id'];
 			$arr['owner-name']    = $owner_record['name'];
 			$arr['owner-link']    = $owner_record['url'];
@@ -455,15 +489,15 @@ function photos_post(App $a)
 			$arr['author-link']   = $owner_record['url'];
 			$arr['author-avatar'] = $owner_record['thumb'];
 			$arr['title']         = $title;
-			$arr['allow_cid']     = $photo['allow_cid'];
-			$arr['allow_gid']     = $photo['allow_gid'];
-			$arr['deny_cid']      = $photo['deny_cid'];
-			$arr['deny_gid']      = $photo['deny_gid'];
+			$arr['allow_cid']     = $p[0]['allow_cid'];
+			$arr['allow_gid']     = $p[0]['allow_gid'];
+			$arr['deny_cid']      = $p[0]['deny_cid'];
+			$arr['deny_gid']      = $p[0]['deny_gid'];
 			$arr['visible']       = $visibility;
 			$arr['origin']        = 1;
 
-			$arr['body']          = '[url=' . System::baseUrl() . '/photos/' . $a->data['user']['nickname'] . '/image/' . $photo['resource-id'] . ']'
-						. '[img]' . System::baseUrl() . '/photo/' . $photo['resource-id'] . '-' . $pphoto['scale'] . '.'. $ext . '[/img]'
+			$arr['body']          = '[url=' . System::baseUrl() . '/photos/' . $a->data['user']['nickname'] . '/image/' . $p[0]['resource-id'] . ']'
+						. '[img]' . System::baseUrl() . '/photo/' . $p[0]['resource-id'] . '-' . $p[0]['scale'] . '.'. $ext . '[/img]'
 						. '[/url]';
 
 			$item_id = Item::insert($arr);
@@ -576,7 +610,7 @@ function photos_post(App $a)
 							}
 
 							$profile = str_replace(',', '%2c', $profile);
-							$str_tags .= '@[url='.$profile.']'.$newname.'[/url]';
+							$str_tags .= '@[url=' . $profile . ']' . $newname . '[/url]';
 						}
 					} elseif (strpos($tag, '#') === 0) {
 						$tagname = substr($tag, 1);
@@ -644,8 +678,8 @@ function photos_post(App $a)
 					$arr['tag']           = $tagged[4];
 					$arr['inform']        = $tagged[2];
 					$arr['origin']        = 1;
-					$arr['body']          = L10n::t('%1$s was tagged in %2$s by %3$s', '[url=' . $tagged[1] . ']' . $tagged[0] . '[/url]', '[url=' . System::baseUrl() . '/photos/' . $owner_record['nickname'] . '/image/' . $photo['resource-id'] . ']' . L10n::t('a photo') . '[/url]', '[url=' . $owner_record['url'] . ']' . $owner_record['name'] . '[/url]') ;
-					$arr['body'] .= "\n\n" . '[url=' . System::baseUrl() . '/photos/' . $owner_record['nickname'] . '/image/' . $photo['resource-id'] . ']' . '[img]' . System::baseUrl() . "/photo/" . $photo['resource-id'] . '-' . $best . '.' . $ext . '[/img][/url]' . "\n" ;
+					$arr['body']          = L10n::t('%1$s was tagged in %2$s by %3$s', '[url=' . $tagged[1] . ']' . $tagged[0] . '[/url]', '[url=' . System::baseUrl() . '/photos/' . $owner_record['nickname'] . '/image/' . $photo['resource-id'] . ']' . L10n::t('a photo') . '[/url]', '[url=' . $owner_record['url'] . ']' . $owner_record['name'] . '[/url]');
+					$arr['body'] .= "\n\n" . '[url=' . System::baseUrl() . '/photos/' . $owner_record['nickname'] . '/image/' . $photo['resource-id'] . ']' . '[img]' . System::baseUrl() . "/photo/" . $photo['resource-id'] . '-' . $best . '.' . $ext . '[/img][/url]' . "\n";
 
 					$arr['object'] = '<object><type>' . ACTIVITY_OBJ_PERSON . '</type><title>' . $tagged[0] . '</title><id>' . $tagged[1] . '/' . $tagged[0] . '</id>';
 					$arr['object'] .= '<link>' . XML::escape('<link rel="alternate" type="text/html" href="' . $tagged[1] . '" />' . "\n");
@@ -1313,7 +1347,7 @@ function photos_content(App $a)
 		}
 
 		if ($prevlink) {
-			$prevlink = [$prevlink, '<div class="icon prev"></div>'] ;
+			$prevlink = [$prevlink, '<div class="icon prev"></div>'];
 		}
 
 		$photo = [
@@ -1440,7 +1474,7 @@ function photos_content(App $a)
 				$likebuttons = Renderer::replaceMacros($like_tpl, [
 					'$id' => $link_item['id'],
 					'$likethis' => L10n::t("I like this \x28toggle\x29"),
-					'$nolike' => (Feature::isEnabled(local_user(), 'dislike') ? L10n::t("I don't like this \x28toggle\x29") : ''),
+					'$nolike' => L10n::t("I don't like this \x28toggle\x29"),
 					'$wait' => L10n::t('Please wait'),
 					'$return_path' => $a->query_string,
 				]);
@@ -1567,9 +1601,7 @@ function photos_content(App $a)
 				}
 			}
 			$response_verbs = ['like'];
-			if (Feature::isEnabled($owner_uid, 'dislike')) {
-				$response_verbs[] = 'dislike';
-			}
+			$response_verbs[] = 'dislike';
 			$responses = get_responses($conv_responses, $response_verbs, '', $link_item);
 
 			$paginate = $pager->renderFull($total);
@@ -1644,6 +1676,7 @@ function photos_content(App $a)
 			}
 
 			$twist = !$twist;
+
 			$ext = $phototypes[$rr['type']];
 
 			$alt_e = $rr['filename'];

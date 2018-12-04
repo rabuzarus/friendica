@@ -288,7 +288,7 @@ class Profile
 		$location = false;
 
 		// This function can also use contact information in $profile
-		$is_contact = x($profile, 'cid');
+		$is_contact = !empty($profile['cid']);
 
 		if (!is_array($profile) && !count($profile)) {
 			return $o;
@@ -357,7 +357,7 @@ class Profile
 
 		// See issue https://github.com/friendica/friendica/issues/3838
 		// Either we remove the message link for remote users or we enable creating messages from remote users
-		if (remote_user() || (self::getMyURL() && x($profile, 'unkmail') && ($profile['uid'] != local_user()))) {
+		if (remote_user() || (self::getMyURL() && !empty($profile['unkmail']) && ($profile['uid'] != local_user()))) {
 			$wallmessage = L10n::t('Message');
 
 			if (remote_user()) {
@@ -424,23 +424,23 @@ class Profile
 		// Fetch the account type
 		$account_type = Contact::getAccountType($profile);
 
-		if (x($profile, 'address')
-			|| x($profile, 'location')
-			|| x($profile, 'locality')
-			|| x($profile, 'region')
-			|| x($profile, 'postal-code')
-			|| x($profile, 'country-name')
+		if (!empty($profile['address'])
+			|| !empty($profile['location'])
+			|| !empty($profile['locality'])
+			|| !empty($profile['region'])
+			|| !empty($profile['postal-code'])
+			|| !empty($profile['country-name'])
 		) {
 			$location = L10n::t('Location:');
 		}
 
-		$gender   = x($profile, 'gender')   ? L10n::t('Gender:')   : false;
-		$marital  = x($profile, 'marital')  ? L10n::t('Status:')   : false;
-		$homepage = x($profile, 'homepage') ? L10n::t('Homepage:') : false;
-		$about    = x($profile, 'about')    ? L10n::t('About:')    : false;
-		$xmpp     = x($profile, 'xmpp')     ? L10n::t('XMPP:')     : false;
+		$gender   = !empty($profile['gender'])   ? L10n::t('Gender:')   : false;
+		$marital  = !empty($profile['marital'])  ? L10n::t('Status:')   : false;
+		$homepage = !empty($profile['homepage']) ? L10n::t('Homepage:') : false;
+		$about    = !empty($profile['about'])    ? L10n::t('About:')    : false;
+		$xmpp     = !empty($profile['xmpp'])     ? L10n::t('XMPP:')     : false;
 
-		if ((x($profile, 'hidewall') || $block) && !local_user() && !remote_user()) {
+		if ((!empty($profile['hidewall']) || $block) && !local_user() && !remote_user()) {
 			$location = $gender = $marital = $homepage = $about = false;
 		}
 
@@ -448,7 +448,7 @@ class Profile
 		$firstname = $split_name['first'];
 		$lastname = $split_name['last'];
 
-		if (x($profile, 'guid')) {
+		if (!empty($profile['guid'])) {
 			$diaspora = [
 				'guid' => $profile['guid'],
 				'podloc' => System::baseUrl(),
@@ -572,9 +572,18 @@ class Profile
 		if (is_null($r)) {
 			$s = DBA::p(
 				"SELECT `event`.*, `event`.`id` AS `eid`, `contact`.* FROM `event`
-				INNER JOIN `contact` ON `contact`.`id` = `event`.`cid`
+				INNER JOIN `contact`
+					ON `contact`.`id` = `event`.`cid`
+					AND (`contact`.`rel` = ? OR `contact`.`rel` = ?)
+					AND NOT `contact`.`pending`
+					AND NOT `contact`.`hidden`
+					AND NOT `contact`.`blocked`
+					AND NOT `contact`.`archive`
+					AND NOT `contact`.`deleted`
 				WHERE `event`.`uid` = ? AND `type` = 'birthday' AND `start` < ? AND `finish` > ?
 				ORDER BY `start` ASC ",
+				Contact::SHARING,
+				Contact::FRIEND,
 				local_user(),
 				DateTimeFormat::utc('now + 6 days'),
 				DateTimeFormat::utcNow()
@@ -749,7 +758,7 @@ class Profile
 				$profile['gender'] = [L10n::t('Gender:'), $a->profile['gender']];
 			}
 
-			if (($a->profile['dob']) && ($a->profile['dob'] > '0001-01-01')) {
+			if (!empty($a->profile['dob']) && $a->profile['dob'] > DBA::NULL_DATE) {
 				$year_bd_format = L10n::t('j F, Y');
 				$short_bd_format = L10n::t('j F');
 
@@ -763,7 +772,7 @@ class Profile
 			}
 
 			if (!empty($a->profile['dob'])
-				&& $a->profile['dob'] > '0001-01-01'
+				&& $a->profile['dob'] > DBA::NULL_DATE
 				&& $age = Temporal::getAgeByTimezone($a->profile['dob'], $a->profile['timezone'], '')
 			) {
 				$profile['age'] = [L10n::t('Age:'), $age];
@@ -881,7 +890,7 @@ class Profile
 		}
 
 		$tab = false;
-		if (x($_GET, 'tab')) {
+		if (!empty($_GET['tab'])) {
 			$tab = Strings::escapeTags(trim($_GET['tab']));
 		}
 
@@ -992,7 +1001,7 @@ class Profile
 	 */
 	public static function getMyURL()
 	{
-		if (x($_SESSION, 'my_url')) {
+		if (!empty($_SESSION['my_url'])) {
 			return $_SESSION['my_url'];
 		}
 		return null;
@@ -1164,7 +1173,7 @@ class Profile
 	 */
 	public static function getThemeUid()
 	{
-		$uid = ((!empty($_REQUEST['puid'])) ? intval($_REQUEST['puid']) : 0);
+		$uid = (!empty($_REQUEST['puid']) ? intval($_REQUEST['puid']) : 0);
 		if ((local_user()) && ((PConfig::get(local_user(), 'system', 'always_my_theme')) || (!$uid))) {
 			return local_user();
 		}

@@ -28,6 +28,7 @@ use Friendica\Util\Network;
 use Friendica\Util\ParseUrl;
 use Friendica\Util\Proxy as ProxyUtils;
 use Friendica\Util\Strings;
+use Friendica\Util\XML;
 
 class BBCode extends BaseObject
 {
@@ -129,12 +130,12 @@ class BBCode extends BaseObject
 
 		$type = "";
 		preg_match("/type='(.*?)'/ism", $attributes, $matches);
-		if (x($matches, 1)) {
+		if (!empty($matches[1])) {
 			$type = strtolower($matches[1]);
 		}
 
 		preg_match('/type="(.*?)"/ism', $attributes, $matches);
-		if (x($matches, 1)) {
+		if (!empty($matches[1])) {
 			$type = strtolower($matches[1]);
 		}
 
@@ -152,12 +153,12 @@ class BBCode extends BaseObject
 
 		$url = "";
 		preg_match("/url='(.*?)'/ism", $attributes, $matches);
-		if (x($matches, 1)) {
+		if (!empty($matches[1])) {
 			$url = $matches[1];
 		}
 
 		preg_match('/url="(.*?)"/ism', $attributes, $matches);
-		if (x($matches, 1)) {
+		if (!empty($matches[1])) {
 			$url = $matches[1];
 		}
 
@@ -167,12 +168,12 @@ class BBCode extends BaseObject
 
 		$title = "";
 		preg_match("/title='(.*?)'/ism", $attributes, $matches);
-		if (x($matches, 1)) {
+		if (!empty($matches[1])) {
 			$title = $matches[1];
 		}
 
 		preg_match('/title="(.*?)"/ism', $attributes, $matches);
-		if (x($matches, 1)) {
+		if (!empty($matches[1])) {
 			$title = $matches[1];
 		}
 
@@ -185,12 +186,12 @@ class BBCode extends BaseObject
 
 		$image = "";
 		preg_match("/image='(.*?)'/ism", $attributes, $matches);
-		if (x($matches, 1)) {
+		if (!empty($matches[1])) {
 			$image = $matches[1];
 		}
 
 		preg_match('/image="(.*?)"/ism', $attributes, $matches);
-		if (x($matches, 1)) {
+		if (!empty($matches[1])) {
 			$image = $matches[1];
 		}
 
@@ -200,12 +201,12 @@ class BBCode extends BaseObject
 
 		$preview = "";
 		preg_match("/preview='(.*?)'/ism", $attributes, $matches);
-		if (x($matches, 1)) {
+		if (!empty($matches[1])) {
 			$preview = $matches[1];
 		}
 
 		preg_match('/preview="(.*?)"/ism', $attributes, $matches);
-		if (x($matches, 1)) {
+		if (!empty($matches[1])) {
 			$preview = $matches[1];
 		}
 
@@ -233,7 +234,7 @@ class BBCode extends BaseObject
 		*/
 
 		$has_title = !empty($item['title']);
-		$plink = (!empty($item['plink']) ? $item['plink'] : '');
+		$plink = defaults($item, 'plink', '');
 		$post = self::getAttachmentData($body);
 
 		// if nothing is found, it maybe having an image.
@@ -1340,15 +1341,21 @@ class BBCode extends BaseObject
 		$expression = "=diaspora://.*?/post/([0-9A-Za-z\-_@.:]{15,254}[0-9A-Za-z])=ism";
 		$text = preg_replace($expression, System::baseUrl()."/display/$1", $text);
 
-		$text = preg_replace("/([#])\[url\=([$URLSearchString]*)\](.*?)\[\/url\]/ism",
-					'$1<a href="' . System::baseUrl() . '/search?tag=$3" class="tag" title="$3">$3</a>', $text);
-
-		$text = preg_replace("/\[url\=([$URLSearchString]*)\]#(.*?)\[\/url\]/ism",
-					'#<a href="' . System::baseUrl() . '/search?tag=$2" class="tag" title="$2">$2</a>', $text);
+		/* Tag conversion
+		 * Supports:
+		 * - #[url=<anything>]<term>[/url]
+		 * - [url=<anything>]#<term>[/url]
+		 */
+		$text = preg_replace_callback("/(?:#\[url\=[$URLSearchString]*\]|\[url\=[$URLSearchString]*\]#)(.*?)\[\/url\]/ism", function($matches) {
+			return '#<a href="'
+				. System::baseUrl()	. '/search?tag=' . rawurlencode($matches[1])
+				. '" class="tag" title="' . XML::escape($matches[1]) . '">'
+				. XML::escape($matches[1])
+				. '</a>';
+		}, $text);
 
 		$text = preg_replace("/\[url\]([$URLSearchString]*)\[\/url\]/ism", '<a href="$1" target="_blank">$1</a>', $text);
 		$text = preg_replace("/\[url\=([$URLSearchString]*)\](.*?)\[\/url\]/ism", '<a href="$1" target="_blank">$2</a>', $text);
-		//$Text = preg_replace("/\[url\=([$URLSearchString]*)\]([$URLSearchString]*)\[\/url\]/ism", '<a href="$1" target="_blank">$2</a>', $Text);
 
 		// Red compatibility, though the link can't be authenticated on Friendica
 		$text = preg_replace("/\[zrl\=([$URLSearchString]*)\](.*?)\[\/zrl\]/ism", '<a href="$1" target="_blank">$2</a>', $text);
@@ -1655,7 +1662,7 @@ class BBCode extends BaseObject
 		// Summary (e.g. title) is required, earlier revisions only required description (in addition to
 		// start which is always required). Allow desc with a missing summary for compatibility.
 
-		if ((x($ev, 'desc') || x($ev, 'summary')) && x($ev, 'start')) {
+		if ((!empty($ev['desc']) || !empty($ev['summary'])) && !empty($ev['start'])) {
 			$sub = Event::getHTML($ev, $simple_html);
 
 			$text = preg_replace("/\[event\-summary\](.*?)\[\/event\-summary\]/ism", '', $text);

@@ -740,7 +740,7 @@ class Contact extends BaseObject
 
 			// "bd" always contains the upcoming birthday of a contact.
 			// "birthday" might contain the birthday including the year of birth.
-			if ($profile["birthday"] > '0001-01-01') {
+			if ($profile["birthday"] > DBA::NULL_DATE) {
 				$bd_timestamp = strtotime($profile["birthday"]);
 				$month = date("m", $bd_timestamp);
 				$day = date("d", $bd_timestamp);
@@ -757,7 +757,7 @@ class Contact extends BaseObject
 					$profile["bd"] = ( ++$current_year) . "-" . $month . "-" . $day;
 				}
 			} else {
-				$profile["bd"] = '0001-01-01';
+				$profile["bd"] = DBA::NULL_DATE;
 			}
 		} else {
 			$profile = $default;
@@ -794,7 +794,7 @@ class Contact extends BaseObject
 			$profile["location"] = "";
 			$profile["about"] = "";
 			$profile["gender"] = "";
-			$profile["birthday"] = '0001-01-01';
+			$profile["birthday"] = DBA::NULL_DATE;
 		}
 
 		$cache[$url][$uid] = $profile;
@@ -1061,7 +1061,7 @@ class Contact extends BaseObject
 			$update_contact = ($contact['avatar-date'] < DateTimeFormat::utc('now -7 days'));
 
 			// We force the update if the avatar is empty
-			if (!x($contact, 'avatar')) {
+			if (empty($contact['avatar'])) {
 				$update_contact = true;
 			}
 			if (!$update_contact || $no_update) {
@@ -1147,7 +1147,7 @@ class Contact extends BaseObject
 
 		$url = $data["url"];
 		if (!$contact_id) {
-			DBA::insert('contact', [
+			$fields = [
 				'uid'       => $uid,
 				'created'   => DateTimeFormat::utcNow(),
 				'url'       => $data["url"],
@@ -1176,10 +1176,13 @@ class Contact extends BaseObject
 				'writable'  => 1,
 				'blocked'   => 0,
 				'readonly'  => 0,
-				'pending'   => 0]
-			);
+				'pending'   => 0];
 
-			$s = DBA::select('contact', ['id'], ['nurl' => Strings::normaliseLink($data["url"]), 'uid' => $uid], ['order' => ['id'], 'limit' => 2]);
+			$condition = ['nurl' => Strings::normaliseLink($data["url"]), 'uid' => $uid, 'deleted' => false];
+
+			DBA::update('contact', $fields, $condition, true);
+
+			$s = DBA::select('contact', ['id'], $condition, ['order' => ['id'], 'limit' => 2]);
 			$contacts = DBA::toArray($s);
 			if (!DBA::isResult($contacts)) {
 				return 0;
@@ -1204,8 +1207,10 @@ class Contact extends BaseObject
 			}
 
 			if (count($contacts) > 1 && $uid == 0 && $contact_id != 0 && $data["url"] != "") {
-				DBA::delete('contact', ["`nurl` = ? AND `uid` = 0 AND `id` != ? AND NOT `self`",
-					Strings::normaliseLink($data["url"]), $contact_id]);
+				$condition = ["`nurl` = ? AND `uid` = ? AND `id` != ? AND NOT `self`",
+					Strings::normaliseLink($data["url"]), 0, $contact_id];
+				Logger::log('Deleting duplicate contact ' . json_encode($condition), Logger::DEBUG);
+				DBA::delete('contact', $condition);
 			}
 		}
 
@@ -1285,10 +1290,15 @@ class Contact extends BaseObject
 			return false;
 		}
 
-		$blocked = DBA::selectFirst('contact', ['blocked'], ['id' => $cid]);
+		$blocked = DBA::selectFirst('contact', ['blocked', 'url'], ['id' => $cid]);
 		if (!DBA::isResult($blocked)) {
 			return false;
 		}
+
+		if (Network::isUrlBlocked($blocked['url'])) {
+			return true;
+		}
+
 		return (bool) $blocked['blocked'];
 	}
 
@@ -1613,7 +1623,7 @@ class Contact extends BaseObject
 			return $result;
 		}
 
-		if (x($arr['contact'], 'name')) {
+		if (!empty($arr['contact']['name'])) {
 			$ret = $arr['contact'];
 		} else {
 			$ret = Probe::uri($url, $network, $uid, false);
@@ -1659,16 +1669,15 @@ class Contact extends BaseObject
 		}
 
 		// do we have enough information?
-
-		if (!((x($ret, 'name')) && (x($ret, 'poll')) && ((x($ret, 'url')) || (x($ret, 'addr'))))) {
+		if (empty($ret['name']) || empty($ret['poll']) || (empty($ret['url']) && empty($ret['addr']))) {
 			$result['message'] .= L10n::t('The profile address specified does not provide adequate information.') . EOL;
-			if (!x($ret, 'poll')) {
+			if (empty($ret['poll'])) {
 				$result['message'] .= L10n::t('No compatible communication protocols or feeds were discovered.') . EOL;
 			}
-			if (!x($ret, 'name')) {
+			if (empty($ret['name'])) {
 				$result['message'] .= L10n::t('An author or name was not found.') . EOL;
 			}
-			if (!x($ret, 'url')) {
+			if (empty($ret['url'])) {
 				$result['message'] .= L10n::t('No browser URL could be matched to this address.') . EOL;
 			}
 			if (strpos($url, '@') !== false) {
@@ -1957,44 +1966,33 @@ class Contact extends BaseObject
 	 */
 	public static function updateBirthdays()
 	{
-		// This only handles foreign or alien networks where a birthday has been provided.
-		// In-network birthdays are handled within local_delivery
+		$condition = [
+			'`bd` != ""
+			AND `bd` > "0001-01-01"
+			AND SUBSTRING(`bd`, 1, 4) != `bdyear`
+			AND (`contact`.`rel` = ? OR `contact`.`rel` = ?)
+			AND NOT `contact`.`pending`
+			AND NOT `contact`.`hidden`
+			AND NOT `contact`.`blocked`
+			AND NOT `contact`.`archive`
+			AND NOT `contact`.`deleted`',
+			Contact::SHARING,
+			Contact::FRIEND
+		];
 
-		$r = q("SELECT * FROM `contact` WHERE `bd` != '' AND `bd` > '0001-01-01' AND SUBSTRING(`bd`, 1, 4) != `bdyear` ");
-		if (DBA::isResult($r)) {
-			foreach ($r as $rr) {
-				Logger::log('update_contact_birthday: ' . $rr['bd']);
+		$contacts = DBA::select('contact', ['id', 'uid', 'name', 'url', 'bd'], $condition);
 
-				$nextbd = DateTimeFormat::utcNow('Y') . substr($rr['bd'], 4);
+		while ($contact = DBA::fetch($contacts)) {
+			Logger::log('update_contact_birthday: ' . $contact['bd']);
 
-				/*
-				 * Add new birthday event for this person
-				 *
-				 * $bdtext is just a readable placeholder in case the event is shared
-				 * with others. We will replace it during presentation to our $importer
-				 * to contain a sparkle link and perhaps a photo.
-				 */
+			$nextbd = DateTimeFormat::utcNow('Y') . substr($contact['bd'], 4);
 
-				// Check for duplicates
-				$condition = ['uid' => $rr['uid'], 'cid' => $rr['id'],
-					'start' => DateTimeFormat::utc($nextbd), 'type' => 'birthday'];
-				if (DBA::exists('event', $condition)) {
-					continue;
-				}
-
-				$bdtext = L10n::t('%s\'s birthday', $rr['name']);
-				$bdtext2 = L10n::t('Happy Birthday %s', ' [url=' . $rr['url'] . ']' . $rr['name'] . '[/url]');
-
-				q("INSERT INTO `event` (`uid`,`cid`,`created`,`edited`,`start`,`finish`,`summary`,`desc`,`type`,`adjust`)
-				VALUES ( %d, %d, '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d' ) ", intval($rr['uid']), intval($rr['id']),
-					DBA::escape(DateTimeFormat::utcNow()), DBA::escape(DateTimeFormat::utcNow()), DBA::escape(DateTimeFormat::utc($nextbd)),
-					DBA::escape(DateTimeFormat::utc($nextbd . ' + 1 day ')), DBA::escape($bdtext), DBA::escape($bdtext2), DBA::escape('birthday'),
-					intval(0)
-				);
-
+			if (Event::createBirthday($contact, $nextbd)) {
 				// update bdyear
-				q("UPDATE `contact` SET `bdyear` = '%s', `bd` = '%s' WHERE `uid` = %d AND `id` = %d", DBA::escape(substr($nextbd, 0, 4)),
-					DBA::escape($nextbd), intval($rr['uid']), intval($rr['id'])
+				DBA::update(
+					'contact',
+					['bdyear' => substr($nextbd, 0, 4), 'bd' => $nextbd],
+					['id' => $contact['id']]
 				);
 			}
 		}

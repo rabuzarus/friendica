@@ -216,7 +216,7 @@ function profiles_post(App $a) {
 		} else {
 			$ignore_year = false;
 		}
-		if (!in_array($dob, ['0000-00-00', '0001-01-01'])) {
+		if (!in_array($dob, ['0000-00-00', DBA::NULL_DATE])) {
 			if (strpos($dob, '0000-') === 0 || strpos($dob, '0001-') === 0) {
 				$ignore_year = true;
 				$dob = substr($dob, 5);
@@ -251,7 +251,7 @@ function profiles_post(App $a) {
 		$marital = Strings::escapeTags(trim($_POST['marital']));
 		$howlong = Strings::escapeTags(trim($_POST['howlong']));
 
-		$with = ((x($_POST,'with')) ? Strings::escapeTags(trim($_POST['with'])) : '');
+		$with = (!empty($_POST['with']) ? Strings::escapeTags(trim($_POST['with'])) : '');
 
 		if (! strlen($howlong)) {
 			$howlong = DBA::NULL_DATETIME;

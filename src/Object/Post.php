@@ -67,7 +67,7 @@ class Post extends BaseObject
 		$this->setTemplate('wall');
 		$this->toplevel = $this->getId() == $this->getDataValue('parent');
 
-		if (x($_SESSION, 'remote') && is_array($_SESSION['remote'])) {
+		if (!empty($_SESSION['remote']) && is_array($_SESSION['remote'])) {
 			foreach ($_SESSION['remote'] as $visitor) {
 				if ($visitor['cid'] == $this->getDataValue('contact-id')) {
 					$this->visiting = true;
@@ -157,6 +157,8 @@ class Post extends BaseObject
 
 		$shareable = in_array($conv->getProfileOwner(), [0, local_user()]) && $item['private'] != 1;
 
+		$edpost = false;
+
 		if (local_user()) {
 			if (Strings::compareLink($a->contact['url'], $item['author-link'])) {
 				if ($item["event-id"] != 0) {
@@ -166,8 +168,6 @@ class Post extends BaseObject
 				}
 			}
 			$dropping = in_array($item['uid'], [0, local_user()]);
-		} else {
-			$edpost = false;
 		}
 
 		// Editing on items of not subscribed users isn't currently possible
@@ -202,7 +202,7 @@ class Post extends BaseObject
 
 		$drop = [
 			'dropping' => $dropping,
-			'pagedrop' => ((Feature::isEnabled($conv->getProfileOwner(), 'multi_delete')) ? $item['pagedrop'] : ''),
+			'pagedrop' => $item['pagedrop'],
 			'select'   => L10n::t('Select'),
 			'delete'   => $delete,
 		];
@@ -213,7 +213,7 @@ class Post extends BaseObject
 
 		$filer = (($conv->getProfileOwner() == local_user() && ($item['uid'] != 0)) ? L10n::t("save to folder") : false);
 
-		$profile_name = htmlentities($item['author-name']);
+		$profile_name = $item['author-name'];
 		if (!empty($item['author-link']) && empty($item['author-name'])) {
 			$profile_name = $item['author-link'];
 		}
@@ -253,7 +253,7 @@ class Post extends BaseObject
 		$responses = get_responses($conv_responses, $response_verbs, $this, $item);
 
 		foreach ($response_verbs as $value => $verbs) {
-			$responses[$verbs]['output'] = x($conv_responses[$verbs], $item['uri']) ? format_like($conv_responses[$verbs][$item['uri']], $conv_responses[$verbs][$item['uri'] . '-l'], $verbs, $item['uri']) : '';
+			$responses[$verbs]['output'] = !empty($conv_responses[$verbs][$item['uri']]) ? format_like($conv_responses[$verbs][$item['uri']], $conv_responses[$verbs][$item['uri'] . '-l'], $verbs, $item['uri']) : '';
 		}
 
 		/*
@@ -270,31 +270,31 @@ class Post extends BaseObject
 		$tagger = '';
 
 		if ($this->isToplevel()) {
-			$thread = Item::selectFirstThreadForUser(local_user(), ['ignored'], ['iid' => $item['id']]);
-			if (DBA::isResult($thread)) {
-				$ignore = [
-					'do'        => L10n::t("ignore thread"),
-					'undo'      => L10n::t("unignore thread"),
-					'toggle'    => L10n::t("toggle ignore status"),
-					'classdo'   => $thread['ignored'] ? "hidden" : "",
-					'classundo' => $thread['ignored'] ? "" : "hidden",
-					'ignored'   => L10n::t('ignored'),
-				];
-			}
+			if(local_user()) {
+				$thread = Item::selectFirstThreadForUser(local_user(), ['ignored'], ['iid' => $item['id']]);
+				if (DBA::isResult($thread)) {
+					$ignore = [
+						'do'        => L10n::t("ignore thread"),
+						'undo'      => L10n::t("unignore thread"),
+						'toggle'    => L10n::t("toggle ignore status"),
+						'classdo'   => $thread['ignored'] ? "hidden" : "",
+						'classundo' => $thread['ignored'] ? "" : "hidden",
+						'ignored'   => L10n::t('ignored'),
+					];
+				}
 
-			if ($conv->getProfileOwner() == local_user() && ($item['uid'] != 0)) {
-				$isstarred = (($item['starred']) ? "starred" : "unstarred");
+				if ($conv->getProfileOwner() == local_user() && ($item['uid'] != 0)) {
+					$isstarred = (($item['starred']) ? "starred" : "unstarred");
 
-				$star = [
-					'do'        => L10n::t("add star"),
-					'undo'      => L10n::t("remove star"),
-					'toggle'    => L10n::t("toggle star status"),
-					'classdo'   => $item['starred'] ? "hidden" : "",
-					'classundo' => $item['starred'] ? "" : "hidden",
-					'starred'   => L10n::t('starred'),
-				];
+					$star = [
+						'do'        => L10n::t("add star"),
+						'undo'      => L10n::t("remove star"),
+						'toggle'    => L10n::t("toggle star status"),
+						'classdo'   => $item['starred'] ? "hidden" : "",
+						'classundo' => $item['starred'] ? "" : "hidden",
+						'starred'   => L10n::t('starred'),
+					];
 
-				if (Feature::isEnabled($conv->getProfileOwner(), 'commtag')) {
 					$tagger = [
 						'add'   => L10n::t("add tag"),
 						'class' => "",
@@ -308,7 +308,7 @@ class Post extends BaseObject
 		if ($conv->isWritable()) {
 			$buttons = [
 				'like'    => [L10n::t("I like this \x28toggle\x29"), L10n::t("like")],
-				'dislike' => Feature::isEnabled($conv->getProfileOwner(), 'dislike') ? [L10n::t("I don't like this \x28toggle\x29"), L10n::t("dislike")] : '',
+				'dislike' => [L10n::t("I don't like this \x28toggle\x29"), L10n::t("dislike")],
 			];
 			if ($shareable) {
 				$buttons['share'] = [L10n::t('Share this'), L10n::t('share')];
@@ -377,7 +377,7 @@ class Post extends BaseObject
 			'isevent'         => $isevent,
 			'attend'          => $attend,
 			'linktitle'       => L10n::t('View %s\'s profile @ %s', $profile_name, $item['author-link']),
-			'olinktitle'      => L10n::t('View %s\'s profile @ %s', htmlentities($this->getOwnerName()), $item['owner-link']),
+			'olinktitle'      => L10n::t('View %s\'s profile @ %s', $this->getOwnerName(), $item['owner-link']),
 			'to'              => L10n::t('to'),
 			'via'             => L10n::t('via'),
 			'wall'            => L10n::t('Wall-to-Wall'),
@@ -399,14 +399,14 @@ class Post extends BaseObject
 			'shiny'           => $shiny,
 			'owner_url'       => $this->getOwnerUrl(),
 			'owner_photo'     => $a->removeBaseURL(ProxyUtils::proxifyUrl($item['owner-avatar'], false, ProxyUtils::SIZE_THUMB)),
-			'owner_name'      => htmlentities($owner_name_e),
+			'owner_name'      => $owner_name_e,
 			'plink'           => Item::getPlink($item),
-			'edpost'          => Feature::isEnabled($conv->getProfileOwner(), 'edit_posts') ? $edpost : '',
+			'edpost'          => $edpost,
 			'isstarred'       => $isstarred,
-			'star'            => Feature::isEnabled($conv->getProfileOwner(), 'star_posts') ? $star : '',
-			'ignore'          => Feature::isEnabled($conv->getProfileOwner(), 'ignore_posts') ? $ignore : '',
+			'star'            => $star,
+			'ignore'          => $ignore,
 			'tagger'          => $tagger,
-			'filer'           => Feature::isEnabled($conv->getProfileOwner(), 'filing') ? $filer : '',
+			'filer'           => $filer,
 			'drop'            => $drop,
 			'vote'            => $buttons,
 			'like'            => $responses['like']['output'],
@@ -678,7 +678,7 @@ class Post extends BaseObject
 	 */
 	private function setTemplate($name)
 	{
-		if (!x($this->available_templates, $name)) {
+		if (empty($this->available_templates[$name])) {
 			Logger::log('[ERROR] Item::setTemplate : Template not available ("' . $name . '").', Logger::DEBUG);
 			return false;
 		}
@@ -820,7 +820,7 @@ class Post extends BaseObject
 				'$edurl'       => L10n::t('Link'),
 				'$edattach'    => L10n::t('Link or Media'),
 				'$prompttext'  => L10n::t('Please enter a image/video/audio/webpage URL:'),
-				'$preview'     => ((Feature::isEnabled($conv->getProfileOwner(), 'preview')) ? L10n::t('Preview') : ''),
+				'$preview'     => L10n::t('Preview'),
 				'$indent'      => $indent,
 				'$sourceapp'   => L10n::t($a->sourcename),
 				'$ww'          => $conv->getMode() === 'network' ? $ww : '',

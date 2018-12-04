@@ -242,7 +242,7 @@ function profile_content(App $a, $update = 0)
 	$sql_extra2 = '';
 
 	if ($update) {
-		$last_updated = (!empty($_SESSION['last_updated'][$last_updated_key]) ? $_SESSION['last_updated'][$last_updated_key] : 0);
+		$last_updated = (defaults($_SESSION['last_updated'], $last_updated_key, 0));
 
 		// If the page user is the owner of the page we should query for unseen
 		// items. Otherwise use a timestamp of the last succesful update request.
@@ -253,7 +253,7 @@ function profile_content(App $a, $update = 0)
 			$sql_extra4 = " AND `item`.`received` > '" . $gmupdate . "'";
 		}
 
-		$items = q("SELECT DISTINCT(`parent-uri`) AS `uri`
+		$items = q("SELECT DISTINCT(`parent-uri`) AS `uri`, `item`.`created`
 			FROM `item` INNER JOIN `contact` ON `contact`.`id` = `item`.`contact-id`
 			AND NOT `contact`.`blocked` AND NOT `contact`.`pending`
 			WHERE `item`.`uid` = %d AND `item`.`visible` AND

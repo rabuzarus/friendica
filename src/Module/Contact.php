@@ -40,11 +40,8 @@ class Contact extends BaseModule
 		}
 
 		$nets = defaults($_GET, 'nets', '');
-		if ($nets == 'all') {
-			$nets = '';
-		}
 
-		if (!x($a->page, 'aside')) {
+		if (empty($a->page['aside'])) {
 			$a->page['aside'] = '';
 		}
 
@@ -85,7 +82,7 @@ class Contact extends BaseModule
 
 			/// @TODO Add nice spaces
 			$vcard_widget = Renderer::replaceMacros(Renderer::getMarkupTemplate('vcard-widget.tpl'), [
-				'$name'         => htmlentities($contact['name']),
+				'$name'         => $contact['name'],
 				'$photo'        => $contact['photo'],
 				'$url'          => Model\Contact::MagicLink($contact['url']),
 				'$addr'         => defaults($contact, 'addr', ''),
@@ -570,12 +567,12 @@ class Contact extends BaseModule
 			/// @todo Only show the following link with DFRN when the remote version supports it
 			$follow = '';
 			$follow_text = '';
-			if (in_array($contact['rel'], [Model\Contact::FRIEND, Model\Contact::SHARING])) {
+			if ($contact['uid'] && in_array($contact['rel'], [Model\Contact::FRIEND, Model\Contact::SHARING])) {
 				if (in_array($contact['network'], Protocol::NATIVE_SUPPORT)) {
 					$follow = $a->getBaseURL(true) . '/unfollow?url=' . urlencode($contact['url']);
 					$follow_text = L10n::t('Disconnect/Unfollow');
 				}
-			} else {
+			} elseif(!$contact['pending']) {
 				$follow = $a->getBaseURL(true) . '/follow?url=' . urlencode($contact['url']);
 				$follow_text = L10n::t('Connect/Follow');
 			}
@@ -639,7 +636,7 @@ class Contact extends BaseModule
 				'$ffi_keyword_blacklist' => $contact['ffi_keyword_blacklist'],
 				'$ffi_keyword_blacklist' => ['ffi_keyword_blacklist', L10n::t('Blacklisted keywords'), $contact['ffi_keyword_blacklist'], L10n::t('Comma separated list of keywords that should not be converted to hashtags, when "Fetch information and keywords" is selected')],
 				'$photo'          => $contact['photo'],
-				'$name'           => htmlentities($contact['name']),
+				'$name'           => $contact['name'],
 				'$dir_icon'       => $dir_icon,
 				'$sparkle'        => $sparkle,
 				'$url'            => $url,
@@ -1033,14 +1030,14 @@ class Contact extends BaseModule
 			'alt_text'  => $alt_text,
 			'dir_icon'  => $dir_icon,
 			'thumb'     => ProxyUtils::proxifyUrl($rr['thumb'], false, ProxyUtils::SIZE_THUMB),
-			'name'      => htmlentities($rr['name']),
-			'username'  => htmlentities($rr['name']),
+			'name'      => $rr['name'],
+			'username'  => $rr['name'],
 			'account_type' => Model\Contact::getAccountType($rr),
 			'sparkle'   => $sparkle,
 			'itemurl'   => defaults($rr, 'addr', $rr['url']),
 			'url'       => $url,
 			'network'   => ContactSelector::networkToName($rr['network'], $rr['url']),
-			'nick'      => htmlentities($rr['nick']),
+			'nick'      => $rr['nick'],
 		];
 	}
 

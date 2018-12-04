@@ -33,7 +33,7 @@ class Group extends BaseObject
 	public static function create($uid, $name)
 	{
 		$return = false;
-		if (x($uid) && x($name)) {
+		if (!empty($uid) && !empty($name)) {
 			$gid = self::getIdByName($uid, $name); // check for dupes
 			if ($gid !== false) {
 				// This could be a problem.
@@ -202,7 +202,7 @@ class Group extends BaseObject
 	 */
 	public static function removeByName($uid, $name) {
 		$return = false;
-		if (x($uid) && x($name)) {
+		if (!empty($uid) && !empty($name)) {
 			$gid = self::getIdByName($uid, $name);
 
 			$return = self::remove($gid);
@@ -398,6 +398,11 @@ class Group extends BaseObject
 				'selected' => $selected,
 				'ismember' => in_array($group['id'], $member_of),
 			];
+		}
+
+		// Don't show the groups when there is only one
+		if (count($display_groups) <= 2) {
+			return '';
 		}
 
 		$tpl = Renderer::getMarkupTemplate('group_side.tpl');

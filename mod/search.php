@@ -24,10 +24,7 @@ require_once 'mod/dirfind.php';
 function search_saved_searches() {
 
 	$o = '';
-	$search = ((x($_GET,'search')) ? Strings::escapeTags(trim(rawurldecode($_GET['search']))) : '');
-
-	if (!Feature::isEnabled(local_user(),'savedsearch'))
-		return $o;
+	$search = (!empty($_GET['search']) ? Strings::escapeTags(trim(rawurldecode($_GET['search']))) : '');
 
 	$r = q("SELECT `id`,`term` FROM `search` WHERE `uid` = %d",
 		intval(local_user())
@@ -63,10 +60,10 @@ function search_saved_searches() {
 
 function search_init(App $a) {
 
-	$search = ((x($_GET,'search')) ? Strings::escapeTags(trim(rawurldecode($_GET['search']))) : '');
+	$search = (!empty($_GET['search']) ? Strings::escapeTags(trim(rawurldecode($_GET['search']))) : '');
 
 	if (local_user()) {
-		if (x($_GET,'save') && $search) {
+		if (!empty($_GET['save']) && $search) {
 			$r = q("SELECT * FROM `search` WHERE `uid` = %d AND `term` = '%s' LIMIT 1",
 				intval(local_user()),
 				DBA::escape($search)
@@ -75,7 +72,7 @@ function search_init(App $a) {
 				DBA::insert('search', ['uid' => local_user(), 'term' => $search]);
 			}
 		}
-		if (x($_GET,'remove') && $search) {
+		if (!empty($_GET['remove']) && $search) {
 			DBA::delete('search', ['uid' => local_user(), 'term' => $search]);
 		}
 
@@ -94,14 +91,6 @@ function search_init(App $a) {
 
 
 }
-
-
-
-function search_post(App $a) {
-	if (x($_POST,'search'))
-		$a->data['search'] = $_POST['search'];
-}
-
 
 function search_content(App $a) {
 
@@ -148,16 +137,12 @@ function search_content(App $a) {
 
 	Nav::setSelected('search');
 
-	$search = '';
-	if (x($a->data,'search'))
-		$search = Strings::escapeTags(trim($a->data['search']));
-	else
-		$search = ((x($_GET,'search')) ? Strings::escapeTags(trim(rawurldecode($_GET['search']))) : '');
+	$search = (!empty($_REQUEST['search']) ? Strings::escapeTags(trim(rawurldecode($_REQUEST['search']))) : '');
 
 	$tag = false;
-	if (x($_GET,'tag')) {
+	if (!empty($_GET['tag'])) {
 		$tag = true;
-		$search = (x($_GET,'tag') ? '#' . Strings::escapeTags(trim(rawurldecode($_GET['tag']))) : '');
+		$search = (!empty($_GET['tag']) ? '#' . Strings::escapeTags(trim(rawurldecode($_GET['tag']))) : '');
 	}
 
 	// contruct a wrapper for the search header
@@ -165,7 +150,7 @@ function search_content(App $a) {
 		'name' => "search-header",
 		'$title' => L10n::t("Search"),
 		'$title_size' => 3,
-		'$content' => HTML::search($search,'search-box','search',((local_user()) ? true : false), false)
+		'$content' => HTML::search($search,'search-box','search', false)
 	]);
 
 	if (strpos($search,'#') === 0) {
@@ -179,7 +164,7 @@ function search_content(App $a) {
 		return dirfind_content($a);
 	}
 
-	if (x($_GET,'search-option'))
+	if (!empty($_GET['search-option']))
 		switch($_GET['search-option']) {
 			case 'fulltext':
 				break;
