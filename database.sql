@@ -813,7 +813,9 @@ CREATE TABLE IF NOT EXISTS `participation` (
 	`server` varchar(60) NOT NULL COMMENT '',
 	`cid` int unsigned NOT NULL COMMENT '',
 	`fid` int unsigned NOT NULL COMMENT '',
-	 PRIMARY KEY(`iid`,`server`)
+	 PRIMARY KEY(`iid`,`server`),
+	 INDEX `cid` (`cid`),
+	 INDEX `fid` (`fid`)
 ) DEFAULT COLLATE utf8mb4_general_ci COMMENT='Storage for participation messages from Diaspora';
 
 --

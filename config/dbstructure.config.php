@@ -953,6 +953,8 @@ return [
 			"allow_gid" => ["type" => "mediumtext", "comment" => "Access Control - list of allowed groups"],
 			"deny_cid" => ["type" => "mediumtext", "comment" => "Access Control - list of denied contact.id"],
 			"deny_gid" => ["type" => "mediumtext", "comment" => "Access Control - list of denied groups"],
+			"backend-class" => ["type" => "tinytext", "comment" => "Storage backend class"],
+			"backend-ref" => ["type" => "text", "comment" => "Storage backend data reference"]
 		],
 		"indexes" => [
 			"PRIMARY" => ["id"],
@@ -1374,6 +1376,16 @@ return [
 			"done_executed_next_try" => ["done", "executed", "next_try"],
 			"done_priority_next_try" => ["done", "priority", "next_try"],
 			"done_next_try" => ["done", "next_try"]
+		]
+	],
+	"storage" => [
+		"comment" => "Data stored by Database storage backend",
+		"fields" => [
+			"id" => ["type" => "int unsigned", "not null" => "1", "extra" => "auto_increment", "primary" => "1", "comment" => "Auto incremented image data id"],
+			"data" => ["type" => "longblob", "not null" => "1", "comment" => "file data"]
+		],
+		"indexes" => [
+			"PRIMARY" => ["id"]
 		]
 	]
 ];
