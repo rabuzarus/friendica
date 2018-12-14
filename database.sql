@@ -1,6 +1,6 @@
 -- ------------------------------------------
 -- Friendica 2018.12-dev (The Tazmans Flax-lily)
--- DB_UPDATE_VERSION 1290
+-- DB_UPDATE_VERSION 1292
 -- ------------------------------------------
 
 
@@ -813,7 +813,9 @@ CREATE TABLE IF NOT EXISTS `participation` (
 	`server` varchar(60) NOT NULL COMMENT '',
 	`cid` int unsigned NOT NULL COMMENT '',
 	`fid` int unsigned NOT NULL COMMENT '',
-	 PRIMARY KEY(`iid`,`server`)
+	 PRIMARY KEY(`iid`,`server`),
+	 INDEX `cid` (`cid`),
+	 INDEX `fid` (`fid`)
 ) DEFAULT COLLATE utf8mb4_general_ci COMMENT='Storage for participation messages from Diaspora';
 
 --
@@ -869,6 +871,8 @@ CREATE TABLE IF NOT EXISTS `photo` (
 	`allow_gid` mediumtext COMMENT 'Access Control - list of allowed groups',
 	`deny_cid` mediumtext COMMENT 'Access Control - list of denied contact.id',
 	`deny_gid` mediumtext COMMENT 'Access Control - list of denied groups',
+	`backend-class` tinytext COMMENT 'Storage backend class',
+	`backend-ref` text COMMENT 'Storage backend data reference',
 	 PRIMARY KEY(`id`),
 	 INDEX `contactid` (`contact-id`),
 	 INDEX `uid_contactid` (`uid`,`contact-id`),
@@ -1266,5 +1270,14 @@ CREATE TABLE IF NOT EXISTS `workerqueue` (
 	 INDEX `done_priority_next_try` (`done`,`priority`,`next_try`),
 	 INDEX `done_next_try` (`done`,`next_try`)
 ) DEFAULT COLLATE utf8mb4_general_ci COMMENT='Background tasks queue entries';
+
+--
+-- TABLE storage
+--
+CREATE TABLE IF NOT EXISTS `storage` (
+	`id` int unsigned NOT NULL auto_increment COMMENT 'Auto incremented image data id',
+	`data` longblob NOT NULL COMMENT 'file data',
+	 PRIMARY KEY(`id`)
+) DEFAULT COLLATE utf8mb4_general_ci COMMENT='Data stored by Database storage backend';
 
 

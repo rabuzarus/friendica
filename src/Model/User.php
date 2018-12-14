@@ -17,6 +17,7 @@ use Friendica\Core\Protocol;
 use Friendica\Core\System;
 use Friendica\Core\Worker;
 use Friendica\Database\DBA;
+use Friendica\Model\Photo;
 use Friendica\Object\Image;
 use Friendica\Util\Crypto;
 use Friendica\Util\DateTimeFormat;
@@ -672,7 +673,7 @@ class User
 				}
 
 				if (!$photo_failure) {
-					DBA::update('photo', ['profile' => 1], ['resource-id' => $hash]);
+					Photo::update(['profile' => 1], ['resource-id' => $hash]);
 				}
 			}
 		}
