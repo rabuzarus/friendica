@@ -950,7 +950,6 @@ function api_format_data($root_element, $type, $data)
 			$ret = $data;
 			break;
 	}
-
 	return $ret;
 }
 
@@ -1249,7 +1248,7 @@ function api_media_upload()
 	$returndata["image"] = ["w" => $media["width"],
 				"h" => $media["height"],
 				"image_type" => $media["type"],
-				"preview" => $media["preview"]];
+				"friendica_preview_url" => $media["preview"]];
 
 	Logger::log("Media uploaded: " . print_r($returndata, true), Logger::DEBUG);
 
@@ -5689,7 +5688,6 @@ function api_friendica_notification($type)
 
 		$notes = $xmlnotes;
 	}
-
 	return api_format_data("notes", $type, ['note' => $notes]);
 }
 
