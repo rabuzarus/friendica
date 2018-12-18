@@ -16,28 +16,32 @@
 use Friendica\App;
 use Friendica\Core\Addon;
 use Friendica\Core\L10n;
+use Friendica\Core\Logger;
+use Friendica\Core\Renderer;
 use Friendica\Core\System;
 use Friendica\Core\Worker;
 use Friendica\Database\DBA;
 use Friendica\Model\Item;
+use Friendica\Util\Strings;
+use Friendica\Util\XML;
 
-require_once 'include/security.php';
 require_once 'include/items.php';
 
-function poke_init(App $a) {
-
+function poke_init(App $a)
+{
 	if (!local_user()) {
 		return;
 	}
 
 	$uid = local_user();
-	$verb = notags(trim($_GET['verb']));
 
-	if (!$verb) {
+	if (empty($_GET['verb'])) {
 		return;
 	}
 
-	$verbs = get_poke_verbs();
+	$verb = Strings::escapeTags(trim($_GET['verb']));
+
+	$verbs = L10n::getPokeVerbs();
 
 	if (!array_key_exists($verb, $verbs)) {
 		return;
@@ -50,10 +54,10 @@ function poke_init(App $a) {
 		return;
 	}
 
-	$parent = (x($_GET,'parent') ? intval($_GET['parent']) : 0);
+	$parent = (!empty($_GET['parent']) ? intval($_GET['parent']) : 0);
 
 
-	logger('poke: verb ' . $verb . ' contact ' . $contact_id, LOGGER_DEBUG);
+	Logger::log('poke: verb ' . $verb . ' contact ' . $contact_id, Logger::DEBUG);
 
 
 	$r = q("SELECT * FROM `contact` WHERE `id` = %d AND `uid` = %d LIMIT 1",
@@ -62,7 +66,7 @@ function poke_init(App $a) {
 	);
 
 	if (!DBA::isResult($r)) {
-		logger('poke: no contact ' . $contact_id);
+		Logger::log('poke: no contact ' . $contact_id);
 		return;
 	}
 
@@ -82,7 +86,7 @@ function poke_init(App $a) {
 			$deny_gid   = $item['deny_gid'];
 		}
 	} else {
-		$private = (x($_GET,'private') ? intval($_GET['private']) : 0);
+		$private = (!empty($_GET['private']) ? intval($_GET['private']) : 0);
 
 		$allow_cid     = ($private ? '<' . $target['id']. '>' : $a->user['allow_cid']);
 		$allow_gid     = ($private ? '' : $a->user['allow_gid']);
@@ -96,10 +100,10 @@ function poke_init(App $a) {
 
 	$arr = [];
 
-	$arr['guid']          = System::createGUID(32);
+	$arr['guid']          = System::createUUID();
 	$arr['uid']           = $uid;
 	$arr['uri']           = $uri;
-	$arr['parent-uri']    = ($parent_uri ? $parent_uri : $uri);
+	$arr['parent-uri']    = (!empty($parent_uri) ? $parent_uri : $uri);
 	$arr['wall']          = 1;
 	$arr['contact-id']    = $poster['id'];
 	$arr['owner-name']    = $poster['name'];
@@ -121,26 +125,21 @@ function poke_init(App $a) {
 	$arr['origin']        = 1;
 	$arr['body']          = '[url=' . $poster['url'] . ']' . $poster['name'] . '[/url]' . ' ' . L10n::t($verbs[$verb][0]) . ' ' . '[url=' . $target['url'] . ']' . $target['name'] . '[/url]';
 
-	$arr['object'] = '<object><type>' . ACTIVITY_OBJ_PERSON . '</type><title>' . $target['name'] . '</title><id>' . System::baseUrl() . '/contact/' . $target['id'] . '</id>';
-	$arr['object'] .= '<link>' . xmlify('<link rel="alternate" type="text/html" href="' . $target['url'] . '" />' . "\n");
+	$arr['object'] = '<object><type>' . ACTIVITY_OBJ_PERSON . '</type><title>' . $target['name'] . '</title><id>' . $target['url'] . '</id>';
+	$arr['object'] .= '<link>' . XML::escape('<link rel="alternate" type="text/html" href="' . $target['url'] . '" />' . "\n");
 
-	$arr['object'] .= xmlify('<link rel="photo" type="image/jpeg" href="' . $target['photo'] . '" />' . "\n");
+	$arr['object'] .= XML::escape('<link rel="photo" type="image/jpeg" href="' . $target['photo'] . '" />' . "\n");
 	$arr['object'] .= '</link></object>' . "\n";
 
 	$item_id = Item::insert($arr);
-	if ($item_id) {
-		Worker::add(PRIORITY_HIGH, "Notifier", "tag", $item_id);
-	}
 
 	Addon::callHooks('post_local_end', $arr);
 
 	return;
 }
 
-
-
-function poke_content(App $a) {
-
+function poke_content(App $a)
+{
 	if (!local_user()) {
 		notice(L10n::t('Permission denied.') . EOL);
 		return;
@@ -149,31 +148,31 @@ function poke_content(App $a) {
 	$name = '';
 	$id = '';
 
-	if (intval($_GET['c'])) {
-		$r = q("SELECT `id`,`name` FROM `contact` WHERE `id` = %d AND `uid` = %d LIMIT 1",
-			intval($_GET['c']),
-			intval(local_user())
-		);
-		if (DBA::isResult($r)) {
-			$name = $item['name'];
-			$id = $item['id'];
-		}
+	if (empty($_GET['c'])) {
+		return;
 	}
 
+	$contact = DBA::selectFirst('contact', ['id', 'name'], ['id' => $_GET['c'], 'uid' => local_user()]);
+	if (!DBA::isResult($contact)) {
+		return;
+	}
+
+	$name = $contact['name'];
+	$id = $contact['id'];
 
 	$base = System::baseUrl();
 
-	$head_tpl = get_markup_template('poke_head.tpl');
-	$a->page['htmlhead'] .= replace_macros($head_tpl,[
+	$head_tpl = Renderer::getMarkupTemplate('poke_head.tpl');
+	$a->page['htmlhead'] .= Renderer::replaceMacros($head_tpl,[
 		'$baseurl' => System::baseUrl(true),
 		'$base' => $base
 	]);
 
 
-	$parent = (x($_GET,'parent') ? intval($_GET['parent']) : '0');
+	$parent = (!empty($_GET['parent']) ? intval($_GET['parent']) : '0');
 
 
-	$verbs = get_poke_verbs();
+	$verbs = L10n::getPokeVerbs();
 
 	$shortlist = [];
 	foreach ($verbs as $k => $v) {
@@ -182,9 +181,9 @@ function poke_content(App $a) {
 		}
 	}
 
-	$tpl = get_markup_template('poke_content.tpl');
+	$tpl = Renderer::getMarkupTemplate('poke_content.tpl');
 
-	$o = replace_macros($tpl,[
+	$o = Renderer::replaceMacros($tpl,[
 		'$title' => L10n::t('Poke/Prod'),
 		'$desc' => L10n::t('poke, prod or do other things to somebody'),
 		'$clabel' => L10n::t('Recipient'),

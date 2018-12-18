@@ -14,12 +14,14 @@ use Friendica\Core\Addon;
 use Friendica\Core\Cache;
 use Friendica\Core\Config;
 use Friendica\Core\L10n;
+use Friendica\Core\Renderer;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
 use Friendica\Util\DateTimeFormat;
 use Friendica\Util\Network;
 use Friendica\Util\ParseUrl;
 use Friendica\Util\Proxy as ProxyUtils;
+use Friendica\Util\Strings;
 
 require_once 'include/dba.php';
 
@@ -31,7 +33,7 @@ require_once 'include/dba.php';
  *
  * @see https://oembed.com
  *
- * @author Hypolite Petovan <mrpetovan@gmail.com>
+ * @author Hypolite Petovan <hypolite@mrpetovan.com>
  */
 class OEmbed
 {
@@ -60,7 +62,7 @@ class OEmbed
 
 		$cache_key = 'oembed:' . $a->videowidth . ':' . $embedurl;
 
-		$condition = ['url' => normalise_link($embedurl), 'maxwidth' => $a->videowidth];
+		$condition = ['url' => Strings::normaliseLink($embedurl), 'maxwidth' => $a->videowidth];
 		$oembed_record = DBA::selectFirst('oembed', ['content'], $condition);
 		if (DBA::isResult($oembed_record)) {
 			$json_string = $oembed_record['content'];
@@ -115,14 +117,14 @@ class OEmbed
 
 			if (!empty($oembed->type) && $oembed->type != 'error') {
 				DBA::insert('oembed', [
-					'url' => normalise_link($embedurl),
+					'url' => Strings::normaliseLink($embedurl),
 					'maxwidth' => $a->videowidth,
 					'content' => $json_string,
 					'created' => DateTimeFormat::utcNow()
 				], true);
-				$cache_ttl = CACHE_DAY;
+				$cache_ttl = Cache::DAY;
 			} else {
-				$cache_ttl = CACHE_FIVE_MINUTES;
+				$cache_ttl = Cache::FIVE_MINUTES;
 			}
 
 			Cache::set($cache_key, $json_string, $cache_ttl);
@@ -178,8 +180,8 @@ class OEmbed
 
 					$th = 120;
 					$tw = $th * $tr;
-					$tpl = get_markup_template('oembed_video.tpl');
-					$ret .= replace_macros($tpl, [
+					$tpl = Renderer::getMarkupTemplate('oembed_video.tpl');
+					$ret .= Renderer::replaceMacros($tpl, [
 						'$baseurl' => System::baseUrl(),
 						'$embedurl' => $oembed->embed_url,
 						'$escapedhtml' => base64_encode($oembed->html),
@@ -245,8 +247,7 @@ class OEmbed
 
 		$ret .= '</div>';
 
-		$ret = str_replace("\n", "", $ret);
-		return mb_convert_encoding($ret, 'HTML-ENTITIES', mb_detect_encoding($ret));
+		return str_replace("\n", "", $ret);
 	}
 
 	public static function BBCode2HTML($text)
@@ -307,12 +308,12 @@ class OEmbed
 		}
 
 		$domain = parse_url($url, PHP_URL_HOST);
-		if (!x($domain)) {
+		if (empty($domain)) {
 			return false;
 		}
 
 		$str_allowed = Config::get('system', 'allowed_oembed', '');
-		if (!x($str_allowed)) {
+		if (empty($str_allowed)) {
 			return false;
 		}
 
@@ -333,7 +334,7 @@ class OEmbed
 			throw new Exception('OEmbed failed for URL: ' . $url);
 		}
 
-		if (x($title)) {
+		if (!empty($title)) {
 			$o->title = $title;
 		}
 
@@ -372,7 +373,7 @@ class OEmbed
 		}
 		$width = '100%';
 
-		$src = System::baseUrl() . '/oembed/' . base64url_encode($src);
+		$src = System::baseUrl() . '/oembed/' . Strings::base64UrlEncode($src);
 		return '<iframe onload="resizeIframe(this);" class="embed_rich" height="' . $height . '" width="' . $width . '" src="' . $src . '" allowfullscreen scrolling="no" frameborder="no">' . L10n::t('Embedded content') . '</iframe>';
 	}
 

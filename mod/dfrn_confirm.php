@@ -20,6 +20,7 @@
 use Friendica\App;
 use Friendica\Core\Config;
 use Friendica\Core\L10n;
+use Friendica\Core\Logger;
 use Friendica\Core\Protocol;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
@@ -28,9 +29,11 @@ use Friendica\Model\Group;
 use Friendica\Model\User;
 use Friendica\Network\Probe;
 use Friendica\Protocol\Diaspora;
+use Friendica\Protocol\ActivityPub;
 use Friendica\Util\Crypto;
 use Friendica\Util\DateTimeFormat;
 use Friendica\Util\Network;
+use Friendica\Util\Strings;
 use Friendica\Util\XML;
 
 require_once 'include/enotify.php';
@@ -60,7 +63,7 @@ function dfrn_confirm_post(App $a, $handsfree = null)
 	 * this being a page type which supports automatic friend acceptance. That is also Scenario 1
 	 * since we are operating on behalf of our registered user to approve a friendship.
 	 */
-	if (!x($_POST, 'source_url')) {
+	if (empty($_POST['source_url'])) {
 		$uid = defaults($handsfree, 'uid', local_user());
 		if (!$uid) {
 			notice(L10n::t('Permission denied.') . EOL);
@@ -75,14 +78,14 @@ function dfrn_confirm_post(App $a, $handsfree = null)
 
 		// These data elements may come from either the friend request notification form or $handsfree array.
 		if (is_array($handsfree)) {
-			logger('Confirm in handsfree mode');
+			Logger::log('Confirm in handsfree mode');
 			$dfrn_id  = $handsfree['dfrn_id'];
 			$intro_id = $handsfree['intro_id'];
 			$duplex   = $handsfree['duplex'];
 			$cid      = 0;
 			$hidden   = intval(defaults($handsfree, 'hidden'  , 0));
 		} else {
-			$dfrn_id  = notags(trim(defaults($_POST, 'dfrn_id'   , '')));
+			$dfrn_id  = Strings::escapeTags(trim(defaults($_POST, 'dfrn_id'   , '')));
 			$intro_id =      intval(defaults($_POST, 'intro_id'  , 0));
 			$duplex   =      intval(defaults($_POST, 'duplex'    , 0));
 			$cid      =      intval(defaults($_POST, 'contact_id', 0));
@@ -98,9 +101,9 @@ function dfrn_confirm_post(App $a, $handsfree = null)
 			$cid = 0;
 		}
 
-		logger('Confirming request for dfrn_id (issued) ' . $dfrn_id);
+		Logger::log('Confirming request for dfrn_id (issued) ' . $dfrn_id);
 		if ($cid) {
-			logger('Confirming follower with contact_id: ' . $cid);
+			Logger::log('Confirming follower with contact_id: ' . $cid);
 		}
 
 		/*
@@ -123,7 +126,7 @@ function dfrn_confirm_post(App $a, $handsfree = null)
 			intval($uid)
 		);
 		if (!DBA::isResult($r)) {
-			logger('Contact not found in DB.');
+			Logger::log('Contact not found in DB.');
 			notice(L10n::t('Contact not found.') . EOL);
 			notice(L10n::t('This may occasionally happen if contact was requested by both persons and it has already been approved.') . EOL);
 			return;
@@ -210,7 +213,7 @@ function dfrn_confirm_post(App $a, $handsfree = null)
 				$params['page'] = 2;
 			}
 
-			logger('Confirm: posting data to ' . $dfrn_confirm . ': ' . print_r($params, true), LOGGER_DATA);
+			Logger::log('Confirm: posting data to ' . $dfrn_confirm . ': ' . print_r($params, true), Logger::DATA);
 
 			/*
 			 *
@@ -220,9 +223,9 @@ function dfrn_confirm_post(App $a, $handsfree = null)
 			 *
 			 */
 
-			$res = Network::post($dfrn_confirm, $params, null, $redirects, 120);
+			$res = Network::post($dfrn_confirm, $params, null, $redirects, 120)->getBody();
 
-			logger(' Confirm: received data: ' . $res, LOGGER_DATA);
+			Logger::log(' Confirm: received data: ' . $res, Logger::DATA);
 
 			// Now figure out what they responded. Try to be robust if the remote site is
 			// having difficulty and throwing up errors of some kind.
@@ -247,21 +250,21 @@ function dfrn_confirm_post(App $a, $handsfree = null)
 
 			if (stristr($res, "<status") === false) {
 				// wrong xml! stop here!
-				logger('Unexpected response posting to ' . $dfrn_confirm);
+				Logger::log('Unexpected response posting to ' . $dfrn_confirm);
 				notice(L10n::t('Unexpected response from remote site: ') . EOL . htmlspecialchars($res) . EOL);
 				return;
 			}
 
 			$xml = XML::parseString($res);
 			$status = (int) $xml->status;
-			$message = unxmlify($xml->message);   // human readable text of what may have gone wrong.
+			$message = XML::unescape($xml->message);   // human readable text of what may have gone wrong.
 			switch ($status) {
 				case 0:
 					info(L10n::t("Confirmation completed successfully.") . EOL);
 					break;
 				case 1:
 					// birthday paradox - generate new dfrn-id and fall through.
-					$new_dfrn_id = random_string();
+					$new_dfrn_id = Strings::getRandomHex();
 					q("UPDATE contact SET `issued-id` = '%s' WHERE `id` = %d AND `uid` = %d",
 						DBA::escape($new_dfrn_id),
 						intval($contact_id),
@@ -304,7 +307,7 @@ function dfrn_confirm_post(App $a, $handsfree = null)
 		 */
 		Contact::updateAvatar($contact['photo'], $uid, $contact_id);
 
-		logger('dfrn_confirm: confirm - imported photos');
+		Logger::log('dfrn_confirm: confirm - imported photos');
 
 		if ($network === Protocol::DFRN) {
 			$new_relation = Contact::FOLLOWER;
@@ -335,10 +338,17 @@ function dfrn_confirm_post(App $a, $handsfree = null)
 				intval($contact_id)
 			);
 		} else {
+			if ($network == Protocol::ACTIVITYPUB) {
+				ActivityPub\Transmitter::sendContactAccept($contact['url'], $contact['hub-verify'], $uid);
+				$pending = true;
+			} else {
+				$pending = false;
+			}
+
 			// $network !== Protocol::DFRN
 			$network = defaults($contact, 'network', Protocol::OSTATUS);
 
-			$arr = Probe::uri($contact['url']);
+			$arr = Probe::uri($contact['url'], $network);
 
 			$notify  = defaults($contact, 'notify' , $arr['notify']);
 			$poll    = defaults($contact, 'poll'   , $arr['poll']);
@@ -348,7 +358,7 @@ function dfrn_confirm_post(App $a, $handsfree = null)
 			$new_relation = $contact['rel'];
 			$writable = $contact['writable'];
 
-			if ($network === Protocol::DIASPORA) {
+			if (in_array($network, [Protocol::DIASPORA, Protocol::ACTIVITYPUB])) {
 				if ($duplex) {
 					$new_relation = Contact::FRIEND;
 				} else {
@@ -362,30 +372,12 @@ function dfrn_confirm_post(App $a, $handsfree = null)
 
 			DBA::delete('intro', ['id' => $intro_id]);
 
-			$r = q("UPDATE `contact` SET `name-date` = '%s',
-				`uri-date` = '%s',
-				`addr` = '%s',
-				`notify` = '%s',
-				`poll` = '%s',
-				`blocked` = 0,
-				`pending` = 0,
-				`network` = '%s',
-				`writable` = %d,
-				`hidden` = %d,
-				`rel` = %d
-				WHERE `id` = %d
-			",
-				DBA::escape(DateTimeFormat::utcNow()),
-				DBA::escape(DateTimeFormat::utcNow()),
-				DBA::escape($addr),
-				DBA::escape($notify),
-				DBA::escape($poll),
-				DBA::escape($network),
-				intval($writable),
-				intval($hidden),
-				intval($new_relation),
-				intval($contact_id)
-			);
+			$fields = ['name-date' => DateTimeFormat::utcNow(),
+				'uri-date' => DateTimeFormat::utcNow(), 'addr' => $addr,
+				'notify' => $notify, 'poll' => $poll, 'blocked' => false,
+				'pending' => $pending, 'network' => $network,
+				'writable' => $writable, 'hidden' => $hidden, 'rel' => $new_relation];
+			DBA::update('contact', $fields, ['id' => $contact_id]);
 		}
 
 		if (!DBA::isResult($r)) {
@@ -397,16 +389,20 @@ function dfrn_confirm_post(App $a, $handsfree = null)
 		if ((isset($new_relation) && $new_relation == Contact::FRIEND)) {
 			if (DBA::isResult($contact) && ($contact['network'] === Protocol::DIASPORA)) {
 				$ret = Diaspora::sendShare($user, $contact);
-				logger('share returns: ' . $ret);
+				Logger::log('share returns: ' . $ret);
 			}
 		}
 
 		Group::addMember(User::getDefaultGroup($uid, $contact["network"]), $contact['id']);
 
+		if ($network == Protocol::ACTIVITYPUB && $duplex) {
+			ActivityPub\Transmitter::sendActivity('Follow', $contact['url'], $uid);
+		}
+
 		// Let's send our user to the contact editor in case they want to
 		// do anything special with this new friend.
 		if ($handsfree === null) {
-			goaway(System::baseUrl() . '/contacts/' . intval($contact_id));
+			$a->internalRedirect('contact/' . intval($contact_id));
 		} else {
 			return;
 		}
@@ -421,7 +417,7 @@ function dfrn_confirm_post(App $a, $handsfree = null)
 	 * In the section above where the confirming party makes a POST and
 	 * retrieves xml status information, they are communicating with the following code.
 	 */
-	if (x($_POST, 'source_url')) {
+	if (!empty($_POST['source_url'])) {
 		// We are processing an external confirmation to an introduction created by our user.
 		$public_key =         defaults($_POST, 'public_key', '');
 		$dfrn_id    = hex2bin(defaults($_POST, 'dfrn_id'   , ''));
@@ -433,13 +429,13 @@ function dfrn_confirm_post(App $a, $handsfree = null)
 		$forum = (($page == 1) ? 1 : 0);
 		$prv   = (($page == 2) ? 1 : 0);
 
-		logger('dfrn_confirm: requestee contacted: ' . $node);
+		Logger::log('dfrn_confirm: requestee contacted: ' . $node);
 
-		logger('dfrn_confirm: request: POST=' . print_r($_POST, true), LOGGER_DATA);
+		Logger::log('dfrn_confirm: request: POST=' . print_r($_POST, true), Logger::DATA);
 
 		// If $aes_key is set, both of these items require unpacking from the hex transport encoding.
 
-		if (x($aes_key)) {
+		if (!empty($aes_key)) {
 			$aes_key = hex2bin($aes_key);
 			$public_key = hex2bin($public_key);
 		}
@@ -543,12 +539,12 @@ function dfrn_confirm_post(App $a, $handsfree = null)
 		if (DBA::isResult($contact)) {
 			$photo = $contact['photo'];
 		} else {
-			$photo = System::baseUrl() . '/images/person-175.jpg';
+			$photo = System::baseUrl() . '/images/person-300.jpg';
 		}
 
 		Contact::updateAvatar($photo, $local_uid, $dfrn_record);
 
-		logger('dfrn_confirm: request - photos imported');
+		Logger::log('dfrn_confirm: request - photos imported');
 
 		$new_relation = Contact::SHARING;
 
@@ -588,7 +584,7 @@ function dfrn_confirm_post(App $a, $handsfree = null)
 		// Otherwise everything seems to have worked and we are almost done. Yay!
 		// Send an email notification
 
-		logger('dfrn_confirm: request: info updated');
+		Logger::log('dfrn_confirm: request: info updated');
 
 		$combined = null;
 		$r = q("SELECT `contact`.*, `user`.*
@@ -610,7 +606,7 @@ function dfrn_confirm_post(App $a, $handsfree = null)
 					'to_name'      => $combined['username'],
 					'to_email'     => $combined['email'],
 					'uid'          => $combined['uid'],
-					'link'         => System::baseUrl() . '/contacts/' . $dfrn_record,
+					'link'         => System::baseUrl() . '/contact/' . $dfrn_record,
 					'source_name'  => ((strlen(stripslashes($combined['name']))) ? stripslashes($combined['name']) : L10n::t('[Name Withheld]')),
 					'source_link'  => $combined['url'],
 					'source_photo' => $combined['photo'],
@@ -626,6 +622,6 @@ function dfrn_confirm_post(App $a, $handsfree = null)
 	}
 
 	// somebody arrived here by mistake or they are fishing. Send them to the homepage.
-	goaway(System::baseUrl());
+	$a->internalRedirect();
 	// NOTREACHED
 }

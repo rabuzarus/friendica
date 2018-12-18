@@ -8,6 +8,7 @@ use Friendica\App;
 use Friendica\BaseObject;
 use Friendica\Core\Cache;
 use Friendica\Core\Config;
+use Friendica\Core\Logger;
 use Friendica\Core\Protocol;
 use Friendica\Database\DBA;
 use Friendica\Database\PostUpdate;
@@ -33,7 +34,7 @@ class CronJobs
 			return;
 		}
 
-		logger("Starting cronjob " . $command, LOGGER_DEBUG);
+		Logger::log("Starting cronjob " . $command, Logger::DEBUG);
 
 		// Call possible post update functions
 		// see src/Database/PostUpdate.php for more details
@@ -82,7 +83,7 @@ class CronJobs
 			return;
 		}
 
-		logger("Xronjob " . $command . " is unknown.", LOGGER_DEBUG);
+		Logger::log("Xronjob " . $command . " is unknown.", Logger::DEBUG);
 
 		return;
 	}
@@ -108,7 +109,7 @@ class CronJobs
 	private static function expireAndRemoveUsers()
 	{
 		// expire any expired regular accounts. Don't expire forums.
-		$condition = ["NOT `account_expired` AND `account_expires_on` > ? AND `account_expires_on` < UTC_TIMESTAMP() AND `page-flags` = 0", NULL_DATE];
+		$condition = ["NOT `account_expired` AND `account_expires_on` > ? AND `account_expires_on` < UTC_TIMESTAMP() AND `page-flags` = 0", DBA::NULL_DATETIME];
 		DBA::update('user', ['account_expired' => true], $condition);
 
 		// Remove any freshly expired account
@@ -118,7 +119,7 @@ class CronJobs
 		}
 
 		// delete user records for recently removed accounts
-		$users = DBA::select('user', ['uid'], ["`account_removed` AND `account_expires_on` < UTC_TIMESTAMP() - INTERVAL 3 DAY"]);
+		$users = DBA::select('user', ['uid'], ["`account_removed` AND `account_expires_on` < UTC_TIMESTAMP() "]);
 		while ($user = DBA::fetch($users)) {
 			// Delete the contacts of this user
 			$self = DBA::selectFirst('contact', ['nurl'], ['self' => true, 'uid' => $user['uid']]);
@@ -157,14 +158,14 @@ class CronJobs
 		clear_cache();
 
 		// clear cache for photos
-		clear_cache($a->get_basepath(), $a->get_basepath() . "/photo");
+		clear_cache($a->getBasePath(), $a->getBasePath() . "/photo");
 
 		// clear smarty cache
-		clear_cache($a->get_basepath() . "/view/smarty3/compiled", $a->get_basepath() . "/view/smarty3/compiled");
+		clear_cache($a->getBasePath() . "/view/smarty3/compiled", $a->getBasePath() . "/view/smarty3/compiled");
 
 		// clear cache for image proxy
 		if (!Config::get("system", "proxy_disabled")) {
-			clear_cache($a->get_basepath(), $a->get_basepath() . "/proxy");
+			clear_cache($a->getBasePath(), $a->getBasePath() . "/proxy");
 
 			$cachetime = Config::get('system', 'proxy_cache_time');
 
@@ -173,7 +174,7 @@ class CronJobs
 			}
 
 			$condition = ['`uid` = 0 AND `resource-id` LIKE "pic:%" AND `created` < NOW() - INTERVAL ? SECOND', $cachetime];
-			DBA::delete('photo', $condition);
+			Photo::delete($condition);
 		}
 
 		// Delete the cached OEmbed entries that are older than three month
@@ -211,7 +212,7 @@ class CronJobs
 				// Calculate fragmentation
 				$fragmentation = $table["Data_free"] / ($table["Data_length"] + $table["Index_length"]);
 
-				logger("Table " . $table["Name"] . " - Fragmentation level: " . round($fragmentation * 100, 2), LOGGER_DEBUG);
+				Logger::log("Table " . $table["Name"] . " - Fragmentation level: " . round($fragmentation * 100, 2), Logger::DEBUG);
 
 				// Don't optimize tables that needn't to be optimized
 				if ($fragmentation < $fragmentation_level) {
@@ -219,7 +220,7 @@ class CronJobs
 				}
 
 				// So optimize it
-				logger("Optimize Table " . $table["Name"], LOGGER_DEBUG);
+				Logger::log("Optimize Table " . $table["Name"], Logger::DEBUG);
 				q("OPTIMIZE TABLE `%s`", DBA::escape($table["Name"]));
 			}
 		}
@@ -258,7 +259,7 @@ class CronJobs
 				continue;
 			}
 
-			logger("Repair contact " . $contact["id"] . " " . $contact["url"], LOGGER_DEBUG);
+			Logger::log("Repair contact " . $contact["id"] . " " . $contact["url"], Logger::DEBUG);
 			q("UPDATE `contact` SET `batch` = '%s', `notify` = '%s', `poll` = '%s', pubkey = '%s' WHERE `id` = %d",
 				DBA::escape($data["batch"]), DBA::escape($data["notify"]), DBA::escape($data["poll"]), DBA::escape($data["pubkey"]),
 				intval($contact["id"]));
@@ -276,7 +277,7 @@ class CronJobs
 		$r = q("SELECT `uid` FROM `user` WHERE NOT EXISTS (SELECT `uid` FROM `contact` WHERE `contact`.`uid` = `user`.`uid` AND `contact`.`self`)");
 		if (DBA::isResult($r)) {
 			foreach ($r AS $user) {
-				logger('Create missing self contact for user ' . $user['uid']);
+				Logger::log('Create missing self contact for user ' . $user['uid']);
 				Contact::createSelfFromUserId($user['uid']);
 			}
 		}

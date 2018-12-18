@@ -5,13 +5,12 @@ namespace Friendica\Test\src\Core\Cache;
 
 use Friendica\Core\Cache\ArrayCache;
 
+/**
+ * @runTestsInSeparateProcesses
+ * @preserveGlobalState disabled
+ */
 class ArrayCacheDriverTest extends MemoryCacheTest
 {
-	/**
-	 * @var \Friendica\Core\Cache\IMemoryCacheDriver
-	 */
-	private $cache;
-
 	protected function getInstance()
 	{
 		$this->cache = new ArrayCache();

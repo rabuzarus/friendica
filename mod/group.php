@@ -6,17 +6,21 @@
  */
 
 use Friendica\App;
+use Friendica\BaseModule;
 use Friendica\Core\Config;
 use Friendica\Core\L10n;
 use Friendica\Core\PConfig;
+use Friendica\Core\Renderer;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
-use Friendica\Model\Contact;
-use Friendica\Model\Group;
+use Friendica\Model;
+use Friendica\Module;
+use Friendica\Util\Security;
+use Friendica\Util\Strings;
 
 function group_init(App $a) {
 	if (local_user()) {
-		$a->page['aside'] = Group::sidebarWidget('contacts', 'group', 'extended', (($a->argc > 1) ? $a->argv[1] : 'everyone'));
+		$a->page['aside'] = Model\Group::sidebarWidget('contacts', 'group', 'extended', (($a->argc > 1) ? $a->argv[1] : 'everyone'));
 	}
 }
 
@@ -28,25 +32,25 @@ function group_post(App $a) {
 	}
 
 	if (($a->argc == 2) && ($a->argv[1] === 'new')) {
-		check_form_security_token_redirectOnErr('/group/new', 'group_edit');
+		BaseModule::checkFormSecurityTokenRedirectOnError('/group/new', 'group_edit');
 
-		$name = notags(trim($_POST['groupname']));
-		$r = Group::create(local_user(), $name);
+		$name = Strings::escapeTags(trim($_POST['groupname']));
+		$r = Model\Group::create(local_user(), $name);
 		if ($r) {
 			info(L10n::t('Group created.') . EOL);
-			$r = Group::getIdByName(local_user(), $name);
+			$r = Model\Group::getIdByName(local_user(), $name);
 			if ($r) {
-				goaway(System::baseUrl() . '/group/' . $r);
+				$a->internalRedirect('group/' . $r);
 			}
 		} else {
 			notice(L10n::t('Could not create group.') . EOL);
 		}
-		goaway(System::baseUrl() . '/group');
+		$a->internalRedirect('group');
 		return; // NOTREACHED
 	}
 
 	if (($a->argc == 2) && intval($a->argv[1])) {
-		check_form_security_token_redirectOnErr('/group', 'group_edit');
+		BaseModule::checkFormSecurityTokenRedirectOnError('/group', 'group_edit');
 
 		$r = q("SELECT * FROM `group` WHERE `id` = %d AND `uid` = %d LIMIT 1",
 			intval($a->argv[1]),
@@ -54,11 +58,11 @@ function group_post(App $a) {
 		);
 		if (!DBA::isResult($r)) {
 			notice(L10n::t('Group not found.') . EOL);
-			goaway(System::baseUrl() . '/contacts');
+			$a->internalRedirect('contact');
 			return; // NOTREACHED
 		}
 		$group = $r[0];
-		$groupname = notags(trim($_POST['groupname']));
+		$groupname = Strings::escapeTags(trim($_POST['groupname']));
 		if (strlen($groupname) && ($groupname != $group['name'])) {
 			$r = q("UPDATE `group` SET `name` = '%s' WHERE `uid` = %d AND `id` = %d",
 				DBA::escape($groupname),
@@ -71,7 +75,7 @@ function group_post(App $a) {
 			}
 		}
 
-		$a->page['aside'] = Group::sidebarWidget();
+		$a->page['aside'] = Model\Group::sidebarWidget();
 	}
 	return;
 }
@@ -86,7 +90,7 @@ function group_content(App $a) {
 
 	// With no group number provided we jump to the unassigned contacts as a starting point
 	if ($a->argc == 1) {
-		goaway('group/none');
+		$a->internalRedirect('group/none');
 	}
 
 	// Switch to text mode interface if we have more than 'n' contacts or group members
@@ -95,7 +99,7 @@ function group_content(App $a) {
 		$switchtotext = Config::get('system', 'groupedit_image_limit', 400);
 	}
 
-	$tpl = get_markup_template('group_edit.tpl');
+	$tpl = Renderer::getMarkupTemplate('group_edit.tpl');
 
 	$context = [
 		'$submit' => L10n::t('Save Group'),
@@ -103,11 +107,11 @@ function group_content(App $a) {
 	];
 
 	if (($a->argc == 2) && ($a->argv[1] === 'new')) {
-		return replace_macros($tpl, $context + [
+		return Renderer::replaceMacros($tpl, $context + [
 			'$title' => L10n::t('Create a group of contacts/friends.'),
 			'$gname' => ['groupname', L10n::t('Group Name: '), '', ''],
 			'$gid' => 'new',
-			'$form_security_token' => get_form_security_token("group_edit"),
+			'$form_security_token' => BaseModule::getFormSecurityToken("group_edit"),
 		]);
 
 
@@ -116,8 +120,6 @@ function group_content(App $a) {
 	$nogroup = false;
 
 	if (($a->argc == 2) && ($a->argv[1] === 'none')) {
-		require_once 'mod/contacts.php';
-
 		$id = -1;
 		$nogroup = true;
 		$group = [
@@ -139,7 +141,7 @@ function group_content(App $a) {
 
 
 	if (($a->argc == 3) && ($a->argv[1] === 'drop')) {
-		check_form_security_token_redirectOnErr('/group', 'group_drop', 't');
+		BaseModule::checkFormSecurityTokenRedirectOnError('/group', 'group_drop', 't');
 
 		if (intval($a->argv[2])) {
 			$r = q("SELECT `name` FROM `group` WHERE `id` = %d AND `uid` = %d LIMIT 1",
@@ -150,7 +152,7 @@ function group_content(App $a) {
 			$result = null;
 
 			if (DBA::isResult($r)) {
-				$result = Group::removeByName(local_user(), $r[0]['name']);
+				$result = Model\Group::removeByName(local_user(), $r[0]['name']);
 			}
 
 			if ($result) {
@@ -159,12 +161,12 @@ function group_content(App $a) {
 				notice(L10n::t('Unable to remove group.') . EOL);
 			}
 		}
-		goaway(System::baseUrl() . '/group');
+		$a->internalRedirect('group');
 		// NOTREACHED
 	}
 
 	if (($a->argc > 2) && intval($a->argv[1]) && intval($a->argv[2])) {
-		check_form_security_token_ForbiddenOnErr('group_member_change', 't');
+		BaseModule::checkFormSecurityTokenForbiddenOnError('group_member_change', 't');
 
 		$r = q("SELECT `id` FROM `contact` WHERE `id` = %d AND `uid` = %d and `self` = 0 and `blocked` = 0 AND `pending` = 0 LIMIT 1",
 			intval($a->argv[2]),
@@ -176,8 +178,6 @@ function group_content(App $a) {
 	}
 
 	if (($a->argc > 1) && intval($a->argv[1])) {
-		require_once 'mod/contacts.php';
-
 		$r = q("SELECT * FROM `group` WHERE `id` = %d AND `uid` = %d AND `deleted` = 0 LIMIT 1",
 			intval($a->argv[1]),
 			intval(local_user())
@@ -185,11 +185,11 @@ function group_content(App $a) {
 
 		if (!DBA::isResult($r)) {
 			notice(L10n::t('Group not found.') . EOL);
-			goaway(System::baseUrl() . '/contacts');
+			$a->internalRedirect('contact');
 		}
 
 		$group = $r[0];
-		$members = Contact::getByGroupId($group['id']);
+		$members = Model\Contact::getByGroupId($group['id']);
 		$preselected = [];
 		$entry = [];
 		$id = 0;
@@ -202,12 +202,12 @@ function group_content(App $a) {
 
 		if ($change) {
 			if (in_array($change, $preselected)) {
-				Group::removeMember($group['id'], $change);
+				Model\Group::removeMember($group['id'], $change);
 			} else {
-				Group::addMember($group['id'], $change);
+				Model\Group::addMember($group['id'], $change);
 			}
 
-			$members = Contact::getByGroupId($group['id']);
+			$members = Model\Contact::getByGroupId($group['id']);
 			$preselected = [];
 			if (count($members)) {
 				foreach ($members as $member) {
@@ -216,11 +216,11 @@ function group_content(App $a) {
 			}
 		}
 
-		$drop_tpl = get_markup_template('group_drop.tpl');
-		$drop_txt = replace_macros($drop_tpl, [
+		$drop_tpl = Renderer::getMarkupTemplate('group_drop.tpl');
+		$drop_txt = Renderer::replaceMacros($drop_tpl, [
 			'$id' => $group['id'],
 			'$delete' => L10n::t('Delete Group'),
-			'$form_security_token' => get_form_security_token("group_drop"),
+			'$form_security_token' => BaseModule::getFormSecurityToken("group_drop"),
 		]);
 
 
@@ -229,7 +229,7 @@ function group_content(App $a) {
 			'$gname' => ['groupname', L10n::t('Group Name: '), $group['name'], ''],
 			'$gid' => $group['id'],
 			'$drop' => $drop_txt,
-			'$form_security_token' => get_form_security_token('group_edit'),
+			'$form_security_token' => BaseModule::getFormSecurityToken('group_edit'),
 			'$edit_name' => L10n::t('Edit Group Name'),
 			'$editable' => 1,
 		];
@@ -248,12 +248,12 @@ function group_content(App $a) {
 		'contacts' => [],
 	];
 
-	$sec_token = addslashes(get_form_security_token('group_member_change'));
+	$sec_token = addslashes(BaseModule::getFormSecurityToken('group_member_change'));
 
 	// Format the data of the group members
 	foreach ($members as $member) {
 		if ($member['url']) {
-			$entry = _contact_detail_for_template($member);
+			$entry = Module\Contact::getContactTemplateVars($member);
 			$entry['label'] = 'members';
 			$entry['photo_menu'] = '';
 			$entry['change_member'] = [
@@ -265,12 +265,12 @@ function group_content(App $a) {
 
 			$groupeditor['members'][] = $entry;
 		} else {
-			Group::removeMember($group['id'], $member['id']);
+			Model\Group::removeMember($group['id'], $member['id']);
 		}
 	}
 
 	if ($nogroup) {
-		$r = Contact::getUngroupedList(local_user());
+		$r = Model\Contact::getUngroupedList(local_user());
 	} else {
 		$r = q("SELECT * FROM `contact` WHERE `uid` = %d AND NOT `blocked` AND NOT `pending` AND NOT `self` ORDER BY `name` ASC",
 			intval(local_user())
@@ -282,7 +282,7 @@ function group_content(App $a) {
 		// Format the data of the contacts who aren't in the contact group
 		foreach ($r as $member) {
 			if (!in_array($member['id'], $preselected)) {
-				$entry = _contact_detail_for_template($member);
+				$entry = Module\Contact::getContactTemplateVars($member);
 				$entry['label'] = 'contacts';
 				if (!$nogroup)
 					$entry['photo_menu'] = [];
@@ -308,11 +308,11 @@ function group_content(App $a) {
 	$context['$shortmode'] = (($switchtotext && ($total > $switchtotext)) ? true : false);
 
 	if ($change) {
-		$tpl = get_markup_template('groupeditor.tpl');
-		echo replace_macros($tpl, $context);
+		$tpl = Renderer::getMarkupTemplate('groupeditor.tpl');
+		echo Renderer::replaceMacros($tpl, $context);
 		killme();
 	}
 
-	return replace_macros($tpl, $context);
+	return Renderer::replaceMacros($tpl, $context);
 
 }

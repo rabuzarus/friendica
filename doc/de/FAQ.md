@@ -180,7 +180,7 @@ Hier ist eine Liste von Clients bei denen dies möglich ist, bzw. die speziell f
 <a name="help"></a>
 ### Wo finde ich Hilfe?
 
-Wenn Du Probleme mit Deiner Friendica-Seite hast, dann kannst Du die Community in der [Friendica-Support-Gruppe](https://forum.friendi.ca/profile/helpers) oder im [deutschen Friendica-Support-Forum](http://toktan.org/profile/wiki) fragen oder Dir das [deutsche Wiki](http://wiki.toktan.org/doku.php) anschauen.
+Wenn Du Probleme mit Deiner Friendica-Seite hast, dann kannst Du die Community in der [Friendica-Support-Gruppe](https://forum.friendi.ca/profile/helpers) fragen oder Dir das [deutsche Wiki](https://friendica-wiki.de/) anschauen.
 Wenn Du Deinen Account nicht nutzen kannst, kannst Du entweder einen [Testaccount](https://tryfriendica.de) bzw. einen Account auf einer öffentlichen Seite ([Liste](https://dir.friendica.social/servers)) nutzen.
 
 Wenn du dir keinen weiteren Friendica Account einrichten willst, kannst du auch gerne über einen der folgenden alternativen Kanäle Hilfe suchen:
@@ -199,7 +199,7 @@ Admin
 
 Ja, das ist möglich.
 Es ist allerdings nicht möglich, eine Datenbank durch zwei Domains zu nutzen.
-Solange Du Deine config/local.ini.php allerdings so einrichtest, dass das System nicht versucht, eine Installation durchzuführen, kannst Du die richtige Config-Datei in include/$hostname/config/local.ini.php hinterlegen.
+Solange Du Deine config/local.config.php allerdings so einrichtest, dass das System nicht versucht, eine Installation durchzuführen, kannst Du die richtige Config-Datei in include/$hostname/config/local.config.php hinterlegen.
 Alle Cache-Aspekte und der Zugriffsschutz können pro Instanz konfiguriert werden.
 
 <a name="sources"></a>
@@ -216,13 +216,13 @@ Wenn Du neue Themen suchst, findest Du sie auf [Friendica-Themes.com](http://fri
 <a name="adminaccount1"></a>
 ### Ich habe meine E-Mail Adresse geändern und jetzt ist das Admin Panel verschwunden?
 
-Bitte aktualisiere deine E-Mail Adresse in der <tt>config/local.ini.php</tt> Datei.
+Bitte aktualisiere deine E-Mail Adresse in der <tt>config/local.config.php</tt> Datei.
 
 <a name="adminaccount2"></a>
 ### Kann es mehr als einen Admin auf einer Friendica Instanz geben?
 
 Ja.
-Du kannst in der <tt>config/local.ini.php</tt> Datei mehrere E-Mail Adressen auflisten.
+Du kannst in der <tt>config/local.config.php</tt> Datei mehrere E-Mail Adressen auflisten.
 Die aufgelisteten Adressen werden mit Kommata von einander getrennt.
 
 <a name="dbupdate">

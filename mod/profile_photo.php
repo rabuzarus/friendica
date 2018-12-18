@@ -4,8 +4,10 @@
  */
 
 use Friendica\App;
+use Friendica\BaseModule;
 use Friendica\Core\Config;
 use Friendica\Core\L10n;
+use Friendica\Core\Renderer;
 use Friendica\Core\System;
 use Friendica\Core\Worker;
 use Friendica\Database\DBA;
@@ -13,6 +15,8 @@ use Friendica\Model\Contact;
 use Friendica\Model\Photo;
 use Friendica\Model\Profile;
 use Friendica\Object\Image;
+use Friendica\Util\Security;
+use Friendica\Util\Strings;
 
 function profile_photo_init(App $a)
 {
@@ -30,7 +34,7 @@ function profile_photo_post(App $a)
 		return;
 	}
 
-	check_form_security_token_redirectOnErr('/profile_photo', 'profile_photo');
+	BaseModule::checkFormSecurityTokenRedirectOnError('/profile_photo', 'profile_photo');
 
 	if (!empty($_POST['cropfinal']) && $_POST['cropfinal'] == 1) {
 
@@ -69,22 +73,20 @@ function profile_photo_post(App $a)
 		$srcW = $_POST['xfinal'] - $srcX;
 		$srcH = $_POST['yfinal'] - $srcY;
 
-		$r = q("SELECT * FROM `photo` WHERE `resource-id` = '%s' AND `uid` = %d AND `scale` = %d LIMIT 1", DBA::escape($image_id),
-			DBA::escape(local_user()), intval($scale));
+		$base_image = Photo::selectFirst([], ['resource-id' => $image_id, 'uid' => local_user(), 'scale' => $scale]);
 
-		$url = System::baseUrl() . '/profile/' . $a->user['nickname'];
-		if (DBA::isResult($r)) {
-			$base_image = $r[0];
+		$path = 'profile/' . $a->user['nickname'];
+		if (DBA::isResult($base_image)) {
 
-			$Image = new Image($base_image['data'], $base_image['type']);
+			$Image = Photo::getImageForPhoto($base_image);
 			if ($Image->isValid()) {
-				$Image->crop(175, $srcX, $srcY, $srcW, $srcH);
+				$Image->crop(300, $srcX, $srcY, $srcW, $srcH);
 
 				$r = Photo::store($Image, local_user(), 0, $base_image['resource-id'], $base_image['filename'],
 						L10n::t('Profile Photos'), 4, $is_default_profile);
 
 				if ($r === false) {
-					notice(L10n::t('Image size reduction [%s] failed.', "175") . EOL);
+					notice(L10n::t('Image size reduction [%s] failed.', "300") . EOL);
 				}
 
 				$Image->scaleDown(80);
@@ -123,8 +125,8 @@ function profile_photo_post(App $a)
 
 				info(L10n::t('Shift-reload the page or clear browser cache if the new photo does not display immediately.') . EOL);
 				// Update global directory in background
-				if ($url && strlen(Config::get('system', 'directory'))) {
-					Worker::add(PRIORITY_LOW, "Directory", $url);
+				if ($path && strlen(Config::get('system', 'directory'))) {
+					Worker::add(PRIORITY_LOW, "Directory", $a->getBaseURL() . '/' . $path);
 				}
 
 				Worker::add(PRIORITY_LOW, 'ProfileUpdate', local_user());
@@ -133,7 +135,7 @@ function profile_photo_post(App $a)
 			}
 		}
 
-		goaway($url);
+		$a->internalRedirect($path);
 		return; // NOTREACHED
 	}
 
@@ -148,7 +150,7 @@ function profile_photo_post(App $a)
 	$maximagesize = Config::get('system', 'maximagesize');
 
 	if (($maximagesize) && ($filesize > $maximagesize)) {
-		notice(L10n::t('Image exceeds size limit of %s', formatBytes($maximagesize)) . EOL);
+		notice(L10n::t('Image exceeds size limit of %s', Strings::formatBytes($maximagesize)) . EOL);
 		@unlink($src);
 		return;
 	}
@@ -166,7 +168,7 @@ function profile_photo_post(App $a)
 	@unlink($src);
 
 	$imagecrop = profile_photo_crop_ui_head($a, $ph);
-	goaway(System::baseUrl() . '/profile_photo/use/' . $imagecrop['hash']);
+	$a->internalRedirect('profile_photo/use/' . $imagecrop['hash']);
 }
 
 function profile_photo_content(App $a)
@@ -186,13 +188,18 @@ function profile_photo_content(App $a)
 	$imagecrop = [];
 
 	if (isset($a->argv[1]) && $a->argv[1] == 'use' && $a->argc >= 3) {
-		// check_form_security_token_redirectOnErr('/profile_photo', 'profile_photo');
+		// BaseModule::checkFormSecurityTokenRedirectOnError('/profile_photo', 'profile_photo');
 
 		$resource_id = $a->argv[2];
 		//die(":".local_user());
+
+		$r = Photo::select([], ["resource-id" => $resource_id, "uid" => local_user()], ["order" => ["scale"=>false]]);
+
+		/*
 		$r = q("SELECT * FROM `photo` WHERE `uid` = %d AND `resource-id` = '%s' ORDER BY `scale` ASC", intval(local_user()),
 			DBA::escape($resource_id)
 		);
+		*/
 
 		if (!DBA::isResult($r)) {
 			notice(L10n::t('Permission denied.') . EOL);
@@ -223,10 +230,11 @@ function profile_photo_content(App $a)
 				Worker::add(PRIORITY_LOW, "Directory", $url);
 			}
 
-			goaway(System::baseUrl() . '/profile/' . $a->user['nickname']);
+			$a->internalRedirect('profile/' . $a->user['nickname']);
 			return; // NOTREACHED
 		}
-		$ph = new Image($r[0]['data'], $r[0]['type']);
+		$ph = Photo::getImageForPhoto($r[0]);
+		
 		$imagecrop = profile_photo_crop_ui_head($a, $ph);
 		// go ahead as we have jus uploaded a new photo to crop
 	}
@@ -236,9 +244,9 @@ function profile_photo_content(App $a)
 	);
 
 	if (empty($imagecrop)) {
-		$tpl = get_markup_template('profile_photo.tpl');
+		$tpl = Renderer::getMarkupTemplate('profile_photo.tpl');
 
-		$o = replace_macros($tpl,
+		$o = Renderer::replaceMacros($tpl,
 			[
 			'$user' => $a->user['nickname'],
 			'$lbl_upfile' => L10n::t('Upload File:'),
@@ -246,7 +254,7 @@ function profile_photo_content(App $a)
 			'$title' => L10n::t('Upload Profile Photo'),
 			'$submit' => L10n::t('Upload'),
 			'$profiles' => $profiles,
-			'$form_security_token' => get_form_security_token("profile_photo"),
+			'$form_security_token' => BaseModule::getFormSecurityToken("profile_photo"),
 			'$select' => sprintf('%s %s', L10n::t('or'),
 				($newuser) ? '<a href="' . System::baseUrl() . '">' . L10n::t('skip this step') . '</a>' : '<a href="' . System::baseUrl() . '/photos/' . $a->user['nickname'] . '">' . L10n::t('select a photo from your photo albums') . '</a>')
 		]);
@@ -254,8 +262,8 @@ function profile_photo_content(App $a)
 		return $o;
 	} else {
 		$filename = $imagecrop['hash'] . '-' . $imagecrop['resolution'] . '.' . $imagecrop['ext'];
-		$tpl = get_markup_template("cropbody.tpl");
-		$o = replace_macros($tpl,
+		$tpl = Renderer::getMarkupTemplate("cropbody.tpl");
+		$o = Renderer::replaceMacros($tpl,
 			[
 			'$filename'  => $filename,
 			'$profile'   => (isset($_REQUEST['profile']) ? intval($_REQUEST['profile']) : 0),
@@ -263,7 +271,7 @@ function profile_photo_content(App $a)
 			'$image_url' => System::baseUrl() . '/photo/' . $filename,
 			'$title'     => L10n::t('Crop Image'),
 			'$desc'      => L10n::t('Please adjust the image cropping for optimum viewing.'),
-			'$form_security_token' => get_form_security_token("profile_photo"),
+			'$form_security_token' => BaseModule::getFormSecurityToken("profile_photo"),
 			'$done'      => L10n::t('Done Editing')
 		]);
 		return $o;
@@ -286,7 +294,7 @@ function profile_photo_crop_ui_head(App $a, Image $image)
 	$height = $image->getHeight();
 
 	if ($width < 175 || $height < 175) {
-		$image->scaleUp(200);
+		$image->scaleUp(300);
 		$width = $image->getWidth();
 		$height = $image->getHeight();
 	}
@@ -316,8 +324,7 @@ function profile_photo_crop_ui_head(App $a, Image $image)
 		}
 	}
 
-	$a->page['htmlhead'] .= replace_macros(get_markup_template("crophead.tpl"), []);
-	$a->page['end'] .= replace_macros(get_markup_template("cropend.tpl"), []);
+	$a->page['htmlhead'] .= Renderer::replaceMacros(Renderer::getMarkupTemplate("crophead.tpl"), []);
 
 	$imagecrop = [
 		'hash'       => $hash,

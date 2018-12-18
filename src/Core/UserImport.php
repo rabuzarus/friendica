@@ -5,10 +5,13 @@
 namespace Friendica\Core;
 
 use Friendica\App;
+use Friendica\Core\Logger;
 use Friendica\Core\Protocol;
+use Friendica\Core\System;
 use Friendica\Database\DBA;
 use Friendica\Model\Photo;
 use Friendica\Object\Image;
+use Friendica\Util\Strings;
 
 require_once "include/dba.php";
 
@@ -37,7 +40,7 @@ class UserImport
 	private static function checkCols($table, &$arr)
 	{
 		$query = sprintf("SHOW COLUMNS IN `%s`", DBA::escape($table));
-		logger("uimport: $query", LOGGER_DEBUG);
+		Logger::log("uimport: $query", Logger::DEBUG);
 		$r = q($query);
 		$tcols = [];
 		// get a plain array of column names
@@ -68,7 +71,7 @@ class UserImport
 		$cols = implode("`,`", array_map(['Friendica\Database\DBA', 'escape'], array_keys($arr)));
 		$vals = implode("','", array_map(['Friendica\Database\DBA', 'escape'], array_values($arr)));
 		$query = "INSERT INTO `$table` (`$cols`) VALUES ('$vals')";
-		logger("uimport: $query", LOGGER_TRACE);
+		Logger::log("uimport: $query", Logger::TRACE);
 
 		if (self::IMPORT_DEBUG) {
 			return true;
@@ -85,7 +88,7 @@ class UserImport
 	 */
 	public static function importAccount(App $a, $file)
 	{
-		logger("Start user import from " . $file['tmp_name']);
+		Logger::log("Start user import from " . $file['tmp_name']);
 		/*
 		STEPS
 		1. checks
@@ -102,7 +105,7 @@ class UserImport
 		}
 
 
-		if (!x($account, 'version')) {
+		if (empty($account['version'])) {
 			notice(L10n::t("Error! No version data in file! This is not a Friendica account file?"));
 			return;
 		}
@@ -118,14 +121,17 @@ class UserImport
 		$oldbaseurl = $account['baseurl'];
 		$newbaseurl = System::baseUrl();
 
-		$oldaddr = str_replace('http://', '@', normalise_link($oldbaseurl));
-		$newaddr = str_replace('http://', '@', normalise_link($newbaseurl));
+		$oldaddr = str_replace('http://', '@', Strings::normaliseLink($oldbaseurl));
+		$newaddr = str_replace('http://', '@', Strings::normaliseLink($newbaseurl));
 
 		if (!empty($account['profile']['addr'])) {
 			$old_handle = $account['profile']['addr'];
 		} else {
 			$old_handle = $account['user']['nickname'].$oldaddr;
 		}
+
+		// Creating a new guid to avoid problems with Diaspora
+		$account['user']['guid'] = System::createUUID();
 
 		$olduid = $account['user']['uid'];
 
@@ -143,7 +149,7 @@ class UserImport
 		// import user
 		$r = self::dbImportAssoc('user', $account['user']);
 		if ($r === false) {
-			logger("uimport:insert user : ERROR : " . DBA::errorMessage(), LOGGER_INFO);
+			Logger::log("uimport:insert user : ERROR : " . DBA::errorMessage(), Logger::INFO);
 			notice(L10n::t("User creation error"));
 			return;
 		}
@@ -161,7 +167,7 @@ class UserImport
 			$profile['uid'] = $newuid;
 			$r = self::dbImportAssoc('profile', $profile);
 			if ($r === false) {
-				logger("uimport:insert profile " . $profile['profile-name'] . " : ERROR : " . DBA::errorMessage(), LOGGER_INFO);
+				Logger::log("uimport:insert profile " . $profile['profile-name'] . " : ERROR : " . DBA::errorMessage(), Logger::INFO);
 				info(L10n::t("User profile creation error"));
 				DBA::delete('user', ['uid' => $newuid]);
 				return;
@@ -180,7 +186,7 @@ class UserImport
 			}
 			if ($contact['uid'] == $olduid && $contact['self'] == '0') {
 				// set contacts 'avatar-date' to NULL_DATE to let worker to update urls
-				$contact["avatar-date"] = NULL_DATE;
+				$contact["avatar-date"] = DBA::NULL_DATETIME;
 
 				switch ($contact['network']) {
 					case Protocol::DFRN:
@@ -199,7 +205,7 @@ class UserImport
 			$contact['uid'] = $newuid;
 			$r = self::dbImportAssoc('contact', $contact);
 			if ($r === false) {
-				logger("uimport:insert contact " . $contact['nick'] . "," . $contact['network'] . " : ERROR : " . DBA::errorMessage(), LOGGER_INFO);
+				Logger::log("uimport:insert contact " . $contact['nick'] . "," . $contact['network'] . " : ERROR : " . DBA::errorMessage(), Logger::INFO);
 				$errorcount++;
 			} else {
 				$contact['newid'] = self::lastInsertId();
@@ -213,7 +219,7 @@ class UserImport
 			$group['uid'] = $newuid;
 			$r = self::dbImportAssoc('group', $group);
 			if ($r === false) {
-				logger("uimport:insert group " . $group['name'] . " : ERROR : " . DBA::errorMessage(), LOGGER_INFO);
+				Logger::log("uimport:insert group " . $group['name'] . " : ERROR : " . DBA::errorMessage(), Logger::INFO);
 			} else {
 				$group['newid'] = self::lastInsertId();
 			}
@@ -238,7 +244,7 @@ class UserImport
 			if ($import == 2) {
 				$r = self::dbImportAssoc('group_member', $group_member);
 				if ($r === false) {
-					logger("uimport:insert group member " . $group_member['id'] . " : ERROR : " . DBA::errorMessage(), LOGGER_INFO);
+					Logger::log("uimport:insert group member " . $group_member['id'] . " : ERROR : " . DBA::errorMessage(), Logger::INFO);
 				}
 			}
 		}
@@ -256,7 +262,7 @@ class UserImport
 			);
 
 			if ($r === false) {
-				logger("uimport:insert photo " . $photo['resource-id'] . "," . $photo['scale'] . " : ERROR : " . DBA::errorMessage(), LOGGER_INFO);
+				Logger::log("uimport:insert photo " . $photo['resource-id'] . "," . $photo['scale'] . " : ERROR : " . DBA::errorMessage(), Logger::INFO);
 			}
 		}
 
@@ -264,7 +270,7 @@ class UserImport
 			$pconfig['uid'] = $newuid;
 			$r = self::dbImportAssoc('pconfig', $pconfig);
 			if ($r === false) {
-				logger("uimport:insert pconfig " . $pconfig['id'] . " : ERROR : " . DBA::errorMessage(), LOGGER_INFO);
+				Logger::log("uimport:insert pconfig " . $pconfig['id'] . " : ERROR : " . DBA::errorMessage(), Logger::INFO);
 			}
 		}
 
@@ -272,6 +278,6 @@ class UserImport
 		Worker::add(PRIORITY_HIGH, 'Notifier', 'relocate', $newuid);
 
 		info(L10n::t("Done. You can now login with your username and password"));
-		goaway(System::baseUrl() . "/login");
+		$a->internalRedirect('login');
 	}
 }

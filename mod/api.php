@@ -5,6 +5,8 @@
 use Friendica\App;
 use Friendica\Core\Config;
 use Friendica\Core\L10n;
+use Friendica\Core\Renderer;
+use Friendica\Core\System;
 use Friendica\Database\DBA;
 use Friendica\Module\Login;
 
@@ -36,7 +38,7 @@ function api_post(App $a)
 		return;
 	}
 
-	if (count($a->user) && x($a->user, 'uid') && $a->user['uid'] != local_user()) {
+	if (count($a->user) && !empty($a->user['uid']) && $a->user['uid'] != local_user()) {
 		notice(L10n::t('Permission denied.') . EOL);
 		return;
 	}
@@ -60,7 +62,7 @@ function api_content(App $a)
 			killme();
 		}
 
-		if (x($_POST, 'oauth_yes')) {
+		if (!empty($_POST['oauth_yes'])) {
 			$app = oauth_get_client($request);
 			if (is_null($app)) {
 				return "Invalid request. Unknown token.";
@@ -76,12 +78,12 @@ function api_content(App $a)
 				if (strstr($consumer->callback_url, $glue)) {
 					$glue = "?";
 				}
-				goaway($consumer->callback_url . $glue . "oauth_token=" . OAuthUtil::urlencode_rfc3986($params['oauth_token']) . "&oauth_verifier=" . OAuthUtil::urlencode_rfc3986($verifier));
+				$a->internalRedirect($consumer->callback_url . $glue . 'oauth_token=' . OAuthUtil::urlencode_rfc3986($params['oauth_token']) . '&oauth_verifier=' . OAuthUtil::urlencode_rfc3986($verifier));
 				killme();
 			}
 
-			$tpl = get_markup_template("oauth_authorize_done.tpl");
-			$o = replace_macros($tpl, [
+			$tpl = Renderer::getMarkupTemplate("oauth_authorize_done.tpl");
+			$o = Renderer::replaceMacros($tpl, [
 				'$title' => L10n::t('Authorize application connection'),
 				'$info' => L10n::t('Return to your app and insert this Securty Code:'),
 				'$code' => $verifier,
@@ -102,8 +104,8 @@ function api_content(App $a)
 			return "Invalid request. Unknown token.";
 		}
 
-		$tpl = get_markup_template('oauth_authorize.tpl');
-		$o = replace_macros($tpl, [
+		$tpl = Renderer::getMarkupTemplate('oauth_authorize.tpl');
+		$o = Renderer::replaceMacros($tpl, [
 			'$title' => L10n::t('Authorize application connection'),
 			'$app' => $app,
 			'$authorize' => L10n::t('Do you want to authorize this application to access your posts and contacts, and/or create new posts for you?'),

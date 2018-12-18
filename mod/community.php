@@ -5,12 +5,15 @@
 
 use Friendica\App;
 use Friendica\Content\Nav;
+use Friendica\Content\Pager;
 use Friendica\Core\ACL;
 use Friendica\Core\Config;
 use Friendica\Core\L10n;
 use Friendica\Core\PConfig;
+use Friendica\Core\Renderer;
 use Friendica\Database\DBA;
 use Friendica\Model\Contact;
+use Friendica\Model\Item;
 
 function community_init(App $a)
 {
@@ -90,7 +93,6 @@ function community_content(App $a, $update = 0)
 		}
 	}
 
-	require_once 'include/security.php';
 	require_once 'include/conversation.php';
 
 	if (!$update) {
@@ -118,8 +120,8 @@ function community_content(App $a, $update = 0)
 			];
 		}
 
-		$tab_tpl = get_markup_template('common_tabs.tpl');
-		$o .= replace_macros($tab_tpl, ['$tabs' => $tabs]);
+		$tab_tpl = Renderer::getMarkupTemplate('common_tabs.tpl');
+		$o .= Renderer::replaceMacros($tab_tpl, ['$tabs' => $tabs]);
 
 		Nav::setSelected('community');
 
@@ -153,9 +155,9 @@ function community_content(App $a, $update = 0)
 		$itemspage_network = $a->force_max_items;
 	}
 
-	$a->set_pager_itemspage($itemspage_network);
+	$pager = new Pager($a->query_string, $itemspage_network);
 
-	$r = community_getitems($a->pager['start'], $a->pager['itemspage'], $content, $accounttype);
+	$r = community_getitems($pager->getStart(), $pager->getItemsPerPage(), $content, $accounttype);
 
 	if (!DBA::isResult($r)) {
 		info(L10n::t('No results.') . EOL);
@@ -179,26 +181,26 @@ function community_content(App $a, $update = 0)
 				}
 				$previousauthor = $item["author-link"];
 
-				if (($numposts < $maxpostperauthor) && (count($s) < $a->pager['itemspage'])) {
+				if (($numposts < $maxpostperauthor) && (count($s) < $pager->getItemsPerPage())) {
 					$s[] = $item;
 				}
 			}
-			if (count($s) < $a->pager['itemspage']) {
-				$r = community_getitems($a->pager['start'] + ($count * $a->pager['itemspage']), $a->pager['itemspage'], $content, $accounttype);
+			if (count($s) < $pager->getItemsPerPage()) {
+				$r = community_getitems($pager->getStart() + ($count * $pager->getItemsPerPage()), $pager->getItemsPerPage(), $content, $accounttype);
 			}
-		} while ((count($s) < $a->pager['itemspage']) && ( ++$count < 50) && (count($r) > 0));
+		} while ((count($s) < $pager->getItemsPerPage()) && ( ++$count < 50) && (count($r) > 0));
 	} else {
 		$s = $r;
 	}
 
-	$o .= conversation($a, $s, 'community', $update, false, 'commented', local_user());
+	$o .= conversation($a, $s, $pager, 'community', $update, false, 'commented', local_user());
 
 	if (!$update) {
-		$o .= alt_pager($a, count($r));
+		$o .= $pager->renderMinimal(count($r));
 	}
 
-	$t = get_markup_template("community.tpl");
-	return replace_macros($t, [
+	$t = Renderer::getMarkupTemplate("community.tpl");
+	return Renderer::replaceMacros($t, [
 		'$content' => $o,
 		'$header' => '',
 		'$show_global_community_hint' => ($content == 'global') && Config::get('system', 'show_global_community_hint'),
@@ -227,19 +229,12 @@ function community_getitems($start, $itemspage, $content, $accounttype)
 		return DBA::toArray($r);
 	} elseif ($content == 'global') {
 		if (!is_null($accounttype)) {
-			$sql_accounttype = " AND `owner`.`contact-type` = ?";
-			$values = [$accounttype, $start, $itemspage];
+			$condition = ["`uid` = ? AND `owner`.`contact-type` = ?", 0, $accounttype];
 		} else {
-			$sql_accounttype = "";
-			$values = [$start, $itemspage];
+			$condition = ['uid' => 0];
 		}
 
-		$r = DBA::p("SELECT `uri` FROM `thread`
-				INNER JOIN `item` ON `item`.`id` = `thread`.`iid`
-				INNER JOIN `contact` AS `author` ON `author`.`id`=`item`.`author-id`
-				INNER JOIN `contact` AS `owner` ON `owner`.`id`=`item`.`owner-id`
-				WHERE `thread`.`uid` = 0 AND NOT `author`.`hidden` AND NOT `author`.`blocked` $sql_accounttype
-				ORDER BY `thread`.`commented` DESC LIMIT ?, ?", $values);
+		$r = Item::selectThreadForUser(0, ['uri'], $condition, ['order' => ['commented' => true], 'limit' => [$start, $itemspage]]);
 		return DBA::toArray($r);
 	}
 

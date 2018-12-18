@@ -6,12 +6,13 @@
 use Friendica\App;
 use Friendica\Core\Config;
 use Friendica\Core\L10n;
+use Friendica\Core\Logger;
 use Friendica\Core\Protocol;
+use Friendica\Core\Renderer;
 use Friendica\Database\DBA;
-use Friendica\Model\Contact;
-use Friendica\Model\Profile;
-
-require_once 'mod/contacts.php';
+use Friendica\Model;
+use Friendica\Module;
+use Friendica\Util\Strings;
 
 function crepair_init(App $a)
 {
@@ -24,13 +25,13 @@ function crepair_init(App $a)
 		$contact = DBA::selectFirst('contact', [], ['uid' => local_user(), 'id' => $a->argv[1]]);
 	}
 
-	if (!x($a->page, 'aside')) {
+	if (empty($a->page['aside'])) {
 		$a->page['aside'] = '';
 	}
 
 	if (DBA::isResult($contact)) {
 		$a->data['contact'] = $contact;
-		Profile::load($a, "", 0, Contact::getDetailsByURL($contact["url"]));
+		Model\Profile::load($a, "", 0, Model\Contact::getDetailsByURL($contact["url"]));
 	}
 }
 
@@ -61,7 +62,7 @@ function crepair_post(App $a)
 	$attag       = defaults($_POST, 'attag'      , '');
 	$photo       = defaults($_POST, 'photo'      , '');
 	$remote_self = defaults($_POST, 'remote_self', false);
-	$nurl        = normalise_link($url);
+	$nurl        = Strings::normaliseLink($url);
 
 	$r = q("UPDATE `contact` SET `name` = '%s', `nick` = '%s', `url` = '%s', `nurl` = '%s', `request` = '%s', `confirm` = '%s', `notify` = '%s', `poll` = '%s', `attag` = '%s' , `remote_self` = %d
 		WHERE `id` = %d AND `uid` = %d",
@@ -80,9 +81,9 @@ function crepair_post(App $a)
 	);
 
 	if ($photo) {
-		logger('mod-crepair: updating photo from ' . $photo);
+		Logger::log('mod-crepair: updating photo from ' . $photo);
 
-		Contact::updateAvatar($photo, local_user(), $contact['id']);
+		Model\Contact::updateAvatar($photo, local_user(), $contact['id']);
 	}
 
 	if ($r) {
@@ -116,7 +117,7 @@ function crepair_content(App $a)
 	$warning = L10n::t('<strong>WARNING: This is highly advanced</strong> and if you enter incorrect information your communications with this contact may stop working.');
 	$info = L10n::t('Please use your browser \'Back\' button <strong>now</strong> if you are uncertain what to do on this page.');
 
-	$returnaddr = "contacts/$cid";
+	$returnaddr = "contact/$cid";
 
 	$allow_remote_self = Config::get('system', 'allow_users_remote_self');
 
@@ -133,12 +134,12 @@ function crepair_content(App $a)
 		$remote_self_options = ['0' => L10n::t('No mirroring'), '2' => L10n::t('Mirror as my own posting')];
 	}
 
-	$update_profile = in_array($contact['network'], [Protocol::DFRN, Protocol::DIASPORA, Protocol::OSTATUS]);
+	$update_profile = in_array($contact['network'], [Protocol::ACTIVITYPUB, Protocol::DFRN, Protocol::DIASPORA, Protocol::OSTATUS]);
 
-	$tab_str = contacts_tab($a, $contact, 5);
+	$tab_str = Module\Contact::getTabsHTML($a, $contact, 5);
 
-	$tpl = get_markup_template('crepair.tpl');
-	$o = replace_macros($tpl, [
+	$tpl = Renderer::getMarkupTemplate('crepair.tpl');
+	$o = Renderer::replaceMacros($tpl, [
 		'$tab_str'        => $tab_str,
 		'$warning'        => $warning,
 		'$info'           => $info,

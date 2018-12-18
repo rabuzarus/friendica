@@ -6,6 +6,7 @@ namespace Friendica\Util;
 
 use Friendica\Core\Addon;
 use Friendica\Core\Config;
+use Friendica\Core\Logger;
 use Friendica\Core\PConfig;
 use Friendica\Protocol\Email;
 
@@ -35,7 +36,7 @@ class Emailer
 		Addon::callHooks('emailer_send_prepare', $params);
 
 		$email_textonly = false;
-		if (x($params, "uid")) {
+		if (!empty($params['uid'])) {
 			$email_textonly = PConfig::get($params['uid'], "system", "email_textonly");
 		}
 
@@ -49,7 +50,7 @@ class Emailer
 				.rand(10000, 99999);
 
 		// generate a multipart/alternative message header
-		$messageHeader = $params['additionalMailHeader'] .
+		$messageHeader = defaults($params, 'additionalMailHeader', '') .
 						"From: $fromName <{$params['fromEmail']}>\n" .
 						"Reply-To: $fromName <{$params['replyTo']}>\n" .
 						"MIME-Version: 1.0\n" .
@@ -96,8 +97,8 @@ class Emailer
 			$hookdata['headers'],
 			$hookdata['parameters']
 		);
-		logger("header " . 'To: ' . $params['toEmail'] . "\n" . $messageHeader, LOGGER_DEBUG);
-		logger("return value " . (($res)?"true":"false"), LOGGER_DEBUG);
+		Logger::log("header " . 'To: ' . $params['toEmail'] . "\n" . $messageHeader, Logger::DEBUG);
+		Logger::log("return value " . (($res)?"true":"false"), Logger::DEBUG);
 		return $res;
 	}
 }

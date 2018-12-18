@@ -4,6 +4,7 @@
  */
 namespace Friendica\Model;
 
+use Friendica\Core\Logger;
 use Friendica\Core\Worker;
 use Friendica\Database\DBA;
 use Friendica\Util\DateTimeFormat;
@@ -21,7 +22,7 @@ class PushSubscriber
 	public static function publishFeed($uid, $default_priority = PRIORITY_HIGH)
 	{
 		$condition = ['push' => 0, 'uid' => $uid];
-		DBA::update('push_subscriber', ['push' => 1, 'next_try' => NULL_DATE], $condition);
+		DBA::update('push_subscriber', ['push' => 1, 'next_try' => DBA::NULL_DATETIME], $condition);
 
 		self::requeue($default_priority);
 	}
@@ -45,7 +46,7 @@ class PushSubscriber
 				$priority = $default_priority;
 			}
 
-			logger('Publish feed to ' . $subscriber['callback_url'] . ' for ' . $subscriber['nickname'] . ' with priority ' . $priority, LOGGER_DEBUG);
+			Logger::log('Publish feed to ' . $subscriber['callback_url'] . ' for ' . $subscriber['nickname'] . ' with priority ' . $priority, Logger::DEBUG);
 			Worker::add($priority, 'PubSubPublish', (int)$subscriber['id']);
 		}
 
@@ -88,9 +89,9 @@ class PushSubscriber
 				'secret' => $hub_secret];
 			DBA::insert('push_subscriber', $fields);
 
-			logger("Successfully subscribed [$hub_callback] for $nick");
+			Logger::log("Successfully subscribed [$hub_callback] for $nick");
 		} else {
-			logger("Successfully unsubscribed [$hub_callback] for $nick");
+			Logger::log("Successfully unsubscribed [$hub_callback] for $nick");
 			// we do nothing here, since the row was already deleted
 		}
 	}
@@ -114,11 +115,11 @@ class PushSubscriber
 			$days = round((time() -  strtotime($subscriber['renewed'])) / (60 * 60 * 24));
 
 			if ($days > 60) {
-				DBA::update('push_subscriber', ['push' => -1, 'next_try' => NULL_DATE], ['id' => $id]);
-				logger('Delivery error: Subscription ' . $subscriber['callback_url'] . ' for ' . $subscriber['nickname'] . ' is marked as ended.', LOGGER_DEBUG);
+				DBA::update('push_subscriber', ['push' => -1, 'next_try' => DBA::NULL_DATETIME], ['id' => $id]);
+				Logger::log('Delivery error: Subscription ' . $subscriber['callback_url'] . ' for ' . $subscriber['nickname'] . ' is marked as ended.', Logger::DEBUG);
 			} else {
-				DBA::update('push_subscriber', ['push' => 0, 'next_try' => NULL_DATE], ['id' => $id]);
-				logger('Delivery error: Giving up ' . $subscriber['callback_url'] . ' for ' . $subscriber['nickname'] . ' for now.', LOGGER_DEBUG);
+				DBA::update('push_subscriber', ['push' => 0, 'next_try' => DBA::NULL_DATETIME], ['id' => $id]);
+				Logger::log('Delivery error: Giving up ' . $subscriber['callback_url'] . ' for ' . $subscriber['nickname'] . ' for now.', Logger::DEBUG);
 			}
 		} else {
 			// Calculate the delay until the next trial
@@ -128,7 +129,7 @@ class PushSubscriber
 			$retrial = $retrial + 1;
 
 			DBA::update('push_subscriber', ['push' => $retrial, 'next_try' => $next], ['id' => $id]);
-			logger('Delivery error: Next try (' . $retrial . ') ' . $subscriber['callback_url'] . ' for ' . $subscriber['nickname'] . ' at ' . $next, LOGGER_DEBUG);
+			Logger::log('Delivery error: Next try (' . $retrial . ') ' . $subscriber['callback_url'] . ' for ' . $subscriber['nickname'] . ' at ' . $next, Logger::DEBUG);
 		}
 	}
 
@@ -146,8 +147,8 @@ class PushSubscriber
 		}
 
 		// set last_update to the 'created' date of the last item, and reset push=0
-		$fields = ['push' => 0, 'next_try' => NULL_DATE, 'last_update' => $last_update];
+		$fields = ['push' => 0, 'next_try' => DBA::NULL_DATETIME, 'last_update' => $last_update];
 		DBA::update('push_subscriber', $fields, ['id' => $id]);
-		logger('Subscriber ' . $subscriber['callback_url'] . ' for ' . $subscriber['nickname'] . ' is marked as vital', LOGGER_DEBUG);
+		Logger::log('Subscriber ' . $subscriber['callback_url'] . ' for ' . $subscriber['nickname'] . ' is marked as vital', Logger::DEBUG);
 	}
 }

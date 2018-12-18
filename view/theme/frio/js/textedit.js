@@ -2,6 +2,47 @@
  * @brief The file contains functions for text editing and commenting
  */
 
+function commentGetLink(id, prompttext) {
+	reply = prompt(prompttext);
+	if(reply && reply.length) {
+		reply = bin2hex(reply);
+		$.get('parse_url?noAttachment=1&binurl=' + reply, function(data) {
+			addCommentText(data, id);
+		});
+	}
+}
+
+function addCommentText(data, id) {
+    // get the textfield
+    var textfield = document.getElementById("comment-edit-text-" + id);
+    // check if the textfield does have the default-value
+    commentOpenUI(textfield, id);
+    // save already existent content
+    var currentText = $("#comment-edit-text-" + id).val();
+    //insert the data as new value
+    textfield.value = currentText + data;
+    autosize.update($("#comment-edit-text-" + id));
+}
+
+function commentLinkDrop(event, id) {
+    var reply = event.dataTransfer.getData("text/uri-list");
+    event.target.textContent = reply;
+    event.preventDefault();
+    if (reply && reply.length) {
+        reply = bin2hex(reply);
+        $.get('parse_url?noAttachment=1&binurl=' + reply, function(data) {
+			addCommentText(data, id);
+        });
+    }
+}
+
+function commentLinkDropper(event) {
+    var linkFound = event.dataTransfer.types.contains("text/uri-list");
+    if (linkFound) {
+        event.preventDefault();
+    }
+}
+
 
 function insertFormatting(BBcode, id) {
 	var tmpStr = $("#comment-edit-text-" + id).val();
@@ -27,6 +68,22 @@ function insertFormatting(BBcode, id) {
 	return true;
 }
 
+function insertFormattingToPost(BBcode) {
+	textarea = document.getElementById("profile-jot-text");
+	if (document.selection) {
+		textarea.focus();
+		selected = document.selection.createRange();
+		selected.text = "[" + BBcode + "]" + selected.text + "[/" + BBcode + "]";
+	} else if (textarea.selectionStart || textarea.selectionStart == "0") {
+		var start = textarea.selectionStart;
+		var end = textarea.selectionEnd;
+		textarea.value = textarea.value.substring(0, start) + "[" + BBcode + "]" + textarea.value.substring(start, end) + "[/" + BBcode + "]" + textarea.value.substring(end, textarea.value.length);
+	}
+
+	$(textarea).trigger('change');
+
+	return true;
+}
 
 function showThread(id) {
 	$("#collapsed-comments-" + id).show()

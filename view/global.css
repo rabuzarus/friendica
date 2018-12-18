@@ -247,15 +247,7 @@ span.oembed, h4 {
   margin: 0px 0px 0px 0px;
 }
 
-code {
-  display: block;
-  background-color: #eee;
-  color: #666;
-  padding: 1em;
-  font-size: 0.85em;
-  font-family: monospace;
-}
-key {
+code, key {
   display: inline;
   background-color: #eee;
   color: #666;
@@ -609,4 +601,9 @@ img.invalid-src:after { vertical-align: top;}
 
 #register-explicid-content {
   font-weight: bold;
+}
+
+span.emoji.mastodon img {
+  height: 1.2em;
+  vertical-align: middle;
 }

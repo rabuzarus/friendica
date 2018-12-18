@@ -4,6 +4,7 @@
  */
 
 use Friendica\App;
+use Friendica\BaseModule;
 use Friendica\Content\ContactSelector;
 use Friendica\Content\Feature;
 use Friendica\Content\Nav;
@@ -11,14 +12,17 @@ use Friendica\Core\Addon;
 use Friendica\Core\Config;
 use Friendica\Core\L10n;
 use Friendica\Core\PConfig;
+use Friendica\Core\Renderer;
 use Friendica\Core\System;
 use Friendica\Core\Worker;
 use Friendica\Database\DBA;
 use Friendica\Model\Contact;
 use Friendica\Model\GContact;
 use Friendica\Model\Profile;
+use Friendica\Module\Login;
 use Friendica\Network\Probe;
 use Friendica\Util\DateTimeFormat;
+use Friendica\Util\Strings;
 use Friendica\Util\Temporal;
 
 function profiles_init(App $a) {
@@ -36,11 +40,11 @@ function profiles_init(App $a) {
 		);
 		if (! DBA::isResult($r)) {
 			notice(L10n::t('Profile not found.') . EOL);
-			goaway('profiles');
+			$a->internalRedirect('profiles');
 			return; // NOTREACHED
 		}
 
-		check_form_security_token_redirectOnErr('/profiles', 'profile_drop', 't');
+		BaseModule::checkFormSecurityTokenRedirectOnError('/profiles', 'profile_drop', 't');
 
 		// move every contact using this profile as their default to the user default
 
@@ -57,13 +61,13 @@ function profiles_init(App $a) {
 			info(L10n::t('Profile deleted.').EOL);
 		}
 
-		goaway('profiles');
+		$a->internalRedirect('profiles');
 		return; // NOTREACHED
 	}
 
 	if (($a->argc > 1) && ($a->argv[1] === 'new')) {
 
-		check_form_security_token_redirectOnErr('/profiles', 'profile_new', 't');
+		BaseModule::checkFormSecurityTokenRedirectOnError('/profiles', 'profile_new', 't');
 
 		$r0 = q("SELECT `id` FROM `profile` WHERE `uid` = %d",
 			intval(local_user()));
@@ -91,15 +95,15 @@ function profiles_init(App $a) {
 
 		info(L10n::t('New profile created.') . EOL);
 		if (DBA::isResult($r3) && count($r3) == 1) {
-			goaway('profiles/' . $r3[0]['id']);
+			$a->internalRedirect('profiles/' . $r3[0]['id']);
 		}
 
-		goaway('profiles');
+		$a->internalRedirect('profiles');
 	}
 
 	if (($a->argc > 2) && ($a->argv[1] === 'clone')) {
 
-		check_form_security_token_redirectOnErr('/profiles', 'profile_clone', 't');
+		BaseModule::checkFormSecurityTokenRedirectOnError('/profiles', 'profile_clone', 't');
 
 		$r0 = q("SELECT `id` FROM `profile` WHERE `uid` = %d",
 			intval(local_user()));
@@ -130,10 +134,10 @@ function profiles_init(App $a) {
 		);
 		info(L10n::t('New profile created.') . EOL);
 		if ((DBA::isResult($r3)) && (count($r3) == 1)) {
-			goaway('profiles/'.$r3[0]['id']);
+			$a->internalRedirect('profiles/'.$r3[0]['id']);
 		}
 
-		goaway('profiles');
+		$a->internalRedirect('profiles');
 
 		return; // NOTREACHED
 	}
@@ -194,17 +198,17 @@ function profiles_post(App $a) {
 			return;
 		}
 
-		check_form_security_token_redirectOnErr('/profiles', 'profile_edit');
+		BaseModule::checkFormSecurityTokenRedirectOnError('/profiles', 'profile_edit');
 
 		$is_default = (($orig[0]['is-default']) ? 1 : 0);
 
-		$profile_name = notags(trim($_POST['profile_name']));
+		$profile_name = Strings::escapeTags(trim($_POST['profile_name']));
 		if (! strlen($profile_name)) {
 			notice(L10n::t('Profile Name is required.') . EOL);
 			return;
 		}
 
-		$dob = $_POST['dob'] ? escape_tags(trim($_POST['dob'])) : '0000-00-00';
+		$dob = $_POST['dob'] ? Strings::escapeHtml(trim($_POST['dob'])) : '0000-00-00';
 
 		$y = substr($dob, 0, 4);
 		if ((! ctype_digit($y)) || ($y < 1900)) {
@@ -212,7 +216,7 @@ function profiles_post(App $a) {
 		} else {
 			$ignore_year = false;
 		}
-		if (!in_array($dob, ['0000-00-00', '0001-01-01'])) {
+		if (!in_array($dob, ['0000-00-00', DBA::NULL_DATE])) {
 			if (strpos($dob, '0000-') === 0 || strpos($dob, '0001-') === 0) {
 				$ignore_year = true;
 				$dob = substr($dob, 5);
@@ -225,7 +229,7 @@ function profiles_post(App $a) {
 			}
 		}
 
-		$name = notags(trim($_POST['name']));
+		$name = Strings::escapeTags(trim($_POST['name']));
 
 		if (! strlen($name)) {
 			$name = '[No Name]';
@@ -235,22 +239,22 @@ function profiles_post(App $a) {
 			$namechanged = true;
 		}
 
-		$pdesc = notags(trim($_POST['pdesc']));
-		$gender = notags(trim($_POST['gender']));
-		$address = notags(trim($_POST['address']));
-		$locality = notags(trim($_POST['locality']));
-		$region = notags(trim($_POST['region']));
-		$postal_code = notags(trim($_POST['postal_code']));
-		$country_name = notags(trim($_POST['country_name']));
-		$pub_keywords = profile_clean_keywords(notags(trim($_POST['pub_keywords'])));
-		$prv_keywords = profile_clean_keywords(notags(trim($_POST['prv_keywords'])));
-		$marital = notags(trim($_POST['marital']));
-		$howlong = notags(trim($_POST['howlong']));
+		$pdesc = Strings::escapeTags(trim($_POST['pdesc']));
+		$gender = Strings::escapeTags(trim($_POST['gender']));
+		$address = Strings::escapeTags(trim($_POST['address']));
+		$locality = Strings::escapeTags(trim($_POST['locality']));
+		$region = Strings::escapeTags(trim($_POST['region']));
+		$postal_code = Strings::escapeTags(trim($_POST['postal_code']));
+		$country_name = Strings::escapeTags(trim($_POST['country_name']));
+		$pub_keywords = profile_clean_keywords(Strings::escapeTags(trim($_POST['pub_keywords'])));
+		$prv_keywords = profile_clean_keywords(Strings::escapeTags(trim($_POST['prv_keywords'])));
+		$marital = Strings::escapeTags(trim($_POST['marital']));
+		$howlong = Strings::escapeTags(trim($_POST['howlong']));
 
-		$with = ((x($_POST,'with')) ? notags(trim($_POST['with'])) : '');
+		$with = (!empty($_POST['with']) ? Strings::escapeTags(trim($_POST['with'])) : '');
 
 		if (! strlen($howlong)) {
-			$howlong = NULL_DATE;
+			$howlong = DBA::NULL_DATETIME;
 		} else {
 			$howlong = DateTimeFormat::convert($howlong, 'UTC', date_default_timezone_get());
 		}
@@ -308,30 +312,30 @@ function profiles_post(App $a) {
 		}
 
 		/// @TODO Not flexible enough for later expansion, let's have more OOP here
-		$sexual = notags(trim($_POST['sexual']));
-		$xmpp = notags(trim($_POST['xmpp']));
-		$homepage = notags(trim($_POST['homepage']));
+		$sexual = Strings::escapeTags(trim($_POST['sexual']));
+		$xmpp = Strings::escapeTags(trim($_POST['xmpp']));
+		$homepage = Strings::escapeTags(trim($_POST['homepage']));
 		if ((strpos($homepage, 'http') !== 0) && (strlen($homepage))) {
 			// neither http nor https in URL, add them
 			$homepage = 'http://'.$homepage;
 		}
-		$hometown = notags(trim($_POST['hometown']));
-		$politic = notags(trim($_POST['politic']));
-		$religion = notags(trim($_POST['religion']));
+		$hometown = Strings::escapeTags(trim($_POST['hometown']));
+		$politic = Strings::escapeTags(trim($_POST['politic']));
+		$religion = Strings::escapeTags(trim($_POST['religion']));
 
-		$likes = escape_tags(trim($_POST['likes']));
-		$dislikes = escape_tags(trim($_POST['dislikes']));
+		$likes = Strings::escapeHtml(trim($_POST['likes']));
+		$dislikes = Strings::escapeHtml(trim($_POST['dislikes']));
 
-		$about = escape_tags(trim($_POST['about']));
-		$interest = escape_tags(trim($_POST['interest']));
-		$contact = escape_tags(trim($_POST['contact']));
-		$music = escape_tags(trim($_POST['music']));
-		$book = escape_tags(trim($_POST['book']));
-		$tv = escape_tags(trim($_POST['tv']));
-		$film = escape_tags(trim($_POST['film']));
-		$romance = escape_tags(trim($_POST['romance']));
-		$work = escape_tags(trim($_POST['work']));
-		$education = escape_tags(trim($_POST['education']));
+		$about = Strings::escapeHtml(trim($_POST['about']));
+		$interest = Strings::escapeHtml(trim($_POST['interest']));
+		$contact = Strings::escapeHtml(trim($_POST['contact']));
+		$music = Strings::escapeHtml(trim($_POST['music']));
+		$book = Strings::escapeHtml(trim($_POST['book']));
+		$tv = Strings::escapeHtml(trim($_POST['tv']));
+		$film = Strings::escapeHtml(trim($_POST['film']));
+		$romance = Strings::escapeHtml(trim($_POST['romance']));
+		$work = Strings::escapeHtml(trim($_POST['work']));
+		$education = Strings::escapeHtml(trim($_POST['education']));
 
 		$hide_friends = (($_POST['hide-friends'] == 1) ? 1: 0);
 
@@ -509,7 +513,7 @@ function profiles_content(App $a) {
 
 	if (! local_user()) {
 		notice(L10n::t('Permission denied.') . EOL);
-		return;
+		return Login::form();
 	}
 
 	$o = '';
@@ -524,15 +528,12 @@ function profiles_content(App $a) {
 			return;
 		}
 
-		$a->page['htmlhead'] .= replace_macros(get_markup_template('profed_head.tpl'), [
-			'$baseurl' => System::baseUrl(true),
-		]);
-		$a->page['end'] .= replace_macros(get_markup_template('profed_end.tpl'), [
+		$a->page['htmlhead'] .= Renderer::replaceMacros(Renderer::getMarkupTemplate('profed_head.tpl'), [
 			'$baseurl' => System::baseUrl(true),
 		]);
 
-		$opt_tpl = get_markup_template("profile-hide-friends.tpl");
-		$hide_friends = replace_macros($opt_tpl,[
+		$opt_tpl = Renderer::getMarkupTemplate("profile-hide-friends.tpl");
+		$hide_friends = Renderer::replaceMacros($opt_tpl,[
 			'$yesno' => [
 				'hide-friends', //Name
 				L10n::t('Hide contacts and friends:'), //Label
@@ -553,8 +554,8 @@ function profiles_content(App $a) {
 		$detailled_profile = (PConfig::get(local_user(), 'system', 'detailled_profile') AND $personal_account);
 
 		$is_default = (($r[0]['is-default']) ? 1 : 0);
-		$tpl = get_markup_template("profile_edit.tpl");
-		$o .= replace_macros($tpl, [
+		$tpl = Renderer::getMarkupTemplate("profile_edit.tpl");
+		$o .= Renderer::replaceMacros($tpl, [
 			'$personal_account' => $personal_account,
 			'$detailled_profile' => $detailled_profile,
 
@@ -567,10 +568,10 @@ function profiles_content(App $a) {
 			],
 
 			'$multi_profiles'		=> Feature::isEnabled(local_user(), 'multi_profiles'),
-			'$form_security_token'		=> get_form_security_token("profile_edit"),
-			'$form_security_token_photo'	=> get_form_security_token("profile_photo"),
-			'$profile_clone_link'		=> ((Feature::isEnabled(local_user(), 'multi_profiles')) ? 'profiles/clone/' . $r[0]['id'] . '?t=' . get_form_security_token("profile_clone") : ""),
-			'$profile_drop_link'		=> 'profiles/drop/' . $r[0]['id'] . '?t=' . get_form_security_token("profile_drop"),
+			'$form_security_token'		=> BaseModule::getFormSecurityToken("profile_edit"),
+			'$form_security_token_photo'	=> BaseModule::getFormSecurityToken("profile_photo"),
+			'$profile_clone_link'		=> ((Feature::isEnabled(local_user(), 'multi_profiles')) ? 'profiles/clone/' . $r[0]['id'] . '?t=' . BaseModule::getFormSecurityToken("profile_clone") : ""),
+			'$profile_drop_link'		=> 'profiles/drop/' . $r[0]['id'] . '?t=' . BaseModule::getFormSecurityToken("profile_drop"),
 
 			'$profile_action' => L10n::t('Profile Actions'),
 			'$banner'	=> L10n::t('Edit Profile Details'),
@@ -618,10 +619,10 @@ function profiles_content(App $a) {
 			'$country_name' => ['country_name', L10n::t('Country:'), $r[0]['country-name']],
 			'$age' => ((intval($r[0]['dob'])) ? '(' . L10n::t('Age: ') . Temporal::getAgeByTimezone($r[0]['dob'],$a->user['timezone'],$a->user['timezone']) . ')' : ''),
 			'$gender' => ContactSelector::gender($r[0]['gender']),
-			'$marital' => ContactSelector::maritalStatus($r[0]['marital']),
+			'$marital' => ['selector' => ContactSelector::maritalStatus($r[0]['marital']), 'value' => $r[0]['marital']],
 			'$with' => ['with', L10n::t("Who: \x28if applicable\x29"), strip_tags($r[0]['with']), L10n::t('Examples: cathy123, Cathy Williams, cathy@example.com')],
-			'$howlong' => ['howlong', L10n::t('Since [date]:'), ($r[0]['howlong'] <= NULL_DATE ? '' : DateTimeFormat::local($r[0]['howlong']))],
-			'$sexual' => ContactSelector::sexualPreference($r[0]['sexual']),
+			'$howlong' => ['howlong', L10n::t('Since [date]:'), ($r[0]['howlong'] <= DBA::NULL_DATETIME ? '' : DateTimeFormat::local($r[0]['howlong']))],
+			'$sexual' => ['selector' => ContactSelector::sexualPreference($r[0]['sexual']), 'value' => $r[0]['sexual']],
 			'$about' => ['about', L10n::t('Tell us about yourself...'), $r[0]['about']],
 			'$xmpp' => ['xmpp', L10n::t("XMPP \x28Jabber\x29 address:"), $r[0]['xmpp'], L10n::t("The XMPP address will be propagated to your contacts so that they can follow you.")],
 			'$homepage' => ['homepage', L10n::t('Homepage URL:'), $r[0]['homepage']],
@@ -655,7 +656,7 @@ function profiles_content(App $a) {
 			);
 			if (DBA::isResult($r)) {
 				//Go to the default profile.
-				goaway('profiles/' . $r[0]['id']);
+				$a->internalRedirect('profiles/' . $r[0]['id']);
 			}
 		}
 
@@ -664,12 +665,12 @@ function profiles_content(App $a) {
 
 		if (DBA::isResult($r)) {
 
-			$tpl = get_markup_template('profile_entry.tpl');
+			$tpl = Renderer::getMarkupTemplate('profile_entry.tpl');
 
 			$profiles = '';
 			foreach ($r as $rr) {
-				$profiles .= replace_macros($tpl, [
-					'$photo'        => $a->remove_baseurl($rr['thumb']),
+				$profiles .= Renderer::replaceMacros($tpl, [
+					'$photo'        => $a->removeBaseURL($rr['thumb']),
 					'$id'           => $rr['id'],
 					'$alt'          => L10n::t('Profile Image'),
 					'$profile_name' => $rr['profile-name'],
@@ -678,12 +679,12 @@ function profiles_content(App $a) {
 				]);
 			}
 
-			$tpl_header = get_markup_template('profile_listing_header.tpl');
-			$o .= replace_macros($tpl_header,[
+			$tpl_header = Renderer::getMarkupTemplate('profile_listing_header.tpl');
+			$o .= Renderer::replaceMacros($tpl_header,[
 				'$header'      => L10n::t('Edit/Manage Profiles'),
 				'$chg_photo'   => L10n::t('Change profile photo'),
 				'$cr_new'      => L10n::t('Create New Profile'),
-				'$cr_new_link' => 'profiles/new?t=' . get_form_security_token("profile_new"),
+				'$cr_new_link' => 'profiles/new?t=' . BaseModule::getFormSecurityToken("profile_new"),
 				'$profiles'    => $profiles
 			]);
 		}

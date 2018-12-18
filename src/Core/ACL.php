@@ -9,6 +9,7 @@ namespace Friendica\Core;
 use Friendica\BaseObject;
 use Friendica\Content\Feature;
 use Friendica\Core\Protocol;
+use Friendica\Core\Renderer;
 use Friendica\Database\DBA;
 use Friendica\Model\Contact;
 use Friendica\Model\GContact;
@@ -17,7 +18,7 @@ use Friendica\Util\Network;
 /**
  * Handle ACL management and display
  *
- * @author Hypolite Petovan <mrpetovan@gmail.com>
+ * @author Hypolite Petovan <hypolite@mrpetovan.com>
  */
 class ACL extends BaseObject
 {
@@ -51,14 +52,14 @@ class ACL extends BaseObject
 				break;
 
 			case 'PRIVATE':
-				$networks = [Protocol::DFRN, Protocol::MAIL, Protocol::DIASPORA];
+				$networks = [Protocol::ACTIVITYPUB, Protocol::DFRN, Protocol::MAIL, Protocol::DIASPORA];
 				break;
 
 			case 'TWO_WAY':
 				if (!empty($a->user['prvnets'])) {
-					$networks = [Protocol::DFRN, Protocol::MAIL, Protocol::DIASPORA];
+					$networks = [Protocol::ACTIVITYPUB, Protocol::DFRN, Protocol::MAIL, Protocol::DIASPORA];
 				} else {
-					$networks = [Protocol::DFRN, Protocol::MAIL, Protocol::DIASPORA, Protocol::OSTATUS];
+					$networks = [Protocol::ACTIVITYPUB, Protocol::DFRN, Protocol::MAIL, Protocol::DIASPORA, Protocol::OSTATUS];
 				}
 				break;
 
@@ -291,8 +292,8 @@ class ACL extends BaseObject
 			}
 		}
 
-		$tpl = get_markup_template('acl_selector.tpl');
-		$o = replace_macros($tpl, [
+		$tpl = Renderer::getMarkupTemplate('acl_selector.tpl');
+		$o = Renderer::replaceMacros($tpl, [
 			'$showall' => L10n::t('Visible to everybody'),
 			'$show' => L10n::t('show'),
 			'$hide' => L10n::t('don\'t show'),
@@ -341,12 +342,11 @@ class ACL extends BaseObject
 		if (Config::get('system', 'poco_local_search')) {
 			$return = GContact::searchByName($search, $mode);
 		} else {
-			$a = self::getApp();
-			$p = $a->pager['page'] != 1 ? '&p=' . $a->pager['page'] : '';
+			$p = defaults($_GET, 'page', 1) != 1 ? '&p=' . defaults($_GET, 'page', 1) : '';
 
-			$response = Network::curl(get_server() . '/lsearch?f=' . $p . '&search=' . urlencode($search));
-			if ($response['success']) {
-				$lsearch = json_decode($response['body'], true);
+			$curlResult = Network::curl(get_server() . '/lsearch?f=' . $p . '&search=' . urlencode($search));
+			if ($curlResult->isSuccess()) {
+				$lsearch = json_decode($curlResult->getBody(), true);
 				if (!empty($lsearch['results'])) {
 					$return = $lsearch['results'];
 				}

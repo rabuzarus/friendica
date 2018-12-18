@@ -4,6 +4,7 @@ namespace Friendica\Core\Session;
 
 use Friendica\BaseObject;
 use Friendica\Core\Cache;
+use Friendica\Core\Logger;
 use Friendica\Core\Session;
 use SessionHandlerInterface;
 
@@ -13,7 +14,7 @@ require_once 'include/text.php';
 /**
  * SessionHandler using Friendica Cache
  *
- * @author Hypolite Petovan <mrpetovan@gmail.com>
+ * @author Hypolite Petovan <hypolite@mrpetovan.com>
  */
 class CacheSessionHandler extends BaseObject implements SessionHandlerInterface
 {
@@ -33,7 +34,7 @@ class CacheSessionHandler extends BaseObject implements SessionHandlerInterface
 			Session::$exists = true;
 			return $data;
 		}
-		logger("no data for session $session_id", LOGGER_TRACE);
+		Logger::log("no data for session $session_id", Logger::TRACE);
 		return '';
 	}
 

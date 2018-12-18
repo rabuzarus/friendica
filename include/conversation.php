@@ -6,12 +6,15 @@
 use Friendica\App;
 use Friendica\Content\ContactSelector;
 use Friendica\Content\Feature;
+use Friendica\Content\Pager;
 use Friendica\Content\Text\BBCode;
 use Friendica\Core\Addon;
 use Friendica\Core\Config;
 use Friendica\Core\L10n;
+use Friendica\Core\Logger;
 use Friendica\Core\PConfig;
 use Friendica\Core\Protocol;
+use Friendica\Core\Renderer;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
 use Friendica\Model\Contact;
@@ -23,7 +26,9 @@ use Friendica\Object\Thread;
 use Friendica\Util\DateTimeFormat;
 use Friendica\Util\Proxy as ProxyUtils;
 use Friendica\Util\Temporal;
+use Friendica\Util\Strings;
 use Friendica\Util\XML;
+use Friendica\Util\Crypto;
 
 function item_extract_images($body) {
 
@@ -192,7 +197,7 @@ function localize_item(&$item)
 		$xmlhead="<"."?xml version='1.0' encoding='UTF-8' ?".">";
 
 		$obj = XML::parseString($xmlhead.$item['object']);
-		$links = XML::parseString($xmlhead."<links>".unxmlify($obj->link)."</links>");
+		$links = XML::parseString($xmlhead."<links>".XML::unescape($obj->link)."</links>");
 
 		$Bname = $obj->title;
 		$Blink = "";
@@ -229,12 +234,12 @@ function localize_item(&$item)
 		$xmlhead = "<" . "?xml version='1.0' encoding='UTF-8' ?" . ">";
 
 		$obj = XML::parseString($xmlhead.$item['object']);
-		$links = XML::parseString($xmlhead."<links>".unxmlify($obj->link)."</links>");
 
 		$Bname = $obj->title;
-		$Blink = "";
+		$Blink = $obj->id;
 		$Bphoto = "";
-		foreach ($links->link as $l) {
+
+		foreach ($obj->link as $l) {
 			$atts = $l->attributes();
 			switch ($atts['rel']) {
 				case "alternate": $Blink = $atts['href'];
@@ -353,7 +358,8 @@ function localize_item(&$item)
 	$author = ['uid' => 0, 'id' => $item['author-id'],
 		'network' => $item['author-network'], 'url' => $item['author-link']];
 
-	if (!empty($item['plink'])) {
+	// Only create a redirection to a magic link when logged in
+	if (!empty($item['plink']) && (local_user() || remote_user())) {
 		$item['plink'] = Contact::magicLinkbyContact($author, $item['plink']);
 	}
 }
@@ -432,8 +438,8 @@ function conv_get_blocklist()
  * that are based on unique features of the calling module.
  *
  */
-function conversation(App $a, array $items, $mode, $update, $preview = false, $order = 'commented', $uid = 0) {
-
+function conversation(App $a, array $items, Pager $pager, $mode, $update, $preview = false, $order = 'commented', $uid = 0)
+{
 	$ssl_state = (local_user() ? true : false);
 
 	$profile_owner = 0;
@@ -456,19 +462,19 @@ function conversation(App $a, array $items, $mode, $update, $preview = false, $o
 				. "<script> var profile_uid = " . $_SESSION['uid']
 				. "; var netargs = '" . substr($a->cmd, 8)
 				. '?f='
-				. ((x($_GET, 'cid'))    ? '&cid='    . $_GET['cid']    : '')
-				. ((x($_GET, 'search')) ? '&search=' . $_GET['search'] : '')
-				. ((x($_GET, 'star'))   ? '&star='   . $_GET['star']   : '')
-				. ((x($_GET, 'order'))  ? '&order='  . $_GET['order']  : '')
-				. ((x($_GET, 'bmark'))  ? '&bmark='  . $_GET['bmark']  : '')
-				. ((x($_GET, 'liked'))  ? '&liked='  . $_GET['liked']  : '')
-				. ((x($_GET, 'conv'))   ? '&conv='   . $_GET['conv']   : '')
-				. ((x($_GET, 'nets'))   ? '&nets='   . $_GET['nets']   : '')
-				. ((x($_GET, 'cmin'))   ? '&cmin='   . $_GET['cmin']   : '')
-				. ((x($_GET, 'cmax'))   ? '&cmax='   . $_GET['cmax']   : '')
-				. ((x($_GET, 'file'))   ? '&file='   . $_GET['file']   : '')
+				. (!empty($_GET['cid'])    ? '&cid='    . rawurlencode($_GET['cid'])    : '')
+				. (!empty($_GET['search']) ? '&search=' . rawurlencode($_GET['search']) : '')
+				. (!empty($_GET['star'])   ? '&star='   . rawurlencode($_GET['star'])   : '')
+				. (!empty($_GET['order'])  ? '&order='  . rawurlencode($_GET['order'])  : '')
+				. (!empty($_GET['bmark'])  ? '&bmark='  . rawurlencode($_GET['bmark'])  : '')
+				. (!empty($_GET['liked'])  ? '&liked='  . rawurlencode($_GET['liked'])  : '')
+				. (!empty($_GET['conv'])   ? '&conv='   . rawurlencode($_GET['conv'])   : '')
+				. (!empty($_GET['nets'])   ? '&nets='   . rawurlencode($_GET['nets'])   : '')
+				. (!empty($_GET['cmin'])   ? '&cmin='   . rawurlencode($_GET['cmin'])   : '')
+				. (!empty($_GET['cmax'])   ? '&cmax='   . rawurlencode($_GET['cmax'])   : '')
+				. (!empty($_GET['file'])   ? '&file='   . rawurlencode($_GET['file'])   : '')
 
-				. "'; var profile_page = " . $a->pager['page'] . "; </script>\r\n";
+				. "'; var profile_page = " . $pager->getPage() . "; </script>\r\n";
 		}
 	} elseif ($mode === 'profile') {
 		$items = conversation_add_children($items, false, $order, $uid);
@@ -476,8 +482,8 @@ function conversation(App $a, array $items, $mode, $update, $preview = false, $o
 
 		if (!$update) {
 			$tab = 'posts';
-			if (x($_GET, 'tab')) {
-				$tab = notags(trim($_GET['tab']));
+			if (!empty($_GET['tab'])) {
+				$tab = Strings::escapeTags(trim($_GET['tab']));
 			}
 			if ($tab === 'posts') {
 				/*
@@ -487,7 +493,7 @@ function conversation(App $a, array $items, $mode, $update, $preview = false, $o
 
 				$live_update_div = '<div id="live-profile"></div>' . "\r\n"
 					. "<script> var profile_uid = " . $a->profile['profile_uid']
-					. "; var netargs = '?f='; var profile_page = " . $a->pager['page'] . "; </script>\r\n";
+					. "; var netargs = '?f='; var profile_page = " . $pager->getPage() . "; </script>\r\n";
 			}
 		}
 	} elseif ($mode === 'notes') {
@@ -497,7 +503,7 @@ function conversation(App $a, array $items, $mode, $update, $preview = false, $o
 		if (!$update) {
 			$live_update_div = '<div id="live-notes"></div>' . "\r\n"
 				. "<script> var profile_uid = " . local_user()
-				. "; var netargs = '/?f='; var profile_page = " . $a->pager['page'] . "; </script>\r\n";
+				. "; var netargs = '/?f='; var profile_page = " . $pager->getPage() . "; </script>\r\n";
 		}
 	} elseif ($mode === 'display') {
 		$items = conversation_add_children($items, false, $order, $uid);
@@ -515,16 +521,16 @@ function conversation(App $a, array $items, $mode, $update, $preview = false, $o
 		if (!$update) {
 			$live_update_div = '<div id="live-community"></div>' . "\r\n"
 				. "<script> var profile_uid = -1; var netargs = '" . substr($a->cmd, 10)
-				."/?f='; var profile_page = " . $a->pager['page'] . "; </script>\r\n";
+				."/?f='; var profile_page = " . $pager->getPage() . "; </script>\r\n";
 		}
 	} elseif ($mode === 'contacts') {
-		$items = conversation_add_children($items, true, $order, $uid);
+		$items = conversation_add_children($items, false, $order, $uid);
 		$profile_owner = 0;
 
 		if (!$update) {
 			$live_update_div = '<div id="live-contacts"></div>' . "\r\n"
 				. "<script> var profile_uid = -1; var netargs = '" . substr($a->cmd, 9)
-				."/?f='; var profile_page = " . $a->pager['page'] . "; </script>\r\n";
+				."/?f='; var profile_page = " . $pager->getPage() . "; </script>\r\n";
 		}
 	} elseif ($mode === 'search') {
 		$live_update_div = '<div id="live-search"></div>' . "\r\n";
@@ -533,7 +539,7 @@ function conversation(App $a, array $items, $mode, $update, $preview = false, $o
 	$page_dropping = ((local_user() && local_user() == $profile_owner) ? true : false);
 
 	if (!$update) {
-		$_SESSION['return_url'] = $a->query_string;
+		$_SESSION['return_path'] = $a->query_string;
 	}
 
 	$cb = ['items' => $items, 'mode' => $mode, 'update' => $update, 'preview' => $preview];
@@ -550,13 +556,13 @@ function conversation(App $a, array $items, $mode, $update, $preview = false, $o
 	$threads = [];
 	$threadsid = -1;
 
-	$page_template = get_markup_template("conversation.tpl");
+	$page_template = Renderer::getMarkupTemplate("conversation.tpl");
 
 	if (!empty($items)) {
 		if (in_array($mode, ['community', 'contacts'])) {
 			$writable = true;
 		} else {
-			$writable = ($items[0]['uid'] == 0) && in_array($items[0]['network'], [Protocol::OSTATUS, Protocol::DIASPORA, Protocol::DFRN]);
+			$writable = ($items[0]['uid'] == 0) && in_array($items[0]['network'], [Protocol::ACTIVITYPUB, Protocol::OSTATUS, Protocol::DIASPORA, Protocol::DFRN]);
 		}
 
 		if (!local_user()) {
@@ -633,7 +639,7 @@ function conversation(App $a, array $items, $mode, $update, $preview = false, $o
 				$lock = false;
 				$likebuttons = false;
 
-				$body = prepare_body($item, true, $preview);
+				$body = Item::prepareBody($item, true, $preview);
 
 				list($categories, $folders) = get_cats_and_terms($item);
 
@@ -657,7 +663,7 @@ function conversation(App $a, array $items, $mode, $update, $preview = false, $o
 					'id' => ($preview ? 'P0' : $item['id']),
 					'guid' => ($preview ? 'Q0' : $item['guid']),
 					'network' => $item['network'],
-					'network_name' => ContactSelector::networkToName($item['network'], $profile_link),
+					'network_name' => ContactSelector::networkToName($item['network'], $item['author-link']),
 					'linktitle' => L10n::t('View %s\'s profile @ %s', $profile_name, $item['author-link']),
 					'profile_url' => $profile_link,
 					'item_photo_menu' => item_photo_menu($item),
@@ -684,7 +690,7 @@ function conversation(App $a, array $items, $mode, $update, $preview = false, $o
 					'owner_name' => $owner_name_e,
 					'owner_url' => $owner_url,
 					'owner_photo' => System::removedBaseUrl(ProxyUtils::proxifyUrl($item['owner-avatar'], false, ProxyUtils::SIZE_THUMB)),
-					'plink' => get_plink($item),
+					'plink' => Item::getPlink($item),
 					'edpost' => false,
 					'isstarred' => $isstarred,
 					'star' => $star,
@@ -709,7 +715,7 @@ function conversation(App $a, array $items, $mode, $update, $preview = false, $o
 			}
 		} else {
 			// Normal View
-			$page_template = get_markup_template("threaded_conversation.tpl");
+			$page_template = Renderer::getMarkupTemplate("threaded_conversation.tpl");
 
 			$conv = new Thread($mode, $preview, $writable);
 
@@ -749,13 +755,13 @@ function conversation(App $a, array $items, $mode, $update, $preview = false, $o
 
 			$threads = $conv->getTemplateData($conv_responses);
 			if (!$threads) {
-				logger('[ERROR] conversation : Failed to get template data.', LOGGER_DEBUG);
+				Logger::log('[ERROR] conversation : Failed to get template data.', Logger::DEBUG);
 				$threads = [];
 			}
 		}
 	}
 
-	$o = replace_macros($page_template, [
+	$o = Renderer::replaceMacros($page_template, [
 		'$baseurl' => System::baseUrl($ssl_state),
 		'$return_path' => $a->query_string,
 		'$live_update' => $live_update_div,
@@ -763,7 +769,7 @@ function conversation(App $a, array $items, $mode, $update, $preview = false, $o
 		'$mode' => $mode,
 		'$user' => $a->user,
 		'$threads' => $threads,
-		'$dropping' => ($page_dropping && Feature::isEnabled(local_user(), 'multi_delete') ? L10n::t('Delete Selected Items') : False),
+		'$dropping' => ($page_dropping ? L10n::t('Delete Selected Items') : False),
 	]);
 
 	return $o;
@@ -792,7 +798,7 @@ function conversation_add_children(array $parents, $block_authors, $order, $uid)
 
 	foreach ($parents AS $parent) {
 		$condition = ["`item`.`parent-uri` = ? AND `item`.`uid` IN (0, ?) ",
-			$parent['uri'], local_user()];
+			$parent['uri'], $uid];
 		if ($block_authors) {
 			$condition[0] .= "AND NOT `author`.`hidden`";
 		}
@@ -807,7 +813,7 @@ function conversation_add_children(array $parents, $block_authors, $order, $uid)
 
 	foreach ($items as $index => $item) {
 		if ($item['uid'] == 0) {
-			$items[$index]['writable'] = in_array($item['network'], [Protocol::OSTATUS, Protocol::DIASPORA, Protocol::DFRN]);
+			$items[$index]['writable'] = in_array($item['network'], [Protocol::ACTIVITYPUB, Protocol::OSTATUS, Protocol::DIASPORA, Protocol::DFRN]);
 		}
 	}
 
@@ -837,7 +843,7 @@ function item_photo_menu($item) {
 	$cid = 0;
 	$network = '';
 	$rel = 0;
-	$condition = ['uid' => local_user(), 'nurl' => normalise_link($item['author-link'])];
+	$condition = ['uid' => local_user(), 'nurl' => Strings::normaliseLink($item['author-link'])];
 	$contact = DBA::selectFirst('contact', ['id', 'network', 'rel'], $condition);
 	if (DBA::isResult($contact)) {
 		$cid = $contact['id'];
@@ -853,8 +859,8 @@ function item_photo_menu($item) {
 
 	if ($cid && !$item['self']) {
 		$poke_link = 'poke/?f=&c=' . $cid;
-		$contact_url = 'contacts/' . $cid;
-		$posts_link = 'contacts/' . $cid . '/posts';
+		$contact_url = 'contact/' . $cid;
+		$posts_link = 'contact/' . $cid . '/posts';
 
 		if (in_array($network, [Protocol::DFRN, Protocol::DIASPORA])) {
 			$pm_url = 'message/new/' . $cid;
@@ -877,7 +883,7 @@ function item_photo_menu($item) {
 		}
 
 		if ((($cid == 0) || ($rel == Contact::FOLLOWER)) &&
-			in_array($item['network'], [Protocol::DFRN, Protocol::OSTATUS, Protocol::DIASPORA])) {
+			in_array($item['network'], [Protocol::ACTIVITYPUB, Protocol::DFRN, Protocol::OSTATUS, Protocol::DIASPORA])) {
 			$menu[L10n::t('Connect/Follow')] = 'follow?url=' . urlencode($item['author-link']);
 		}
 	} else {
@@ -945,7 +951,7 @@ function builtin_activity_puller($item, &$conv_responses) {
 
 			$url = '<a href="'. $url . '"'. $sparkle .'>' . htmlentities($item['author-name']) . '</a>';
 
-			if (!x($item, 'thr-parent')) {
+			if (empty($item['thr-parent'])) {
 				$item['thr-parent'] = $item['parent-uri'];
 			}
 
@@ -1058,8 +1064,8 @@ function format_like($cnt, array $arr, $type, $id) {
 		$expanded .= "\t" . '<div class="wall-item-' . $type . '-expanded" id="' . $type . 'list-' . $id . '" style="display: none;" >' . $explikers . EOL . '</div>';
 	}
 
-	$phrase .= EOL ;
-	$o .= replace_macros(get_markup_template('voting_fakelink.tpl'), [
+	$phrase .= EOL;
+	$o .= Renderer::replaceMacros(Renderer::getMarkupTemplate('voting_fakelink.tpl'), [
 		'$phrase' => $phrase,
 		'$type' => $type,
 		'$id' => $id
@@ -1073,37 +1079,20 @@ function status_editor(App $a, $x, $notes_cid = 0, $popup = false)
 {
 	$o = '';
 
-	$geotag = x($x, 'allow_location') ? replace_macros(get_markup_template('jot_geotag.tpl'), []) : '';
+	$geotag = !empty($x['allow_location']) ? Renderer::replaceMacros(Renderer::getMarkupTemplate('jot_geotag.tpl'), []) : '';
 
-	$tpl = get_markup_template('jot-header.tpl');
-	$a->page['htmlhead'] .= replace_macros($tpl, [
+	$tpl = Renderer::getMarkupTemplate('jot-header.tpl');
+	$a->page['htmlhead'] .= Renderer::replaceMacros($tpl, [
 		'$newpost'   => 'true',
 		'$baseurl'   => System::baseUrl(true),
 		'$geotag'    => $geotag,
 		'$nickname'  => $x['nickname'],
 		'$ispublic'  => L10n::t('Visible to <strong>everybody</strong>'),
-		'$linkurl'   => L10n::t('Please enter a link URL:'),
-		'$vidurl'    => L10n::t("Please enter a video link/URL:"),
-		'$audurl'    => L10n::t("Please enter an audio link/URL:"),
+		'$linkurl'   => L10n::t('Please enter a image/video/audio/webpage URL:'),
 		'$term'      => L10n::t('Tag term:'),
 		'$fileas'    => L10n::t('Save to Folder:'),
 		'$whereareu' => L10n::t('Where are you right now?'),
 		'$delitems'  => L10n::t("Delete item\x28s\x29?")
-	]);
-
-	$tpl = get_markup_template('jot-end.tpl');
-	$a->page['end'] .= replace_macros($tpl, [
-		'$newpost'   => 'true',
-		'$baseurl'   => System::baseUrl(true),
-		'$geotag'    => $geotag,
-		'$nickname'  => $x['nickname'],
-		'$ispublic'  => L10n::t('Visible to <strong>everybody</strong>'),
-		'$linkurl'   => L10n::t('Please enter a link URL:'),
-		'$vidurl'    => L10n::t("Please enter a video link/URL:"),
-		'$audurl'    => L10n::t("Please enter an audio link/URL:"),
-		'$term'      => L10n::t('Tag term:'),
-		'$fileas'    => L10n::t('Save to Folder:'),
-		'$whereareu' => L10n::t('Where are you right now?')
 	]);
 
 	$jotplugins = '';
@@ -1111,7 +1100,7 @@ function status_editor(App $a, $x, $notes_cid = 0, $popup = false)
 
 	// Private/public post links for the non-JS ACL form
 	$private_post = 1;
-	if (x($_REQUEST, 'public')) {
+	if (!empty($_REQUEST['public'])) {
 		$private_post = 0;
 	}
 
@@ -1131,10 +1120,10 @@ function status_editor(App $a, $x, $notes_cid = 0, $popup = false)
 		$public_post_link = '&public=1';
 	}
 
-	// $tpl = replace_macros($tpl,array('$jotplugins' => $jotplugins));
-	$tpl = get_markup_template("jot.tpl");
+	// $tpl = Renderer::replaceMacros($tpl,array('$jotplugins' => $jotplugins));
+	$tpl = Renderer::getMarkupTemplate("jot.tpl");
 
-	$o .= replace_macros($tpl,[
+	$o .= Renderer::replaceMacros($tpl,[
 		'$new_post' => L10n::t('New Post'),
 		'$return_path'  => $query_str,
 		'$action'       => 'item',
@@ -1143,12 +1132,14 @@ function status_editor(App $a, $x, $notes_cid = 0, $popup = false)
 		'$shortupload'  => L10n::t('upload photo'),
 		'$attach'       => L10n::t('Attach file'),
 		'$shortattach'  => L10n::t('attach file'),
-		'$weblink'      => L10n::t('Insert web link'),
-		'$shortweblink' => L10n::t('web link'),
-		'$video'        => L10n::t('Insert video link'),
-		'$shortvideo'   => L10n::t('video link'),
-		'$audio'        => L10n::t('Insert audio link'),
-		'$shortaudio'   => L10n::t('audio link'),
+		'$edbold'       => L10n::t('Bold'),
+		'$editalic'     => L10n::t('Italic'),
+		'$eduline'      => L10n::t('Underline'),
+		'$edquote'      => L10n::t('Quote'),
+		'$edcode'       => L10n::t('Code'),
+		'$edimg'        => L10n::t('Image'),
+		'$edurl'        => L10n::t('Link'),
+		'$edattach'     => L10n::t('Link or Media'),
 		'$setloc'       => L10n::t('Set your location'),
 		'$shortsetloc'  => L10n::t('set location'),
 		'$noloc'        => L10n::t('Clear browser location'),
@@ -1172,12 +1163,12 @@ function status_editor(App $a, $x, $notes_cid = 0, $popup = false)
 		'$lockstate'    => $x['lockstate'],
 		'$bang'         => $x['bang'],
 		'$profile_uid'  => $x['profile_uid'],
-		'$preview'      => Feature::isEnabled($x['profile_uid'], 'preview') ? L10n::t('Preview') : '',
+		'$preview'      => L10n::t('Preview'),
 		'$jotplugins'   => $jotplugins,
 		'$notes_cid'    => $notes_cid,
 		'$sourceapp'    => L10n::t($a->sourcename),
 		'$cancel'       => L10n::t('Cancel'),
-		'$rand_num'     => random_digits(12),
+		'$rand_num'     => Crypto::randomDigits(12),
 
 		// ACL permissions box
 		'$acl'           => $x['acl'],
@@ -1441,11 +1432,11 @@ function sort_thr_commented(array $a, array $b)
 }
 
 function render_location_dummy(array $item) {
-	if (x($item, 'location') && !empty($item['location'])) {
+	if (!empty($item['location']) && !empty($item['location'])) {
 		return $item['location'];
 	}
 
-	if (x($item, 'coord') && !empty($item['coord'])) {
+	if (!empty($item['coord']) && !empty($item['coord'])) {
 		return $item['coord'];
 	}
 }
@@ -1454,7 +1445,7 @@ function get_responses(array $conv_responses, array $response_verbs, $ob, array 
 	$ret = [];
 	foreach ($response_verbs as $v) {
 		$ret[$v] = [];
-		$ret[$v]['count'] = defaults($conv_responses[$v], $item['uri'], '');
+		$ret[$v]['count'] = defaults($conv_responses[$v], $item['uri'], 0);
 		$ret[$v]['list']  = defaults($conv_responses[$v], $item['uri'] . '-l', []);
 		$ret[$v]['self']  = defaults($conv_responses[$v], $item['uri'] . '-self', '0');
 		if (count($ret[$v]['list']) > MAX_LIKERS) {

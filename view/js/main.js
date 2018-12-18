@@ -24,7 +24,7 @@ function openClose(theID) {
 }
 
 function openMenu(theID) {
-	var el = document.getElementById(theID)
+	var el = document.getElementById(theID);
 
 	if (el) {
 		el.style.display = "block";
@@ -81,6 +81,11 @@ $(function() {
 			Dialog.doImageBrowser("comment", id);
 			return;
 		}
+
+		if (bbcode == "imgprv") {
+			bbcode = "img";
+		}
+
 		insertFormatting(bbcode, id);
 	});
 
@@ -305,7 +310,9 @@ $(function() {
 	// Asynchronous calls are deferred until the very end of the page load to ease on slower connections
 	window.addEventListener("load", function(){
 		NavUpdate();
-		acl.get(0, 100);
+		if (typeof acl !== 'undefined') {
+			acl.get(0, 100);
+		}
 	});
 
 	// Allow folks to stop the ajax page updates with the pause/break key
@@ -383,7 +390,7 @@ function NavUpdate() {
 				$('nav').trigger('nav-update', data.result);
 
 				// start live update
-				['network', 'profile', 'community', 'notes', 'display', 'contacts'].forEach(function (src) {
+				['network', 'profile', 'community', 'notes', 'display', 'contact'].forEach(function (src) {
 					if ($('#live-' + src).length) {
 						liveUpdate(src);
 					}
@@ -478,14 +485,12 @@ function liveUpdate(src) {
 		$('.wall-item-body', data).imagesLoaded(function() {
 			updateConvItems(data);
 
+			document.dispatchEvent(new Event('postprocess_liveupdate'));
+
 			// Update the scroll position.
 			$(window).scrollTop($(window).scrollTop() + $("section").height() - orgHeight);
 		});
-
-		callAddonHooks("postprocess_liveupdate");
-
 	});
-
 }
 
 function imgbright(node) {
@@ -669,6 +674,7 @@ function preview_post() {
 			if (data.preview) {
 				$("#jot-preview-content").html(data.preview);
 				$("#jot-preview-content" + " a").click(function() {return false;});
+				document.dispatchEvent(new Event('postprocess_liveupdate'));
 			}
 		},
 		"json"
@@ -727,7 +733,7 @@ function loadScrollContent() {
 
 	// get the raw content from the next page and insert this content
 	// right before "#conversation-end"
-	$.get('network?mode=raw' + infinite_scroll.reload_uri + '&last_received=' + received + '&last_commented=' + commented + '&last_created=' + created + '&last_id=' + id + '&page=' + infinite_scroll.pageno, function(data) {
+	$.get(infinite_scroll.reload_uri + '&mode=raw&last_received=' + received + '&last_commented=' + commented + '&last_created=' + created + '&last_id=' + id + '&page=' + infinite_scroll.pageno, function(data) {
 		$("#scroll-loader").hide();
 		if ($(data).length > 0) {
 			$(data).insertBefore('#conversation-end');
@@ -735,6 +741,8 @@ function loadScrollContent() {
 		} else {
 			$("#scroll-end").fadeIn('normal');
 		}
+
+		document.dispatchEvent(new Event('postprocess_liveupdate'));
 	});
 }
 

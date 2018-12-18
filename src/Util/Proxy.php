@@ -6,8 +6,7 @@ use Friendica\BaseModule;
 use Friendica\BaseObject;
 use Friendica\Core\Config;
 use Friendica\Core\System;
-
-require_once 'include/security.php';
+use Friendica\Util\Strings;
 
 /**
  * @brief Proxy utilities class
@@ -78,7 +77,7 @@ class Proxy
 
 		// Only continue if it isn't a local image and the isn't deactivated
 		if (self::isLocalImage($url)) {
-			$url = str_replace(normalise_link(System::baseUrl()) . '/', System::baseUrl() . '/', $url);
+			$url = str_replace(Strings::normaliseLink(System::baseUrl()) . '/', System::baseUrl() . '/', $url);
 			return $url;
 		}
 
@@ -91,7 +90,7 @@ class Proxy
 		$url = html_entity_decode($url, ENT_NOQUOTES, 'utf-8');
 
 		// Creating a sub directory to reduce the amount of files in the cache directory
-		$basepath = $a->get_basepath() . '/proxy';
+		$basepath = $a->getBasePath() . '/proxy';
 
 		$shortpath = hash('md5', $url);
 		$longpath = substr($shortpath, 0, 2);
@@ -142,7 +141,7 @@ class Proxy
 	 */
 	public static function proxifyHtml($html)
 	{
-		$html = str_replace(normalise_link(System::baseUrl()) . '/', System::baseUrl() . '/', $html);
+		$html = str_replace(Strings::normaliseLink(System::baseUrl()) . '/', System::baseUrl() . '/', $html);
 
 		return preg_replace_callback('/(<img [^>]*src *= *["\'])([^"\']+)(["\'][^>]*>)/siU', 'self::replaceUrl', $html);
 	}
@@ -164,8 +163,8 @@ class Proxy
 		}
 
 		// links normalised - bug #431
-		$baseurl = normalise_link(System::baseUrl());
-		$url = normalise_link($url);
+		$baseurl = Strings::normaliseLink(System::baseUrl());
+		$url = Strings::normaliseLink($url);
 
 		return (substr($url, 0, strlen($baseurl)) == $baseurl);
 	}

@@ -6,11 +6,13 @@ use Friendica\App;
 use Friendica\Content\Widget;
 use Friendica\Core\ACL;
 use Friendica\Core\Addon;
+use Friendica\Core\Logger;
 use Friendica\Core\Protocol;
 use Friendica\Database\DBA;
 use Friendica\Model\Contact;
 use Friendica\Model\Item;
 use Friendica\Util\Proxy as ProxyUtils;
+use Friendica\Util\Strings;
 
 require_once 'include/dba.php';
 
@@ -34,7 +36,7 @@ function acl_content(App $a)
 		$search = $_REQUEST['query'];
 	}
 
-	logger("Searching for ".$search." - type ".$type." conversation ".$conv_id, LOGGER_DEBUG);
+	Logger::log("Searching for ".$search." - type ".$type." conversation ".$conv_id, Logger::DEBUG);
 
 	if ($search != '') {
 		$sql_extra = "AND `name` LIKE '%%" . DBA::escape($search) . "%%'";
@@ -83,8 +85,9 @@ function acl_content(App $a)
 				WHERE `uid` = %d AND NOT `self`
 				AND NOT `blocked` AND NOT `pending` AND NOT `archive`
 				AND `success_update` >= `failure_update`
-				AND `network` IN ('%s', '%s') $sql_extra2",
+				AND `network` IN ('%s', '%s', '%s') $sql_extra2",
 			intval(local_user()),
+			DBA::escape(Protocol::ACTIVITYPUB),
 			DBA::escape(Protocol::DFRN),
 			DBA::escape(Protocol::DIASPORA)
 		);
@@ -124,7 +127,7 @@ function acl_content(App $a)
 			$groups[] = [
 				'type'  => 'g',
 				'photo' => 'images/twopeople.png',
-				'name'  => htmlentities($g['name']),
+				'name'  => htmlspecialchars($g['name']),
 				'id'    => intval($g['id']),
 				'uids'  => array_map('intval', explode(',', $g['uids'])),
 				'link'  => '',
@@ -169,10 +172,11 @@ function acl_content(App $a)
 	} elseif ($type == 'm') {
 		$r = q("SELECT `id`, `name`, `nick`, `micro`, `network`, `url`, `attag`, `addr` FROM `contact`
 				WHERE `uid` = %d AND NOT `self` AND NOT `blocked` AND NOT `pending` AND NOT `archive`
-				AND `success_update` >= `failure_update` AND `network` IN ('%s', '%s')
+				AND `success_update` >= `failure_update` AND `network` IN ('%s', '%s', '%s')
 				$sql_extra2
 				ORDER BY `name` ASC ",
 			intval(local_user()),
+			DBA::escape(Protocol::ACTIVITYPUB),
 			DBA::escape(Protocol::DFRN),
 			DBA::escape(Protocol::DIASPORA)
 		);
@@ -185,7 +189,7 @@ function acl_content(App $a)
 		);
 	} elseif ($type == 'x') {
 		// autocomplete for global contact search (e.g. navbar search)
-		$search = notags(trim($_REQUEST['search']));
+		$search = Strings::escapeTags(trim($_REQUEST['search']));
 		$mode = $_REQUEST['smode'];
 
 		$r = ACL::contactAutocomplete($search, $mode);
@@ -194,7 +198,7 @@ function acl_content(App $a)
 		foreach ($r as $g) {
 			$contacts[] = [
 				'photo'   => ProxyUtils::proxifyUrl($g['photo'], false, ProxyUtils::SIZE_MICRO),
-				'name'    => $g['name'],
+				'name'    => htmlspecialchars($g['name']),
 				'nick'    => defaults($g, 'addr', $g['url']),
 				'network' => $g['network'],
 				'link'    => $g['url'],
@@ -216,7 +220,7 @@ function acl_content(App $a)
 			$entry = [
 				'type'    => 'c',
 				'photo'   => ProxyUtils::proxifyUrl($g['micro'], false, ProxyUtils::SIZE_MICRO),
-				'name'    => htmlentities($g['name']),
+				'name'    => htmlspecialchars($g['name']),
 				'id'      => intval($g['id']),
 				'network' => $g['network'],
 				'link'    => $g['url'],
@@ -277,7 +281,7 @@ function acl_content(App $a)
 				$unknown_contacts[] = [
 					'type'    => 'c',
 					'photo'   => ProxyUtils::proxifyUrl($contact['micro'], false, ProxyUtils::SIZE_MICRO),
-					'name'    => htmlentities($contact['name']),
+					'name'    => htmlspecialchars($contact['name']),
 					'id'      => intval($contact['cid']),
 					'network' => $contact['network'],
 					'link'    => $contact['url'],

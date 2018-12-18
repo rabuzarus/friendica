@@ -7,13 +7,17 @@
  */
 
 use Friendica\App;
+use Friendica\BaseModule;
 use Friendica\Core\Config;
 use Friendica\Core\L10n;
 use Friendica\Core\PConfig;
+use Friendica\Core\Renderer;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
 use Friendica\Protocol\Email;
 use Friendica\Util\DateTimeFormat;
+use Friendica\Util\Security;
+use Friendica\Util\Strings;
 
 function invite_post(App $a)
 {
@@ -22,7 +26,7 @@ function invite_post(App $a)
 		return;
 	}
 
-	check_form_security_token_redirectOnErr('/', 'send_invite');
+	BaseModule::checkFormSecurityTokenRedirectOnError('/', 'send_invite');
 
 	$max_invites = intval(Config::get('system', 'max_invites'));
 	if (! $max_invites) {
@@ -37,7 +41,7 @@ function invite_post(App $a)
 
 
 	$recipients  = !empty($_POST['recipients']) ? explode("\n", $_POST['recipients']) : [];
-	$message     = !empty($_POST['message'])    ? notags(trim($_POST['message']))     : '';
+	$message     = !empty($_POST['message'])    ? Strings::escapeTags(trim($_POST['message']))     : '';
 
 	$total = 0;
 
@@ -52,19 +56,14 @@ function invite_post(App $a)
 	foreach ($recipients as $recipient) {
 		$recipient = trim($recipient);
 
-		if (! valid_email($recipient)) {
+		if (!filter_var($recipient, FILTER_VALIDATE_EMAIL)) {
 			notice(L10n::t('%s : Not a valid email address.', $recipient) . EOL);
 			continue;
 		}
 
 		if ($invitation_only && ($invites_remaining || is_site_admin())) {
-			$code = autoname(8) . srand(1000, 9999);
+			$code = Friendica\Model\Register::createForInvitation();
 			$nmessage = str_replace('$invite_code', $code, $message);
-
-			$r = q("INSERT INTO `register` (`hash`,`created`) VALUES ('%s', '%s') ",
-				DBA::escape($code),
-				DBA::escape(DateTimeFormat::utcNow())
-			);
 
 			if (! is_site_admin()) {
 				$invites_remaining --;
@@ -113,7 +112,7 @@ function invite_content(App $a) {
 		return;
 	}
 
-	$tpl = get_markup_template('invite.tpl');
+	$tpl = Renderer::getMarkupTemplate('invite.tpl');
 	$invonly = false;
 
 	if (Config::get('system', 'invitation_only')) {
@@ -143,8 +142,8 @@ function invite_content(App $a) {
 		}
 	}
 
-	$o = replace_macros($tpl, [
-		'$form_security_token' => get_form_security_token("send_invite"),
+	$o = Renderer::replaceMacros($tpl, [
+		'$form_security_token' => BaseModule::getFormSecurityToken("send_invite"),
 		'$title'               => L10n::t('Send invitations'),
 		'$recipients'          => ['recipients', L10n::t('Enter email addresses, one per line:')],
 		'$message'             => ['message', L10n::t('Your message:'),L10n::t('You are cordially invited to join me and other close friends on Friendica - and help us to create a better social web.') . "\r\n" . "\r\n"

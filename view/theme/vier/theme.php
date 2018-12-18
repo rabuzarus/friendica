@@ -15,17 +15,19 @@ use Friendica\Core\Addon;
 use Friendica\Core\Config;
 use Friendica\Core\L10n;
 use Friendica\Core\PConfig;
+use Friendica\Core\Renderer;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
 use Friendica\Model\Contact;
 use Friendica\Model\GContact;
 use Friendica\Util\Proxy as ProxyUtils;
+use Friendica\Util\Strings;
 
 function vier_init(App $a)
 {
 	$a->theme_events_in_profile = false;
 
-	$a->set_template_engine('smarty3');
+	Renderer::setActiveTemplateEngine('smarty3');
 
 	if (!empty($a->argv[0]) && $a->argv[0] . defaults($a->argv, 1, '') === "profile".$a->user['nickname'] || $a->argv[0] === "network" && local_user()) {
 		vier_community_info();
@@ -144,13 +146,13 @@ function vier_community_info()
 	if ($show_profiles) {
 		$r = GContact::suggestionQuery(local_user(), 0, 9);
 
-		$tpl = get_markup_template('ch_directory_item.tpl');
+		$tpl = Renderer::getMarkupTemplate('ch_directory_item.tpl');
 		if (DBA::isResult($r)) {
 			$aside['$comunity_profiles_title'] = L10n::t('Community Profiles');
 			$aside['$comunity_profiles_items'] = [];
 
 			foreach ($r as $rr) {
-				$entry = replace_macros($tpl, [
+				$entry = Renderer::replaceMacros($tpl, [
 					'$id' => $rr['id'],
 					'$profile_link' => 'follow/?url='.urlencode($rr['url']),
 					'$photo' => ProxyUtils::proxifyUrl($rr['photo'], false, ProxyUtils::SIZE_MICRO),
@@ -166,7 +168,7 @@ function vier_community_info()
 		$publish = (Config::get('system', 'publish_all') ? '' : " AND `publish` = 1 ");
 		$order = " ORDER BY `register_date` DESC ";
 
-		$tpl = get_markup_template('ch_directory_item.tpl');
+		$tpl = Renderer::getMarkupTemplate('ch_directory_item.tpl');
 
 		$r = q("SELECT `profile`.*, `profile`.`uid` AS `profile_uid`, `user`.`nickname`
 				FROM `profile` LEFT JOIN `user` ON `user`.`uid` = `profile`.`uid`
@@ -181,10 +183,10 @@ function vier_community_info()
 
 			foreach ($r as $rr) {
 				$profile_link = 'profile/' . ((strlen($rr['nickname'])) ? $rr['nickname'] : $rr['profile_uid']);
-				$entry = replace_macros($tpl, [
+				$entry = Renderer::replaceMacros($tpl, [
 					'$id' => $rr['id'],
 					'$profile_link' => $profile_link,
-					'$photo' => $a->remove_baseurl($rr['thumb']),
+					'$photo' => $a->removeBaseURL($rr['thumb']),
 					'$alt_text' => $rr['name']]);
 				$aside['$lastusers_items'][] = $entry;
 			}
@@ -212,10 +214,7 @@ function vier_community_info()
 
 	//Community_Pages at right_aside
 	if ($show_pages && local_user()) {
-		$cid = null;
-		if (x($_GET, 'cid') && intval($_GET['cid']) != 0) {
-			$cid = $_GET['cid'];
-		}
+		$cid = defaults($_GET, 'cid', null);
 
 		//sort by last updated item
 		$lastitem = true;
@@ -243,9 +242,9 @@ function vier_community_info()
 			}
 
 
-			$tpl = get_markup_template('widget_forumlist_right.tpl');
+			$tpl = Renderer::getMarkupTemplate('widget_forumlist_right.tpl');
 
-			$page = replace_macros(
+			$page = Renderer::replaceMacros(
 				$tpl,
 				[
 					'$title'          => L10n::t('Forums'),
@@ -276,7 +275,7 @@ function vier_community_info()
 					$query .= ",";
 				}
 
-				$query .= "'".DBA::escape(normalise_link(trim($helper)))."'";
+				$query .= "'".DBA::escape(Strings::normaliseLink(trim($helper)))."'";
 			}
 
 			$r = q("SELECT `url`, `name` FROM `gcontact` WHERE `nurl` IN (%s)", $query);
@@ -288,7 +287,7 @@ function vier_community_info()
 
 		$r[] = ["url" => "help/Quick-Start-guide", "name" => L10n::t("Quick Start")];
 
-		$tpl = get_markup_template('ch_helpers.tpl');
+		$tpl = Renderer::getMarkupTemplate('ch_helpers.tpl');
 
 		if ($r) {
 			$helpers = [];
@@ -297,7 +296,7 @@ function vier_community_info()
 			$aside['$helpers_items'] = [];
 
 			foreach ($r as $rr) {
-				$entry = replace_macros($tpl, [
+				$entry = Renderer::replaceMacros($tpl, [
 					'$url' => $rr['url'],
 					'$title' => $rr['name'],
 				]);
@@ -379,7 +378,7 @@ function vier_community_info()
 			$r[] = ["photo" => "images/mail.png", "name" => "E-Mail"];
 		}
 
-		$tpl = get_markup_template('ch_connectors.tpl');
+		$tpl = Renderer::getMarkupTemplate('ch_connectors.tpl');
 
 		if (DBA::isResult($r)) {
 			$con_services = [];
@@ -387,7 +386,7 @@ function vier_community_info()
 			$aside['$con_services'] = $con_services;
 
 			foreach ($r as $rr) {
-				$entry = replace_macros($tpl, [
+				$entry = Renderer::replaceMacros($tpl, [
 					'$url' => $url,
 					'$photo' => $rr['photo'],
 					'$alt_text' => $rr['name'],
@@ -399,6 +398,6 @@ function vier_community_info()
 	//end connectable services
 
 	//print right_aside
-	$tpl = get_markup_template('communityhome.tpl');
-	$a->page['right_aside'] = replace_macros($tpl, $aside);
+	$tpl = Renderer::getMarkupTemplate('communityhome.tpl');
+	$a->page['right_aside'] = Renderer::replaceMacros($tpl, $aside);
 }

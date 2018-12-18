@@ -14,6 +14,7 @@ use DOMXPath;
 use Exception;
 use Friendica\Content\Text\HTML;
 use Friendica\Core\Config;
+use Friendica\Core\Logger;
 use Friendica\Core\Protocol;
 use Friendica\Core\Worker;
 use Friendica\Database\DBA;
@@ -22,6 +23,7 @@ use Friendica\Model\Profile;
 use Friendica\Network\Probe;
 use Friendica\Util\DateTimeFormat;
 use Friendica\Util\Network;
+use Friendica\Util\Strings;
 use Friendica\Util\XML;
 
 require_once 'include/dba.php';
@@ -82,23 +84,24 @@ class PortableContact
 			return;
 		}
 
-		$url = $url . (($uid) ? '/@me/@all?fields=displayName,urls,photos,updated,network,aboutMe,currentLocation,tags,gender,contactType,generation' : '?fields=displayName,urls,photos,updated,network,aboutMe,currentLocation,tags,gender,contactType,generation') ;
+		$url = $url . (($uid) ? '/@me/@all?fields=displayName,urls,photos,updated,network,aboutMe,currentLocation,tags,gender,contactType,generation' : '?fields=displayName,urls,photos,updated,network,aboutMe,currentLocation,tags,gender,contactType,generation');
 
-		logger('load: ' . $url, LOGGER_DEBUG);
+		Logger::log('load: ' . $url, Logger::DEBUG);
 
-		$s = Network::fetchUrl($url);
+		$fetchresult = Network::fetchUrlFull($url);
+		$s = $fetchresult->getBody();
 
-		logger('load: returns ' . $s, LOGGER_DATA);
+		Logger::log('load: returns ' . $s, Logger::DATA);
 
-		logger('load: return code: ' . $a->get_curl_code(), LOGGER_DEBUG);
+		Logger::log('load: return code: ' . $fetchresult->getReturnCode(), Logger::DEBUG);
 
-		if (($a->get_curl_code() > 299) || (! $s)) {
+		if (($fetchresult->getReturnCode() > 299) || (! $s)) {
 			return;
 		}
 
 		$j = json_decode($s, true);
 
-		logger('load: json: ' . print_r($j, true), LOGGER_DATA);
+		Logger::log('load: json: ' . print_r($j, true), Logger::DATA);
 
 		if (!isset($j['entry'])) {
 			return;
@@ -112,7 +115,7 @@ class PortableContact
 			$connect_url = '';
 			$name = '';
 			$network = '';
-			$updated = NULL_DATE;
+			$updated = DBA::NULL_DATETIME;
 			$location = '';
 			$about = '';
 			$keywords = '';
@@ -198,10 +201,10 @@ class PortableContact
 
 				GContact::link($gcid, $uid, $cid, $zcid);
 			} catch (Exception $e) {
-				logger($e->getMessage(), LOGGER_DEBUG);
+				Logger::log($e->getMessage(), Logger::DEBUG);
 			}
 		}
-		logger("load: loaded $total entries", LOGGER_DEBUG);
+		Logger::log("load: loaded $total entries", Logger::DEBUG);
 
 		$condition = ["`cid` = ? AND `uid` = ? AND `zcid` = ? AND `updated` < UTC_TIMESTAMP - INTERVAL 2 DAY", $cid, $uid, $zcid];
 		DBA::delete('glink', $condition);
@@ -282,7 +285,7 @@ class PortableContact
 
 		$r = q(
 			"SELECT `id` FROM `gserver` WHERE `nurl` = '%s' AND `last_contact` > `last_failure`",
-			DBA::escape(normalise_link($server_url))
+			DBA::escape(Strings::normaliseLink($server_url))
 		);
 
 		if (DBA::isResult($r)) {
@@ -290,8 +293,8 @@ class PortableContact
 		}
 
 		// Fetch the host-meta to check if this really is a server
-		$serverret = Network::curl($server_url."/.well-known/host-meta");
-		if (!$serverret["success"]) {
+		$curlResult = Network::curl($server_url."/.well-known/host-meta");
+		if (!$curlResult->isSuccess()) {
 			return "";
 		}
 
@@ -307,7 +310,7 @@ class PortableContact
 	{
 		$gcontacts = q(
 			"SELECT * FROM `gcontact` WHERE `nurl` = '%s'",
-			DBA::escape(normalise_link($profile))
+			DBA::escape(Strings::normaliseLink($profile))
 		);
 
 		if (!DBA::isResult($gcontacts)) {
@@ -316,13 +319,13 @@ class PortableContact
 
 		$contact = ["url" => $profile];
 
-		if ($gcontacts[0]["created"] <= NULL_DATE) {
+		if ($gcontacts[0]["created"] <= DBA::NULL_DATETIME) {
 			$contact['created'] = DateTimeFormat::utcNow();
 		}
 
 		$server_url = '';
 		if ($force) {
-			$server_url = normalise_link(self::detectServer($profile));
+			$server_url = Strings::normaliseLink(self::detectServer($profile));
 		}
 
 		if (($server_url == '') && ($gcontacts[0]["server_url"] != "")) {
@@ -330,11 +333,11 @@ class PortableContact
 		}
 
 		if (!$force && (($server_url == '') || ($gcontacts[0]["server_url"] == $gcontacts[0]["nurl"]))) {
-			$server_url = normalise_link(self::detectServer($profile));
+			$server_url = Strings::normaliseLink(self::detectServer($profile));
 		}
 
-		if (!in_array($gcontacts[0]["network"], [Protocol::DFRN, Protocol::DIASPORA, Protocol::FEED, Protocol::OSTATUS, ""])) {
-			logger("Profile ".$profile.": Network type ".$gcontacts[0]["network"]." can't be checked", LOGGER_DEBUG);
+		if (!in_array($gcontacts[0]["network"], [Protocol::ACTIVITYPUB, Protocol::DFRN, Protocol::DIASPORA, Protocol::FEED, Protocol::OSTATUS, ""])) {
+			Logger::log("Profile ".$profile.": Network type ".$gcontacts[0]["network"]." can't be checked", Logger::DEBUG);
 			return false;
 		}
 
@@ -342,10 +345,10 @@ class PortableContact
 			if (!self::checkServer($server_url, $gcontacts[0]["network"], $force)) {
 				if ($force) {
 					$fields = ['last_failure' => DateTimeFormat::utcNow()];
-					DBA::update('gcontact', $fields, ['nurl' => normalise_link($profile)]);
+					DBA::update('gcontact', $fields, ['nurl' => Strings::normaliseLink($profile)]);
 				}
 
-				logger("Profile ".$profile.": Server ".$server_url." wasn't reachable.", LOGGER_DEBUG);
+				Logger::log("Profile ".$profile.": Server ".$server_url." wasn't reachable.", Logger::DEBUG);
 				return false;
 			}
 			$contact['server_url'] = $server_url;
@@ -354,7 +357,7 @@ class PortableContact
 		if (in_array($gcontacts[0]["network"], ["", Protocol::FEED])) {
 			$server = q(
 				"SELECT `network` FROM `gserver` WHERE `nurl` = '%s' AND `network` != ''",
-				DBA::escape(normalise_link($server_url))
+				DBA::escape(Strings::normaliseLink($server_url))
 			);
 
 			if ($server) {
@@ -367,13 +370,13 @@ class PortableContact
 		// noscrape is really fast so we don't cache the call.
 		if (($server_url != "") && ($gcontacts[0]["nick"] != "")) {
 			//  Use noscrape if possible
-			$server = q("SELECT `noscrape`, `network` FROM `gserver` WHERE `nurl` = '%s' AND `noscrape` != ''", DBA::escape(normalise_link($server_url)));
+			$server = q("SELECT `noscrape`, `network` FROM `gserver` WHERE `nurl` = '%s' AND `noscrape` != ''", DBA::escape(Strings::normaliseLink($server_url)));
 
 			if ($server) {
-				$noscraperet = Network::curl($server[0]["noscrape"]."/".$gcontacts[0]["nick"]);
+				$curlResult = Network::curl($server[0]["noscrape"]."/".$gcontacts[0]["nick"]);
 
-				if ($noscraperet["success"] && ($noscraperet["body"] != "")) {
-					$noscrape = json_decode($noscraperet["body"], true);
+				if ($curlResult->isSuccess() && ($curlResult->getBody() != "")) {
+					$noscrape = json_decode($curlResult->getBody(), true);
 
 					if (is_array($noscrape)) {
 						$contact["network"] = $server[0]["network"];
@@ -423,9 +426,9 @@ class PortableContact
 
 						if (!empty($noscrape["updated"])) {
 							$fields = ['last_contact' => DateTimeFormat::utcNow()];
-							DBA::update('gcontact', $fields, ['nurl' => normalise_link($profile)]);
+							DBA::update('gcontact', $fields, ['nurl' => Strings::normaliseLink($profile)]);
 
-							logger("Profile ".$profile." was last updated at ".$noscrape["updated"]." (noscrape)", LOGGER_DEBUG);
+							Logger::log("Profile ".$profile." was last updated at ".$noscrape["updated"]." (noscrape)", Logger::DEBUG);
 
 							return $noscrape["updated"];
 						}
@@ -436,7 +439,7 @@ class PortableContact
 
 		// If we only can poll the feed, then we only do this once a while
 		if (!$force && !self::updateNeeded($gcontacts[0]["created"], $gcontacts[0]["updated"], $gcontacts[0]["last_failure"], $gcontacts[0]["last_contact"])) {
-			logger("Profile ".$profile." was last updated at ".$gcontacts[0]["updated"]." (cached)", LOGGER_DEBUG);
+			Logger::log("Profile ".$profile." was last updated at ".$gcontacts[0]["updated"]." (cached)", Logger::DEBUG);
 
 			GContact::update($contact);
 			return $gcontacts[0]["updated"];
@@ -447,11 +450,11 @@ class PortableContact
 		// Is the profile link the alternate OStatus link notation? (http://domain.tld/user/4711)
 		// Then check the other link and delete this one
 		if (($data["network"] == Protocol::OSTATUS) && self::alternateOStatusUrl($profile)
-			&& (normalise_link($profile) == normalise_link($data["alias"]))
-			&& (normalise_link($profile) != normalise_link($data["url"]))
+			&& (Strings::normaliseLink($profile) == Strings::normaliseLink($data["alias"]))
+			&& (Strings::normaliseLink($profile) != Strings::normaliseLink($data["url"]))
 		) {
 			// Delete the old entry
-			DBA::delete('gcontact', ['nurl' => normalise_link($profile)]);
+			DBA::delete('gcontact', ['nurl' => Strings::normaliseLink($profile)]);
 
 			$gcontact = array_merge($gcontacts[0], $data);
 
@@ -463,18 +466,18 @@ class PortableContact
 
 				self::lastUpdated($data["url"], $force);
 			} catch (Exception $e) {
-				logger($e->getMessage(), LOGGER_DEBUG);
+				Logger::log($e->getMessage(), Logger::DEBUG);
 			}
 
-			logger("Profile ".$profile." was deleted", LOGGER_DEBUG);
+			Logger::log("Profile ".$profile." was deleted", Logger::DEBUG);
 			return false;
 		}
 
 		if (($data["poll"] == "") || (in_array($data["network"], [Protocol::FEED, Protocol::PHANTOM]))) {
 			$fields = ['last_failure' => DateTimeFormat::utcNow()];
-			DBA::update('gcontact', $fields, ['nurl' => normalise_link($profile)]);
+			DBA::update('gcontact', $fields, ['nurl' => Strings::normaliseLink($profile)]);
 
-			logger("Profile ".$profile." wasn't reachable (profile)", LOGGER_DEBUG);
+			Logger::log("Profile ".$profile." wasn't reachable (profile)", Logger::DEBUG);
 			return false;
 		}
 
@@ -484,19 +487,19 @@ class PortableContact
 
 		GContact::update($contact);
 
-		$feedret = Network::curl($data["poll"]);
+		$curlResult = Network::curl($data["poll"]);
 
-		if (!$feedret["success"]) {
+		if (!$curlResult->isSuccess()) {
 			$fields = ['last_failure' => DateTimeFormat::utcNow()];
-			DBA::update('gcontact', $fields, ['nurl' => normalise_link($profile)]);
+			DBA::update('gcontact', $fields, ['nurl' => Strings::normaliseLink($profile)]);
 
-			logger("Profile ".$profile." wasn't reachable (no feed)", LOGGER_DEBUG);
+			Logger::log("Profile ".$profile." wasn't reachable (no feed)", Logger::DEBUG);
 			return false;
 		}
 
 		$doc = new DOMDocument();
 		/// @TODO Avoid error supression here
-		@$doc->loadXML($feedret["body"]);
+		@$doc->loadXML($curlResult->getBody());
 
 		$xpath = new DOMXPath($doc);
 		$xpath->registerNamespace('atom', "http://www.w3.org/2005/Atom");
@@ -521,7 +524,7 @@ class PortableContact
 		// Maybe there aren't any entries. Then check if it is a valid feed
 		if ($last_updated == "") {
 			if ($xpath->query('/atom:feed')->length > 0) {
-				$last_updated = NULL_DATE;
+				$last_updated = DBA::NULL_DATETIME;
 			}
 		}
 
@@ -531,14 +534,14 @@ class PortableContact
 			$fields['updated'] = $last_updated;
 		}
 
-		DBA::update('gcontact', $fields, ['nurl' => normalise_link($profile)]);
+		DBA::update('gcontact', $fields, ['nurl' => Strings::normaliseLink($profile)]);
 
 		if (($gcontacts[0]["generation"] == 0)) {
 			$fields = ['generation' => 9];
-			DBA::update('gcontact', $fields, ['nurl' => normalise_link($profile)]);
+			DBA::update('gcontact', $fields, ['nurl' => Strings::normaliseLink($profile)]);
 		}
 
-		logger("Profile ".$profile." was last updated at ".$last_updated, LOGGER_DEBUG);
+		Logger::log("Profile ".$profile." was last updated at ".$last_updated, Logger::DEBUG);
 
 		return $last_updated;
 	}
@@ -645,12 +648,12 @@ class PortableContact
 	 */
 	private static function fetchNodeinfo($server_url)
 	{
-		$serverret = Network::curl($server_url."/.well-known/nodeinfo");
-		if (!$serverret["success"]) {
+		$curlResult = Network::curl($server_url."/.well-known/nodeinfo");
+		if (!$curlResult->isSuccess()) {
 			return false;
 		}
 
-		$nodeinfo = json_decode($serverret['body'], true);
+		$nodeinfo = json_decode($curlResult->getBody(), true);
 
 		if (!is_array($nodeinfo) || !isset($nodeinfo['links'])) {
 			return false;
@@ -661,7 +664,7 @@ class PortableContact
 
 		foreach ($nodeinfo['links'] as $link) {
 			if (!is_array($link) || empty($link['rel'])) {
-				logger('Invalid nodeinfo format for ' . $server_url, LOGGER_DEBUG);
+				Logger::log('Invalid nodeinfo format for ' . $server_url, Logger::DEBUG);
 				continue;
 			}
 			if ($link['rel'] == 'http://nodeinfo.diaspora.software/ns/schema/1.0') {
@@ -698,13 +701,13 @@ class PortableContact
 	 */
 	private static function parseNodeinfo1($nodeinfo_url)
 	{
-		$serverret = Network::curl($nodeinfo_url);
+		$curlResult = Network::curl($nodeinfo_url);
 
-		if (!$serverret["success"]) {
+		if (!$curlResult->isSuccess()) {
 			return false;
 		}
 
-		$nodeinfo = json_decode($serverret['body'], true);
+		$nodeinfo = json_decode($curlResult->getBody(), true);
 
 		if (!is_array($nodeinfo)) {
 			return false;
@@ -731,7 +734,7 @@ class PortableContact
 			}
 		}
 
-		if (is_array($nodeinfo['metadata']) && isset($nodeinfo['metadata']['nodeName'])) {
+		if (isset($nodeinfo['metadata']['nodeName'])) {
 			$server['site_name'] = $nodeinfo['metadata']['nodeName'];
 		}
 
@@ -782,12 +785,12 @@ class PortableContact
 	 */
 	private static function parseNodeinfo2($nodeinfo_url)
 	{
-		$serverret = Network::curl($nodeinfo_url);
-		if (!$serverret["success"]) {
+		$curlResult = Network::curl($nodeinfo_url);
+		if (!$curlResult->isSuccess()) {
 			return false;
 		}
 
-		$nodeinfo = json_decode($serverret['body'], true);
+		$nodeinfo = json_decode($curlResult->getBody(), true);
 
 		if (!is_array($nodeinfo)) {
 			return false;
@@ -814,7 +817,7 @@ class PortableContact
 			}
 		}
 
-		if (is_array($nodeinfo['metadata']) && isset($nodeinfo['metadata']['nodeName'])) {
+		if (isset($nodeinfo['metadata']['nodeName'])) {
 			$server['site_name'] = $nodeinfo['metadata']['nodeName'];
 		}
 
@@ -928,11 +931,11 @@ class PortableContact
 			return false;
 		}
 
-		$gserver = DBA::selectFirst('gserver', [], ['nurl' => normalise_link($server_url)]);
+		$gserver = DBA::selectFirst('gserver', [], ['nurl' => Strings::normaliseLink($server_url)]);
 		if (DBA::isResult($gserver)) {
-			if ($gserver["created"] <= NULL_DATE) {
+			if ($gserver["created"] <= DBA::NULL_DATETIME) {
 				$fields = ['created' => DateTimeFormat::utcNow()];
-				$condition = ['nurl' => normalise_link($server_url)];
+				$condition = ['nurl' => Strings::normaliseLink($server_url)];
 				DBA::update('gserver', $fields, $condition);
 			}
 			$poco = $gserver["poco"];
@@ -953,16 +956,16 @@ class PortableContact
 
 			// See discussion under https://forum.friendi.ca/display/0b6b25a8135aabc37a5a0f5684081633
 			// It can happen that a zero date is in the database, but storing it again is forbidden.
-			if ($last_contact < NULL_DATE) {
-				$last_contact = NULL_DATE;
+			if ($last_contact < DBA::NULL_DATETIME) {
+				$last_contact = DBA::NULL_DATETIME;
 			}
 
-			if ($last_failure < NULL_DATE) {
-				$last_failure = NULL_DATE;
+			if ($last_failure < DBA::NULL_DATETIME) {
+				$last_failure = DBA::NULL_DATETIME;
 			}
 
 			if (!$force && !self::updateNeeded($gserver["created"], "", $last_failure, $last_contact)) {
-				logger("Use cached data for server ".$server_url, LOGGER_DEBUG);
+				Logger::log("Use cached data for server ".$server_url, Logger::DEBUG);
 				return ($last_contact >= $last_failure);
 			}
 		} else {
@@ -975,10 +978,10 @@ class PortableContact
 			$register_policy = -1;
 			$registered_users = 0;
 
-			$last_contact = NULL_DATE;
-			$last_failure = NULL_DATE;
+			$last_contact = DBA::NULL_DATETIME;
+			$last_failure = DBA::NULL_DATETIME;
 		}
-		logger("Server ".$server_url." is outdated or unknown. Start discovery. Force: ".$force." Created: ".$gserver["created"]." Failure: ".$last_failure." Contact: ".$last_contact, LOGGER_DEBUG);
+		Logger::log("Server ".$server_url." is outdated or unknown. Start discovery. Force: ".$force." Created: ".$gserver["created"]." Failure: ".$last_failure." Contact: ".$last_contact, Logger::DEBUG);
 
 		$failure = false;
 		$possible_failure = false;
@@ -988,7 +991,7 @@ class PortableContact
 		// Mastodon uses the "@" for user profiles.
 		// But this can be misunderstood.
 		if (parse_url($server_url, PHP_URL_USER) != '') {
-			DBA::update('gserver', ['last_failure' => DateTimeFormat::utcNow()], ['nurl' => normalise_link($server_url)]);
+			DBA::update('gserver', ['last_failure' => DateTimeFormat::utcNow()], ['nurl' => Strings::normaliseLink($server_url)]);
 			return false;
 		}
 
@@ -997,38 +1000,38 @@ class PortableContact
 		$server_url = str_replace("http://", "https://", $server_url);
 
 		// We set the timeout to 20 seconds since this operation should be done in no time if the server was vital
-		$serverret = Network::curl($server_url."/.well-known/host-meta", false, $redirects, ['timeout' => 20]);
+		$curlResult = Network::curl($server_url."/.well-known/host-meta", false, $redirects, ['timeout' => 20]);
 
 		// Quit if there is a timeout.
 		// But we want to make sure to only quit if we are mostly sure that this server url fits.
 		if (DBA::isResult($gserver) && ($orig_server_url == $server_url) &&
-			(!empty($serverret["errno"]) && ($serverret['errno'] == CURLE_OPERATION_TIMEDOUT))) {
-			logger("Connection to server ".$server_url." timed out.", LOGGER_DEBUG);
-			DBA::update('gserver', ['last_failure' => DateTimeFormat::utcNow()], ['nurl' => normalise_link($server_url)]);
+			($curlResult->isTimeout())) {
+			Logger::log("Connection to server ".$server_url." timed out.", Logger::DEBUG);
+			DBA::update('gserver', ['last_failure' => DateTimeFormat::utcNow()], ['nurl' => Strings::normaliseLink($server_url)]);
 			return false;
 		}
 
 		// Maybe the page is unencrypted only?
-		$xmlobj = @simplexml_load_string($serverret["body"], 'SimpleXMLElement', 0, "http://docs.oasis-open.org/ns/xri/xrd-1.0");
-		if (!$serverret["success"] || ($serverret["body"] == "") || empty($xmlobj) || !is_object($xmlobj)) {
+		$xmlobj = @simplexml_load_string($curlResult->getBody(), 'SimpleXMLElement', 0, "http://docs.oasis-open.org/ns/xri/xrd-1.0");
+		if (!$curlResult->isSuccess() || ($curlResult->getBody() == "") || empty($xmlobj) || !is_object($xmlobj)) {
 			$server_url = str_replace("https://", "http://", $server_url);
 
 			// We set the timeout to 20 seconds since this operation should be done in no time if the server was vital
-			$serverret = Network::curl($server_url."/.well-known/host-meta", false, $redirects, ['timeout' => 20]);
+			$curlResult = Network::curl($server_url."/.well-known/host-meta", false, $redirects, ['timeout' => 20]);
 
 			// Quit if there is a timeout
-			if (!empty($serverret["errno"]) && ($serverret['errno'] == CURLE_OPERATION_TIMEDOUT)) {
-				logger("Connection to server ".$server_url." timed out.", LOGGER_DEBUG);
-				DBA::update('gserver', ['last_failure' => DateTimeFormat::utcNow()], ['nurl' => normalise_link($server_url)]);
+			if ($curlResult->isTimeout()) {
+				Logger::log("Connection to server " . $server_url . " timed out.", Logger::DEBUG);
+				DBA::update('gserver', ['last_failure' => DateTimeFormat::utcNow()], ['nurl' => Strings::normaliseLink($server_url)]);
 				return false;
 			}
 
-			$xmlobj = @simplexml_load_string($serverret["body"], 'SimpleXMLElement', 0, "http://docs.oasis-open.org/ns/xri/xrd-1.0");
+			$xmlobj = @simplexml_load_string($curlResult->getBody(), 'SimpleXMLElement', 0, "http://docs.oasis-open.org/ns/xri/xrd-1.0");
 		}
 
-		if (!$serverret["success"] || ($serverret["body"] == "") || empty($xmlobj) || !is_object($xmlobj)) {
+		if (!$curlResult->isSuccess() || ($curlResult->getBody() == "") || empty($xmlobj) || !is_object($xmlobj)) {
 			// Workaround for bad configured servers (known nginx problem)
-			if (!empty($serverret["debug"]) && !in_array($serverret["debug"]["http_code"], ["403", "404"])) {
+			if (!empty($curlResult->getInfo()) && !in_array($curlResult->getInfo()["http_code"], ["403", "404"])) {
 				$failure = true;
 			}
 
@@ -1046,15 +1049,15 @@ class PortableContact
 
 		if (!$failure) {
 			// This will be too low, but better than no value at all.
-			$registered_users = DBA::count('gcontact', ['server_url' => normalise_link($server_url)]);
+			$registered_users = DBA::count('gcontact', ['server_url' => Strings::normaliseLink($server_url)]);
 		}
 
 		// Look for poco
 		if (!$failure) {
-			$serverret = Network::curl($server_url."/poco");
+			$curlResult = Network::curl($server_url."/poco");
 
-			if ($serverret["success"]) {
-				$data = json_decode($serverret["body"], true);
+			if ($curlResult->isSuccess()) {
+				$data = json_decode($curlResult->getBody(), true);
 
 				if (isset($data['totalResults'])) {
 					$registered_users = $data['totalResults'];
@@ -1083,12 +1086,12 @@ class PortableContact
 
 		if (!$failure) {
 			// Test for Diaspora, Hubzilla, Mastodon or older Friendica servers
-			$serverret = Network::curl($server_url);
+			$curlResult = Network::curl($server_url);
 
-			if (!$serverret["success"] || ($serverret["body"] == "")) {
+			if (!$curlResult->isSuccess() || ($curlResult->getBody() == "")) {
 				$failure = true;
 			} else {
-				$server = self::detectServerType($serverret["body"]);
+				$server = self::detectServerType($curlResult->getBody());
 
 				if (!empty($server)) {
 					$platform = $server['platform'];
@@ -1097,7 +1100,7 @@ class PortableContact
 					$site_name = $server['site_name'];
 				}
 
-				$lines = explode("\n", $serverret["header"]);
+				$lines = explode("\n", $curlResult->getHeader());
 
 				if (count($lines)) {
 					foreach ($lines as $line) {
@@ -1125,41 +1128,41 @@ class PortableContact
 			// Test for Statusnet
 			// Will also return data for Friendica and GNU Social - but it will be overwritten later
 			// The "not implemented" is a special treatment for really, really old Friendica versions
-			$serverret = Network::curl($server_url."/api/statusnet/version.json");
+			$curlResult = Network::curl($server_url."/api/statusnet/version.json");
 
-			if ($serverret["success"] && ($serverret["body"] != '{"error":"not implemented"}') &&
-				($serverret["body"] != '') && (strlen($serverret["body"]) < 30)) {
+			if ($curlResult->isSuccess() && ($curlResult->getBody() != '{"error":"not implemented"}') &&
+				($curlResult->getBody() != '') && (strlen($curlResult->getBody()) < 30)) {
 				$platform = "StatusNet";
 				// Remove junk that some GNU Social servers return
-				$version = str_replace(chr(239).chr(187).chr(191), "", $serverret["body"]);
+				$version = str_replace(chr(239).chr(187).chr(191), "", $curlResult->getBody());
 				$version = trim($version, '"');
 				$network = Protocol::OSTATUS;
 			}
 
 			// Test for GNU Social
-			$serverret = Network::curl($server_url."/api/gnusocial/version.json");
+			$curlResult = Network::curl($server_url."/api/gnusocial/version.json");
 
-			if ($serverret["success"] && ($serverret["body"] != '{"error":"not implemented"}') &&
-				($serverret["body"] != '') && (strlen($serverret["body"]) < 30)) {
+			if ($curlResult->isSuccess() && ($curlResult->getBody() != '{"error":"not implemented"}') &&
+				($curlResult->getBody() != '') && (strlen($curlResult->getBody()) < 30)) {
 				$platform = "GNU Social";
 				// Remove junk that some GNU Social servers return
-				$version = str_replace(chr(239) . chr(187) . chr(191), "", $serverret["body"]);
+				$version = str_replace(chr(239) . chr(187) . chr(191), "", $curlResult->getBody());
 				$version = trim($version, '"');
 				$network = Protocol::OSTATUS;
 			}
 
 			// Test for Mastodon
 			$orig_version = $version;
-			$serverret = Network::curl($server_url . "/api/v1/instance");
+			$curlResult = Network::curl($server_url . "/api/v1/instance");
 
-			if ($serverret["success"] && ($serverret["body"] != '')) {
-				$data = json_decode($serverret["body"], true);
+			if ($curlResult->isSuccess() && ($curlResult->getBody() != '')) {
+				$data = json_decode($curlResult->getBody(), true);
 
 				if (isset($data['version'])) {
 					$platform = "Mastodon";
-					$version = $data['version'];
-					$site_name = $data['title'];
-					$info = $data['description'];
+					$version = defaults($data, 'version', '');
+					$site_name = defaults($data, 'title', '');
+					$info = defaults($data, 'description', '');
 					$network = Protocol::OSTATUS;
 				}
 
@@ -1176,10 +1179,10 @@ class PortableContact
 
 		if (!$failure) {
 			// Test for Hubzilla and Red
-			$serverret = Network::curl($server_url . "/siteinfo.json");
+			$curlResult = Network::curl($server_url . "/siteinfo.json");
 
-			if ($serverret["success"]) {
-				$data = json_decode($serverret["body"], true);
+			if ($curlResult->isSuccess()) {
+				$data = json_decode($curlResult->getBody(), true);
 
 				if (isset($data['url'])) {
 					$platform = $data['platform'];
@@ -1213,10 +1216,10 @@ class PortableContact
 				}
 			} else {
 				// Test for Hubzilla, Redmatrix or Friendica
-				$serverret = Network::curl($server_url."/api/statusnet/config.json");
+				$curlResult = Network::curl($server_url."/api/statusnet/config.json");
 
-				if ($serverret["success"]) {
-					$data = json_decode($serverret["body"], true);
+				if ($curlResult->isSuccess()) {
+					$data = json_decode($curlResult->getBody(), true);
 
 					if (isset($data['site']['server'])) {
 						if (isset($data['site']['platform'])) {
@@ -1286,10 +1289,10 @@ class PortableContact
 
 		// Query statistics.json. Optional package for Diaspora, Friendica and Redmatrix
 		if (!$failure) {
-			$serverret = Network::curl($server_url . "/statistics.json");
+			$curlResult = Network::curl($server_url . "/statistics.json");
 
-			if ($serverret["success"]) {
-				$data = json_decode($serverret["body"], true);
+			if ($curlResult->isSuccess()) {
+				$data = json_decode($curlResult->getBody(), true);
 
 				if (isset($data['version'])) {
 					$version = $data['version'];
@@ -1350,14 +1353,14 @@ class PortableContact
 		// Check for noscrape
 		// Friendica servers could be detected as OStatus servers
 		if (!$failure && in_array($network, [Protocol::DFRN, Protocol::OSTATUS])) {
-			$serverret = Network::curl($server_url . "/friendica/json");
+			$curlResult = Network::curl($server_url . "/friendica/json");
 
-			if (!$serverret["success"]) {
-				$serverret = Network::curl($server_url . "/friendika/json");
+			if (!$curlResult->isSuccess()) {
+				$curlResult = Network::curl($server_url . "/friendika/json");
 			}
 
-			if ($serverret["success"]) {
-				$data = json_decode($serverret["body"], true);
+			if ($curlResult->isSuccess()) {
+				$data = json_decode($curlResult->getBody(), true);
 
 				if (isset($data['version'])) {
 					$network = Protocol::DFRN;
@@ -1373,7 +1376,13 @@ class PortableContact
 					}
 
 					$info = $data['info'];
-					$register_policy = constant($data['register_policy']);
+					$register_policy = defaults($data, 'register_policy', REGISTER_CLOSED);
+					if (in_array($register_policy, ['REGISTER_CLOSED', 'REGISTER_APPROVE', 'REGISTER_OPEN'])) {
+						$register_policy = constant($data['register_policy']);
+					} else {
+						Logger::log("Register policy '$register_policy' from $server_url is invalid.");
+						$register_policy = REGISTER_CLOSED; // set a default value
+					}
 					$platform = $data['platform'];
 				}
 			}
@@ -1397,13 +1406,13 @@ class PortableContact
 		}
 
 		if (($last_contact <= $last_failure) && !$failure) {
-			logger("Server ".$server_url." seems to be alive, but last contact wasn't set - could be a bug", LOGGER_DEBUG);
+			Logger::log("Server ".$server_url." seems to be alive, but last contact wasn't set - could be a bug", Logger::DEBUG);
 		} elseif (($last_contact >= $last_failure) && $failure) {
-			logger("Server ".$server_url." seems to be dead, but last failure wasn't set - could be a bug", LOGGER_DEBUG);
+			Logger::log("Server ".$server_url." seems to be dead, but last failure wasn't set - could be a bug", Logger::DEBUG);
 		}
 
 		// Check again if the server exists
-		$found = DBA::exists('gserver', ['nurl' => normalise_link($server_url)]);
+		$found = DBA::exists('gserver', ['nurl' => Strings::normaliseLink($server_url)]);
 
 		$version = strip_tags($version);
 		$site_name = strip_tags($site_name);
@@ -1417,9 +1426,9 @@ class PortableContact
 				'last_contact' => $last_contact, 'last_failure' => $last_failure];
 
 		if ($found) {
-			DBA::update('gserver', $fields, ['nurl' => normalise_link($server_url)]);
+			DBA::update('gserver', $fields, ['nurl' => Strings::normaliseLink($server_url)]);
 		} elseif (!$failure) {
-			$fields['nurl'] = normalise_link($server_url);
+			$fields['nurl'] = Strings::normaliseLink($server_url);
 			$fields['created'] = DateTimeFormat::utcNow();
 			DBA::insert('gserver', $fields);
 		}
@@ -1428,7 +1437,7 @@ class PortableContact
 			self::discoverRelay($server_url);
 		}
 
-		logger("End discovery for server " . $server_url, LOGGER_DEBUG);
+		Logger::log("End discovery for server " . $server_url, Logger::DEBUG);
 
 		return !$failure;
 	}
@@ -1440,21 +1449,21 @@ class PortableContact
 	 */
 	private static function discoverRelay($server_url)
 	{
-		logger("Discover relay data for server " . $server_url, LOGGER_DEBUG);
+		Logger::log("Discover relay data for server " . $server_url, Logger::DEBUG);
 
-		$serverret = Network::curl($server_url . "/.well-known/x-social-relay");
+		$curlResult = Network::curl($server_url . "/.well-known/x-social-relay");
 
-		if (!$serverret["success"]) {
+		if (!$curlResult->isSuccess()) {
 			return;
 		}
 
-		$data = json_decode($serverret['body'], true);
+		$data = json_decode($curlResult->getBody(), true);
 
 		if (!is_array($data)) {
 			return;
 		}
 
-		$gserver = DBA::selectFirst('gserver', ['id', 'relay-subscribe', 'relay-scope'], ['nurl' => normalise_link($server_url)]);
+		$gserver = DBA::selectFirst('gserver', ['id', 'relay-subscribe', 'relay-scope'], ['nurl' => Strings::normaliseLink($server_url)]);
 
 		if (!DBA::isResult($gserver)) {
 			return;
@@ -1538,13 +1547,13 @@ class PortableContact
 	 */
 	private static function fetchServerlist($poco)
 	{
-		$serverret = Network::curl($poco . "/@server");
+		$curlResult = Network::curl($poco . "/@server");
 
-		if (!$serverret["success"]) {
+		if (!$curlResult->isSuccess()) {
 			return;
 		}
 
-		$serverlist = json_decode($serverret['body'], true);
+		$serverlist = json_decode($curlResult->getBody(), true);
 
 		if (!is_array($serverlist)) {
 			return;
@@ -1553,10 +1562,10 @@ class PortableContact
 		foreach ($serverlist as $server) {
 			$server_url = str_replace("/index.php", "", $server['url']);
 
-			$r = q("SELECT `nurl` FROM `gserver` WHERE `nurl` = '%s'", DBA::escape(normalise_link($server_url)));
+			$r = q("SELECT `nurl` FROM `gserver` WHERE `nurl` = '%s'", DBA::escape(Strings::normaliseLink($server_url)));
 
 			if (!DBA::isResult($r)) {
-				logger("Call server check for server ".$server_url, LOGGER_DEBUG);
+				Logger::log("Call server check for server ".$server_url, Logger::DEBUG);
 				Worker::add(PRIORITY_LOW, "DiscoverPoCo", "server", $server_url);
 			}
 		}
@@ -1575,10 +1584,10 @@ class PortableContact
 		}
 
 		// Discover Friendica, Hubzilla and Diaspora servers
-		$serverdata = Network::fetchUrl("http://the-federation.info/pods.json");
+		$curlResult = Network::fetchUrl("http://the-federation.info/pods.json");
 
-		if (!empty($serverdata)) {
-			$servers = json_decode($serverdata, true);
+		if (!empty($curlResult)) {
+			$servers = json_decode($curlResult, true);
 
 			if (!empty($servers['pods'])) {
 				foreach ($servers['pods'] as $server) {
@@ -1594,10 +1603,10 @@ class PortableContact
 			if (!empty($accesstoken)) {
 				$api = 'https://instances.social/api/1.0/instances/list?count=0';
 				$header = ['Authorization: Bearer '.$accesstoken];
-				$serverdata = Network::curl($api, false, $redirects, ['headers' => $header]);
+				$curlResult = Network::curl($api, false, $redirects, ['headers' => $header]);
 
-				if ($serverdata['success']) {
-					$servers = json_decode($serverdata['body'], true);
+				if ($curlResult->isSuccess()) {
+					$servers = json_decode($curlResult->getBody(), true);
 
 					foreach ($servers['instances'] as $server) {
 						$url = (is_null($server['https_score']) ? 'http' : 'https') . '://' . $server['name'];
@@ -1613,9 +1622,9 @@ class PortableContact
 		//if (!Config::get('system','ostatus_disabled')) {
 		//	$serverdata = "http://gstools.org/api/get_open_instances/";
 
-		//	$result = Network::curl($serverdata);
-		//	if ($result["success"]) {
-		//		$servers = json_decode($result["body"], true);
+		//	$curlResult = Network::curl($serverdata);
+		//	if ($curlResult->isSuccess()) {
+		//		$servers = json_decode($result->getBody(), true);
 
 		//		foreach($servers['data'] as $server)
 		//			self::checkServer($server['instance_address']);
@@ -1641,12 +1650,12 @@ class PortableContact
 		// Fetch all users from the other server
 		$url = $server["poco"] . "/?fields=displayName,urls,photos,updated,network,aboutMe,currentLocation,tags,gender,contactType,generation";
 
-		logger("Fetch all users from the server " . $server["url"], LOGGER_DEBUG);
+		Logger::log("Fetch all users from the server " . $server["url"], Logger::DEBUG);
 
-		$retdata = Network::curl($url);
+		$curlResult = Network::curl($url);
 
-		if ($retdata["success"] && !empty($retdata["body"])) {
-			$data = json_decode($retdata["body"], true);
+		if ($curlResult->isSuccess() && !empty($curlResult->getBody())) {
+			$data = json_decode($curlResult->getBody(), true);
 
 			if (!empty($data)) {
 				self::discoverServer($data, 2);
@@ -1666,11 +1675,11 @@ class PortableContact
 
 				$success = false;
 
-				$retdata = Network::curl($url);
+				$curlResult = Network::curl($url);
 
-				if ($retdata["success"] && !empty($retdata["body"])) {
-					logger("Fetch all global contacts from the server " . $server["nurl"], LOGGER_DEBUG);
-					$data = json_decode($retdata["body"], true);
+				if ($curlResult->isSuccess() && !empty($curlResult->getBody())) {
+					Logger::log("Fetch all global contacts from the server " . $server["nurl"], Logger::DEBUG);
+					$data = json_decode($curlResult->getBody(), true);
 
 					if (!empty($data)) {
 						$success = self::discoverServer($data);
@@ -1678,7 +1687,7 @@ class PortableContact
 				}
 
 				if (!$success && (Config::get('system', 'poco_discovery') > 2)) {
-					logger("Fetch contacts from users of the server " . $server["nurl"], LOGGER_DEBUG);
+					Logger::log("Fetch contacts from users of the server " . $server["nurl"], Logger::DEBUG);
 					self::discoverServerUsers($data, $server);
 				}
 			}
@@ -1731,7 +1740,7 @@ class PortableContact
 					continue;
 				}
 
-				logger('Update directory from server ' . $gserver['url'] . ' with ID ' . $gserver['id'], LOGGER_DEBUG);
+				Logger::log('Update directory from server ' . $gserver['url'] . ' with ID ' . $gserver['id'], Logger::DEBUG);
 				Worker::add(PRIORITY_LOW, 'DiscoverPoCo', 'update_server_directory', (int) $gserver['id']);
 
 				if (!$complete && ( --$no_of_queries == 0)) {
@@ -1761,15 +1770,15 @@ class PortableContact
 			}
 
 			if ($username != '') {
-				logger('Fetch contacts for the user ' . $username . ' from the server ' . $server['nurl'], LOGGER_DEBUG);
+				Logger::log('Fetch contacts for the user ' . $username . ' from the server ' . $server['nurl'], Logger::DEBUG);
 
 				// Fetch all contacts from a given user from the other server
 				$url = $server['poco'] . '/' . $username . '/?fields=displayName,urls,photos,updated,network,aboutMe,currentLocation,tags,gender,contactType,generation';
 
-				$retdata = Network::curl($url);
+				$curlResult = Network::curl($url);
 
-				if (!empty($retdata['success'])) {
-					$data = json_decode($retdata["body"], true);
+				if ($curlResult->isSuccess()) {
+					$data = json_decode($curlResult["body"], true);
 
 					if (!empty($data)) {
 						self::discoverServer($data, 3);
@@ -1793,7 +1802,7 @@ class PortableContact
 			$connect_url = '';
 			$name = '';
 			$network = '';
-			$updated = NULL_DATE;
+			$updated = DBA::NULL_DATETIME;
 			$location = '';
 			$about = '';
 			$keywords = '';
@@ -1864,7 +1873,7 @@ class PortableContact
 			if ($generation > 0) {
 				$success = true;
 
-				logger("Store profile ".$profile_url, LOGGER_DEBUG);
+				Logger::log("Store profile ".$profile_url, Logger::DEBUG);
 
 				$gcontact = ["url" => $profile_url,
 						"name" => $name,
@@ -1883,10 +1892,10 @@ class PortableContact
 					$gcontact = GContact::sanitize($gcontact);
 					GContact::update($gcontact);
 				} catch (Exception $e) {
-					logger($e->getMessage(), LOGGER_DEBUG);
+					Logger::log($e->getMessage(), Logger::DEBUG);
 				}
 
-				logger("Done for profile ".$profile_url, LOGGER_DEBUG);
+				Logger::log("Done for profile ".$profile_url, Logger::DEBUG);
 			}
 		}
 		return $success;

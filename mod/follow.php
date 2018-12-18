@@ -6,12 +6,14 @@ use Friendica\App;
 use Friendica\Core\Config;
 use Friendica\Core\L10n;
 use Friendica\Core\Protocol;
+use Friendica\Core\Renderer;
 use Friendica\Core\System;
 use Friendica\Model\Contact;
 use Friendica\Model\Profile;
 use Friendica\Network\Probe;
 use Friendica\Database\DBA;
 use Friendica\Util\Proxy as ProxyUtils;
+use Friendica\Util\Strings;
 
 function follow_post(App $a)
 {
@@ -20,12 +22,12 @@ function follow_post(App $a)
 	}
 
 	if (isset($_REQUEST['cancel'])) {
-		goaway($_SESSION['return_url']);
+		$a->internalRedirect('contact');
 	}
 
 	$uid = local_user();
-	$url = notags(trim($_REQUEST['url']));
-	$return_url = $_SESSION['return_url'];
+	$url = Strings::escapeTags(trim($_REQUEST['url']));
+	$return_path = 'follow?url=' . urlencode($url);
 
 	// Makes the connection request for friendica contacts easier
 	// This is just a precaution if maybe this page is called somewhere directly via POST
@@ -37,27 +39,29 @@ function follow_post(App $a)
 		if ($result['message']) {
 			notice($result['message']);
 		}
-		goaway($return_url);
+		$a->internalRedirect($return_path);
 	} elseif ($result['cid']) {
-		goaway(System::baseUrl() . '/contacts/' . $result['cid']);
+		$a->internalRedirect('contact/' . $result['cid']);
 	}
 
 	info(L10n::t('The contact could not be added.'));
 
-	goaway($return_url);
+	$a->internalRedirect($return_path);
 	// NOTREACHED
 }
 
 function follow_content(App $a)
 {
+	$return_path = 'contact';
+
 	if (!local_user()) {
 		notice(L10n::t('Permission denied.'));
-		goaway($_SESSION['return_url']);
+		$a->internalRedirect($return_path);
 		// NOTREACHED
 	}
 
 	$uid = local_user();
-	$url = notags(trim($_REQUEST['url']));
+	$url = Strings::escapeTags(trim($_REQUEST['url']));
 
 	$submit = L10n::t('Submit Request');
 
@@ -65,14 +69,14 @@ function follow_content(App $a)
 	$r = q("SELECT `pending` FROM `contact` WHERE `uid` = %d AND ((`rel` != %d) OR (`network` = '%s')) AND
 		(`nurl` = '%s' OR `alias` = '%s' OR `alias` = '%s') AND
 		`network` != '%s' LIMIT 1",
-		intval(local_user()), DBA::escape(Contact::FOLLOWER), DBA::escape(Protocol::DFRN), DBA::escape(normalise_link($url)),
-		DBA::escape(normalise_link($url)), DBA::escape($url), DBA::escape(Protocol::STATUSNET));
+		intval(local_user()), DBA::escape(Contact::FOLLOWER), DBA::escape(Protocol::DFRN), DBA::escape(Strings::normaliseLink($url)),
+		DBA::escape(Strings::normaliseLink($url)), DBA::escape($url), DBA::escape(Protocol::STATUSNET));
 
 	if ($r) {
 		if ($r[0]['pending']) {
 			notice(L10n::t('You already added this contact.'));
 			$submit = '';
-			//goaway($_SESSION['return_url']);
+			//$a->internalRedirect($_SESSION['return_path']);
 			// NOTREACHED
 		}
 	}
@@ -82,21 +86,21 @@ function follow_content(App $a)
 	if (($ret['network'] == Protocol::DIASPORA) && !Config::get('system', 'diaspora_enabled')) {
 		notice(L10n::t("Diaspora support isn't enabled. Contact can't be added."));
 		$submit = '';
-		//goaway($_SESSION['return_url']);
+		//$a->internalRedirect($_SESSION['return_path']);
 		// NOTREACHED
 	}
 
 	if (($ret['network'] == Protocol::OSTATUS) && Config::get('system', 'ostatus_disabled')) {
 		notice(L10n::t("OStatus support is disabled. Contact can't be added."));
 		$submit = '';
-		//goaway($_SESSION['return_url']);
+		//$a->internalRedirect($_SESSION['return_path']);
 		// NOTREACHED
 	}
 
 	if ($ret['network'] == Protocol::PHANTOM) {
 		notice(L10n::t("The network type couldn't be detected. Contact can't be added."));
 		$submit = '';
-		//goaway($_SESSION['return_url']);
+		//$a->internalRedirect($_SESSION['return_path']);
 		// NOTREACHED
 	}
 
@@ -106,17 +110,17 @@ function follow_content(App $a)
 
 	if (($ret['network'] === Protocol::DFRN) && !DBA::isResult($r)) {
 		$request = $ret['request'];
-		$tpl = get_markup_template('dfrn_request.tpl');
+		$tpl = Renderer::getMarkupTemplate('dfrn_request.tpl');
 	} else {
 		$request = System::baseUrl() . '/follow';
-		$tpl = get_markup_template('auto_request.tpl');
+		$tpl = Renderer::getMarkupTemplate('auto_request.tpl');
 	}
 
 	$r = q("SELECT `url` FROM `contact` WHERE `uid` = %d AND `self` LIMIT 1", intval($uid));
 
 	if (!$r) {
 		notice(L10n::t('Permission denied.'));
-		goaway($_SESSION['return_url']);
+		$a->internalRedirect($return_path);
 		// NOTREACHED
 	}
 
@@ -127,7 +131,7 @@ function follow_content(App $a)
 	$_SESSION['fastlane'] = $ret['url'];
 
 	$r = q("SELECT `id`, `location`, `about`, `keywords` FROM `gcontact` WHERE `nurl` = '%s'",
-		normalise_link($ret['url']));
+		Strings::normaliseLink($ret['url']));
 
 	if (!$r) {
 		$r = [['location' => '', 'about' => '', 'keywords' => '']];
@@ -142,7 +146,7 @@ function follow_content(App $a)
 
 	$header = L10n::t('Connect/Follow');
 
-	$o = replace_macros($tpl, [
+	$o = Renderer::replaceMacros($tpl, [
 		'$header'        => htmlentities($header),
 		//'$photo'         => ProxyUtils::proxifyUrl($ret['photo'], false, ProxyUtils::SIZE_SMALL),
 		'$desc'          => '',
@@ -185,7 +189,7 @@ function follow_content(App $a)
 	}
 
 	if ($gcontact_id <> 0) {
-		$o .= replace_macros(get_markup_template('section_title.tpl'),
+		$o .= Renderer::replaceMacros(Renderer::getMarkupTemplate('section_title.tpl'),
 			['$title' => L10n::t('Status Messages and Posts')]
 		);
 

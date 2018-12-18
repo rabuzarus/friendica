@@ -6,6 +6,7 @@ namespace Friendica\Database;
 // Please use App->getConfigVariable() instead.
 //use Friendica\Core\Config;
 
+use Friendica\Core\Logger;
 use Friendica\Core\System;
 use Friendica\Util\DateTimeFormat;
 use mysqli;
@@ -24,6 +25,15 @@ require_once 'include/dba.php';
  */
 class DBA
 {
+	/**
+	 * Lowest possible date value
+	 */
+	const NULL_DATE     = '0001-01-01';
+	/**
+	 * Lowest possible datetime value
+	 */
+	const NULL_DATETIME = '0001-01-01 00:00:00';
+
 	public static $connected = false;
 
 	private static $server_info = '';
@@ -403,7 +413,7 @@ class DBA
 
 		if ((substr_count($sql, '?') != count($args)) && (count($args) > 0)) {
 			// Question: Should we continue or stop the query here?
-			logger('Parameter mismatch. Query "'.$sql.'" - Parameters '.print_r($args, true), LOGGER_DEBUG);
+			Logger::log('Parameter mismatch. Query "'.$sql.'" - Parameters '.print_r($args, true), Logger::DEBUG);
 		}
 
 		$sql = self::cleanQuery($sql);
@@ -543,7 +553,7 @@ class DBA
 			$error = self::$error;
 			$errorno = self::$errorno;
 
-			logger('DB Error '.self::$errorno.': '.self::$error."\n".
+			Logger::log('DB Error '.self::$errorno.': '.self::$error."\n".
 				System::callstack(8)."\n".self::replaceParameters($sql, $args));
 
 			// On a lost connection we try to reconnect - but only once.
@@ -551,14 +561,14 @@ class DBA
 				if (self::$in_retrial || !self::reconnect()) {
 					// It doesn't make sense to continue when the database connection was lost
 					if (self::$in_retrial) {
-						logger('Giving up retrial because of database error '.$errorno.': '.$error);
+						Logger::log('Giving up retrial because of database error '.$errorno.': '.$error);
 					} else {
-						logger("Couldn't reconnect after database error ".$errorno.': '.$error);
+						Logger::log("Couldn't reconnect after database error ".$errorno.': '.$error);
 					}
 					exit(1);
 				} else {
 					// We try it again
-					logger('Reconnected after database error '.$errorno.': '.$error);
+					Logger::log('Reconnected after database error '.$errorno.': '.$error);
 					self::$in_retrial = true;
 					$ret = self::p($sql, $args);
 					self::$in_retrial = false;
@@ -570,7 +580,7 @@ class DBA
 			self::$errorno = $errorno;
 		}
 
-		$a->save_timestamp($stamp1, 'database');
+		$a->saveTimestamp($stamp1, 'database');
 
 		if ($a->getConfigValue('system', 'db_log')) {
 			$stamp2 = microtime(true);
@@ -627,13 +637,13 @@ class DBA
 			$error = self::$error;
 			$errorno = self::$errorno;
 
-			logger('DB Error '.self::$errorno.': '.self::$error."\n".
+			Logger::log('DB Error '.self::$errorno.': '.self::$error."\n".
 				System::callstack(8)."\n".self::replaceParameters($sql, $params));
 
 			// On a lost connection we simply quit.
 			// A reconnect like in self::p could be dangerous with modifications
 			if ($errorno == 2006) {
-				logger('Giving up because of database error '.$errorno.': '.$error);
+				Logger::log('Giving up because of database error '.$errorno.': '.$error);
 				exit(1);
 			}
 
@@ -641,7 +651,7 @@ class DBA
 			self::$errorno = $errorno;
 		}
 
-		$a->save_timestamp($stamp, "database_write");
+		$a->saveTimestamp($stamp, "database_write");
 
 		return $retval;
 	}
@@ -809,7 +819,7 @@ class DBA
 				}
 		}
 
-		$a->save_timestamp($stamp1, 'database');
+		$a->saveTimestamp($stamp1, 'database');
 
 		return $columns;
 	}
@@ -821,12 +831,12 @@ class DBA
 	 * @param array $param parameter array
 	 * @param bool $on_duplicate_update Do an update on a duplicate entry
 	 *
-	 * @return boolean was the insert successfull?
+	 * @return boolean was the insert successful?
 	 */
 	public static function insert($table, $param, $on_duplicate_update = false) {
 
 		if (empty($table) || empty($param)) {
-			logger('Table and fields have to be set');
+			Logger::log('Table and fields have to be set');
 			return false;
 		}
 
@@ -1034,15 +1044,14 @@ class DBA
 	 * @param array   $options
 	 *                - cascade: If true we delete records in other tables that depend on the one we're deleting through
 	 *                           relations (default: true)
-	 * @param boolean $in_process  Internal use: Only do a commit after the last delete
 	 * @param array   $callstack   Internal use: prevent endless loops
 	 *
-	 * @return boolean|array was the delete successful? When $in_process is set: deletion data
+	 * @return boolean was the delete successful?
 	 */
-	public static function delete($table, array $conditions, array $options = [], $in_process = false, array &$callstack = [])
+	public static function delete($table, array $conditions, array $options = [], array &$callstack = [])
 	{
 		if (empty($table) || empty($conditions)) {
-			logger('Table and conditions have to be set');
+			Logger::log('Table and conditions have to be set');
 			return false;
 		}
 
@@ -1088,22 +1097,18 @@ class DBA
 			if ((count($conditions) == 1) && ($field == array_keys($conditions)[0])) {
 				foreach ($rel_def AS $rel_table => $rel_fields) {
 					foreach ($rel_fields AS $rel_field) {
-						$retval = self::delete($rel_table, [$rel_field => array_values($conditions)[0]], $options, true, $callstack);
-						$commands = array_merge($commands, $retval);
+						$retval = self::delete($rel_table, [$rel_field => array_values($conditions)[0]], $options, $callstack);
 					}
 				}
 				// We quit when this key already exists in the callstack.
 			} elseif (!isset($callstack[$qkey])) {
-
 				$callstack[$qkey] = true;
 
 				// Fetch all rows that are to be deleted
 				$data = self::select($table, [$field], $conditions);
 
 				while ($row = self::fetch($data)) {
-					// Now we accumulate the delete commands
-					$retval = self::delete($table, [$field => $row[$field]], $options, true, $callstack);
-					$commands = array_merge($commands, $retval);
+					self::delete($table, [$field => $row[$field]], $options, $callstack);
 				}
 
 				self::close($data);
@@ -1113,74 +1118,70 @@ class DBA
 			}
 		}
 
-		if (!$in_process) {
-			// Now we finalize the process
-			$do_transaction = !self::$in_transaction;
+		// Now we finalize the process
+		$do_transaction = !self::$in_transaction;
 
-			if ($do_transaction) {
-				self::transaction();
+		if ($do_transaction) {
+			self::transaction();
+		}
+
+		$compacted = [];
+		$counter = [];
+
+		foreach ($commands AS $command) {
+			$conditions = $command['conditions'];
+			reset($conditions);
+			$first_key = key($conditions);
+
+			$condition_string = self::buildCondition($conditions);
+
+			if ((count($command['conditions']) > 1) || is_int($first_key)) {
+				$sql = "DELETE FROM `" . $command['table'] . "`" . $condition_string;
+				Logger::log(self::replaceParameters($sql, $conditions), Logger::DATA);
+
+				if (!self::e($sql, $conditions)) {
+					if ($do_transaction) {
+						self::rollback();
+					}
+					return false;
+				}
+			} else {
+				$key_table = $command['table'];
+				$key_condition = array_keys($command['conditions'])[0];
+				$value = array_values($command['conditions'])[0];
+
+				// Split the SQL queries in chunks of 100 values
+				// We do the $i stuff here to make the code better readable
+				$i = isset($counter[$key_table][$key_condition]) ? $counter[$key_table][$key_condition] : 0;
+				if (isset($compacted[$key_table][$key_condition][$i]) && count($compacted[$key_table][$key_condition][$i]) > 100) {
+					++$i;
+				}
+
+				$compacted[$key_table][$key_condition][$i][$value] = $value;
+				$counter[$key_table][$key_condition] = $i;
 			}
+		}
+		foreach ($compacted AS $table => $values) {
+			foreach ($values AS $field => $field_value_list) {
+				foreach ($field_value_list AS $field_values) {
+					$sql = "DELETE FROM `" . $table . "` WHERE `" . $field . "` IN (" .
+						substr(str_repeat("?, ", count($field_values)), 0, -2) . ");";
 
-			$compacted = [];
-			$counter = [];
+					Logger::log(self::replaceParameters($sql, $field_values), Logger::DATA);
 
-			foreach ($commands AS $command) {
-				$conditions = $command['conditions'];
-				reset($conditions);
-				$first_key = key($conditions);
-
-				$condition_string = self::buildCondition($conditions);
-
-				if ((count($command['conditions']) > 1) || is_int($first_key)) {
-					$sql = "DELETE FROM `" . $command['table'] . "`" . $condition_string;
-					logger(self::replaceParameters($sql, $conditions), LOGGER_DATA);
-
-					if (!self::e($sql, $conditions)) {
+					if (!self::e($sql, $field_values)) {
 						if ($do_transaction) {
 							self::rollback();
 						}
 						return false;
 					}
-				} else {
-					$key_table = $command['table'];
-					$key_condition = array_keys($command['conditions'])[0];
-					$value = array_values($command['conditions'])[0];
-
-					// Split the SQL queries in chunks of 100 values
-					// We do the $i stuff here to make the code better readable
-					$i = isset($counter[$key_table][$key_condition]) ? $counter[$key_table][$key_condition] : 0;
-					if (isset($compacted[$key_table][$key_condition][$i]) && count($compacted[$key_table][$key_condition][$i]) > 100) {
-						++$i;
-					}
-
-					$compacted[$key_table][$key_condition][$i][$value] = $value;
-					$counter[$key_table][$key_condition] = $i;
 				}
 			}
-			foreach ($compacted AS $table => $values) {
-				foreach ($values AS $field => $field_value_list) {
-					foreach ($field_value_list AS $field_values) {
-						$sql = "DELETE FROM `" . $table . "` WHERE `" . $field . "` IN (" .
-							substr(str_repeat("?, ", count($field_values)), 0, -2) . ");";
-
-						logger(self::replaceParameters($sql, $field_values), LOGGER_DATA);
-
-						if (!self::e($sql, $field_values)) {
-							if ($do_transaction) {
-								self::rollback();
-							}
-							return false;
-						}
-					}
-				}
-			}
-			if ($do_transaction) {
-				self::commit();
-			}
-			return true;
 		}
-
-		return $commands;
+		if ($do_transaction) {
+			self::commit();
+		}
+		return true;
 	}
 
 	/**
@@ -1214,7 +1215,7 @@ class DBA
 	public static function update($table, $fields, $condition, $old_fields = []) {
 
 		if (empty($table) || empty($fields) || empty($condition)) {
-			logger('Table, fields and condition have to be set');
+			Logger::log('Table, fields and condition have to be set');
 			return false;
 		}
 
@@ -1547,7 +1548,7 @@ class DBA
 				break;
 		}
 
-		$a->save_timestamp($stamp1, 'database');
+		$a->saveTimestamp($stamp1, 'database');
 
 		return $ret;
 	}

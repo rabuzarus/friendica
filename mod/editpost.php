@@ -7,9 +7,12 @@ use Friendica\Content\Feature;
 use Friendica\Core\Addon;
 use Friendica\Core\Config;
 use Friendica\Core\L10n;
+use Friendica\Core\Renderer;
 use Friendica\Core\System;
+use Friendica\Model\FileTag;
 use Friendica\Model\Item;
 use Friendica\Database\DBA;
+use Friendica\Util\Crypto;
 
 function editpost_content(App $a)
 {
@@ -28,7 +31,7 @@ function editpost_content(App $a)
 	}
 
 	$fields = ['allow_cid', 'allow_gid', 'deny_cid', 'deny_gid',
-		'type', 'body', 'title', 'file', 'wall', 'post-type'];
+		'type', 'body', 'title', 'file', 'wall', 'post-type', 'guid'];
 
 	$item = Item::selectFirstForUser(local_user(), $fields, ['id' => $post_id, 'uid' => local_user()]);
 
@@ -39,28 +42,19 @@ function editpost_content(App $a)
 
 	$geotag = '';
 
-	$o .= replace_macros(get_markup_template("section_title.tpl"), [
+	$o .= Renderer::replaceMacros(Renderer::getMarkupTemplate("section_title.tpl"), [
 		'$title' => L10n::t('Edit post')
 	]);
 
-	$tpl = get_markup_template('jot-header.tpl');
-	$a->page['htmlhead'] .= replace_macros($tpl, [
+	$tpl = Renderer::getMarkupTemplate('jot-header.tpl');
+	$a->page['htmlhead'] .= Renderer::replaceMacros($tpl, [
 		'$baseurl' => System::baseUrl(),
 		'$ispublic' => '&nbsp;', // L10n::t('Visible to <strong>everybody</strong>'),
 		'$geotag' => $geotag,
 		'$nickname' => $a->user['nickname']
 	]);
 
-	$tpl = get_markup_template('jot-end.tpl');
-	$a->page['end'] .= replace_macros($tpl, [
-		'$baseurl' => System::baseUrl(),
-		'$ispublic' => '&nbsp;', // L10n::t('Visible to <strong>everybody</strong>'),
-		'$geotag' => $geotag,
-		'$nickname' => $a->user['nickname']
-	]);
-
-
-	$tpl = get_markup_template("jot.tpl");
+	$tpl = Renderer::getMarkupTemplate("jot.tpl");
 
 	if (strlen($item['allow_cid']) || strlen($item['allow_gid']) || strlen($item['deny_cid']) || strlen($item['deny_gid'])) {
 		$lockstate = 'lock';
@@ -93,9 +87,9 @@ function editpost_content(App $a)
 	Addon::callHooks('jot_tool', $jotplugins);
 	//Addon::callHooks('jot_networks', $jotnets);
 
-	$o .= replace_macros($tpl, [
+	$o .= Renderer::replaceMacros($tpl, [
 		'$is_edit' => true,
-		'$return_path' => $_SESSION['return_url'],
+		'$return_path' => '/display/' . $item['guid'],
 		'$action' => 'item',
 		'$share' => L10n::t('Save'),
 		'$upload' => L10n::t('Upload photo'),
@@ -127,7 +121,7 @@ function editpost_content(App $a)
 		'$jotnets' => $jotnets,
 		'$title' => htmlspecialchars($item['title']),
 		'$placeholdertitle' => L10n::t('Set title'),
-		'$category' => file_tag_file_to_list($item['file'], 'category'),
+		'$category' => FileTag::fileToList($item['file'], 'category'),
 		'$placeholdercategory' => (Feature::isEnabled(local_user(),'categories') ? L10n::t("Categories \x28comma-separated list\x29") : ''),
 		'$emtitle' => L10n::t('Example: bob@example.com, mary@example.com'),
 		'$lockstate' => $lockstate,
@@ -138,7 +132,7 @@ function editpost_content(App $a)
 		'$jotplugins' => $jotplugins,
 		'$sourceapp' => L10n::t($a->sourcename),
 		'$cancel' => L10n::t('Cancel'),
-		'$rand_num' => random_digits(12),
+		'$rand_num' => Crypto::randomDigits(12),
 
 		//jot nav tab (used in some themes)
 		'$message' => L10n::t('Message'),

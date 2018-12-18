@@ -5,15 +5,13 @@
 namespace Friendica;
 
 use Detection\MobileDetect;
+use DOMDocument;
+use DOMXPath;
 use Exception;
-use Friendica\Core\Config;
-use Friendica\Core\L10n;
-use Friendica\Core\PConfig;
-use Friendica\Core\System;
 use Friendica\Database\DBA;
+use Friendica\Network\HTTPException\InternalServerErrorException;
 
 require_once 'boot.php';
-require_once 'include/dba.php';
 require_once 'include/text.php';
 
 /**
@@ -31,28 +29,11 @@ require_once 'include/text.php';
  */
 class App
 {
-	const MODE_LOCALCONFIGPRESENT = 1;
-	const MODE_DBAVAILABLE = 2;
-	const MODE_DBCONFIGAVAILABLE = 4;
-	const MODE_MAINTENANCEDISABLED = 8;
-
-	/**
-	 * @deprecated since version 2008.08 Use App->isInstallMode() instead to check for install mode.
-	 */
-	const MODE_INSTALL = 0;
-
-	/**
-	 * @deprecated since version 2008.08 Use the precise mode constant to check for a specific capability instead.
-	 */
-	const MODE_NORMAL = App::MODE_LOCALCONFIGPRESENT | App::MODE_DBAVAILABLE | App::MODE_DBCONFIGAVAILABLE | App::MODE_MAINTENANCEDISABLED;
-
 	public $module_loaded = false;
 	public $module_class = null;
 	public $query_string = '';
 	public $config = [];
 	public $page = [];
-	public $pager = [];
-	public $page_offset;
 	public $profile;
 	public $profile_uid;
 	public $user;
@@ -67,25 +48,14 @@ class App
 	public $argv;
 	public $argc;
 	public $module;
-	public $mode = App::MODE_INSTALL;
-	public $strings;
-	public $basepath;
-	public $urlpath;
-	public $hooks = [];
 	public $timezone;
 	public $interactive = true;
-	public $addons;
-	public $addons_admin = [];
-	public $apps = [];
 	public $identities;
 	public $is_mobile = false;
 	public $is_tablet = false;
-	public $is_friendica_app;
 	public $performance = [];
 	public $callstack = [];
 	public $theme_info = [];
-	public $backend = true;
-	public $nav_sel;
 	public $category;
 	// Allow themes to control internal parameters
 	// by changing App values in theme.php
@@ -96,62 +66,100 @@ class App
 	public $force_max_items = 0;
 	public $theme_events_in_profile = true;
 
+	public $stylesheets = [];
+	public $footerScripts = [];
+
 	/**
-	 * @brief An array for all theme-controllable parameters
+	 * @var App\Mode The Mode of the Application
+	 */
+	private $mode;
+
+	/**
+	 * @var string The App base path
+	 */
+	private $basePath;
+
+	/**
+	 * @var string The App URL path
+	 */
+	private $urlPath;
+
+	/**
+	 * @var bool true, if the call is from the Friendica APP, otherwise false
+	 */
+	private $isFriendicaApp;
+
+	/**
+	 * @var bool true, if the call is from an backend node (f.e. worker)
+	 */
+	private $isBackend;
+
+	/**
+	 * @var string The name of the current theme
+	 */
+	private $currentTheme;
+
+	/**
+	 * @var bool check if request was an AJAX (xmlhttprequest) request
+	 */
+	private $isAjax;
+
+	/**
+	 * Register a stylesheet file path to be included in the <head> tag of every page.
+	 * Inclusion is done in App->initHead().
+	 * The path can be absolute or relative to the Friendica installation base folder.
 	 *
-	 * Mostly unimplemented yet. Only options 'template_engine' and
-	 * beyond are used.
+	 * @see initHead()
+	 *
+	 * @param string $path
 	 */
-	public $theme = [
-		'sourcename' => '',
-		'videowidth' => 425,
-		'videoheight' => 350,
-		'force_max_items' => 0,
-		'stylesheet' => '',
-		'template_engine' => 'smarty3',
-	];
+	public function registerStylesheet($path)
+	{
+		$url = str_replace($this->getBasePath() . DIRECTORY_SEPARATOR, '', $path);
+
+		$this->stylesheets[] = trim($url, '/');
+	}
 
 	/**
-	 * @brief An array of registered template engines ('name'=>'class name')
+	 * Register a javascript file path to be included in the <footer> tag of every page.
+	 * Inclusion is done in App->initFooter().
+	 * The path can be absolute or relative to the Friendica installation base folder.
+	 *
+	 * @see initFooter()
+	 *
+	 * @param string $path
 	 */
-	public $template_engines = [];
+	public function registerFooterScript($path)
+	{
+		$url = str_replace($this->getBasePath() . DIRECTORY_SEPARATOR, '', $path);
 
-	/**
-	 * @brief An array of instanced template engines ('name'=>'instance')
-	 */
-	public $template_engine_instance = [];
+		$this->footerScripts[] = trim($url, '/');
+	}
+
 	public $process_id;
 	public $queue;
-	private $ldelim = [
-		'internal' => '',
-		'smarty3' => '{{'
-	];
-	private $rdelim = [
-		'internal' => '',
-		'smarty3' => '}}'
-	];
 	private $scheme;
 	private $hostname;
-	private $curl_code;
-	private $curl_content_type;
-	private $curl_headers;
 
 	/**
 	 * @brief App constructor.
 	 *
-	 * @param string $basepath Path to the app base folder
+	 * @param string $basePath  Path to the app base folder
+	 * @param bool   $isBackend Whether it is used for backend or frontend (Default true=backend)
 	 *
 	 * @throws Exception if the Basepath is not usable
 	 */
-	public function __construct($basepath)
+	public function __construct($basePath, $isBackend = true)
 	{
-		if (!static::directory_usable($basepath, false)) {
-			throw new Exception('Basepath ' . $basepath . ' isn\'t usable.');
+		if (!static::isDirectoryUsable($basePath, false)) {
+			throw new Exception('Basepath ' . $basePath . ' isn\'t usable.');
 		}
 
 		BaseObject::setApp($this);
 
-		$this->basepath = rtrim($basepath, DIRECTORY_SEPARATOR);
+		$this->basePath = rtrim($basePath, DIRECTORY_SEPARATOR);
+		$this->checkBackend($isBackend);
+		$this->checkFriendicaApp();
 
 		$this->performance['start'] = microtime(true);
 		$this->performance['database'] = 0;
@@ -174,6 +182,8 @@ class App
 		$this->callstack['rendering'] = [];
 		$this->callstack['parser'] = [];
 
+		$this->mode = new App\Mode($basePath);
+
 		$this->reload();
 
 		set_time_limit(0);
@@ -183,33 +193,33 @@ class App
 
 		$this->scheme = 'http';
 
-		if ((x($_SERVER, 'HTTPS') && $_SERVER['HTTPS']) ||
-			(x($_SERVER, 'HTTP_FORWARDED') && preg_match('/proto=https/', $_SERVER['HTTP_FORWARDED'])) ||
-			(x($_SERVER, 'HTTP_X_FORWARDED_PROTO') && $_SERVER['HTTP_X_FORWARDED_PROTO'] == 'https') ||
-			(x($_SERVER, 'HTTP_X_FORWARDED_SSL') && $_SERVER['HTTP_X_FORWARDED_SSL'] == 'on') ||
-			(x($_SERVER, 'FRONT_END_HTTPS') && $_SERVER['FRONT_END_HTTPS'] == 'on') ||
-			(x($_SERVER, 'SERVER_PORT') && (intval($_SERVER['SERVER_PORT']) == 443)) // XXX: reasonable assumption, but isn't this hardcoding too much?
+		if (!empty($_SERVER['HTTPS']) ||
+			!empty($_SERVER['HTTP_FORWARDED']) && preg_match('/proto=https/', $_SERVER['HTTP_FORWARDED']) ||
+			!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] == 'https' ||
+			!empty($_SERVER['HTTP_X_FORWARDED_SSL']) && $_SERVER['HTTP_X_FORWARDED_SSL'] == 'on' ||
+			!empty($_SERVER['FRONT_END_HTTPS']) && $_SERVER['FRONT_END_HTTPS'] == 'on' ||
+			!empty($_SERVER['SERVER_PORT']) && (intval($_SERVER['SERVER_PORT']) == 443) // XXX: reasonable assumption, but isn't this hardcoding too much?
 		) {
 			$this->scheme = 'https';
 		}
 
-		if (x($_SERVER, 'SERVER_NAME')) {
+		if (!empty($_SERVER['SERVER_NAME'])) {
 			$this->hostname = $_SERVER['SERVER_NAME'];
 
-			if (x($_SERVER, 'SERVER_PORT') && $_SERVER['SERVER_PORT'] != 80 && $_SERVER['SERVER_PORT'] != 443) {
+			if (!empty($_SERVER['SERVER_PORT']) && $_SERVER['SERVER_PORT'] != 80 && $_SERVER['SERVER_PORT'] != 443) {
 				$this->hostname .= ':' . $_SERVER['SERVER_PORT'];
 			}
 		}
 
 		set_include_path(
 			get_include_path() . PATH_SEPARATOR
-			. $this->basepath . DIRECTORY_SEPARATOR . 'include' . PATH_SEPARATOR
-			. $this->basepath . DIRECTORY_SEPARATOR . 'library' . PATH_SEPARATOR
-			. $this->basepath);
+			. $this->getBasePath() . DIRECTORY_SEPARATOR . 'include' . PATH_SEPARATOR
+			. $this->getBasePath() . DIRECTORY_SEPARATOR . 'library' . PATH_SEPARATOR
+			. $this->getBasePath());
 
-		if ((x($_SERVER, 'QUERY_STRING')) && substr($_SERVER['QUERY_STRING'], 0, 9) === 'pagename=') {
+		if (!empty($_SERVER['QUERY_STRING']) && strpos($_SERVER['QUERY_STRING'], 'pagename=') === 0) {
 			$this->query_string = substr($_SERVER['QUERY_STRING'], 9);
-		} elseif ((x($_SERVER, 'QUERY_STRING')) && substr($_SERVER['QUERY_STRING'], 0, 2) === 'q=') {
+		} elseif (!empty($_SERVER['QUERY_STRING']) && strpos($_SERVER['QUERY_STRING'], 'q=') === 0) {
 			$this->query_string = substr($_SERVER['QUERY_STRING'], 2);
 		}
 
@@ -259,26 +269,31 @@ class App
 			$this->module = 'home';
 		}
 
-		// See if there is any page number information, and initialise pagination
-		$this->pager['page'] = ((x($_GET, 'page') && intval($_GET['page']) > 0) ? intval($_GET['page']) : 1);
-		$this->pager['itemspage'] = 50;
-		$this->pager['start'] = ($this->pager['page'] * $this->pager['itemspage']) - $this->pager['itemspage'];
-
-		if ($this->pager['start'] < 0) {
-			$this->pager['start'] = 0;
-		}
-		$this->pager['total'] = 0;
-
 		// Detect mobile devices
 		$mobile_detect = new MobileDetect();
 		$this->is_mobile = $mobile_detect->isMobile();
 		$this->is_tablet = $mobile_detect->isTablet();
 
-		// Friendica-Client
-		$this->is_friendica_app = isset($_SERVER['HTTP_USER_AGENT']) && $_SERVER['HTTP_USER_AGENT'] == 'Apache-HttpClient/UNAVAILABLE (java 1.4)';
+		$this->isAjax = strtolower(defaults($_SERVER, 'HTTP_X_REQUESTED_WITH', '')) == 'xmlhttprequest';
 
 		// Register template engines
-		$this->register_template_engine('Friendica\Render\FriendicaSmartyEngine');
+		Core\Renderer::registerTemplateEngine('Friendica\Render\FriendicaSmartyEngine');
+	}
+
+	/**
+	 * Returns the Mode of the Application
+	 *
+	 * @return App\Mode The Application Mode
+	 *
+	 * @throws InternalServerErrorException when the mode isn't created
+	 */
+	public function getMode()
+	{
+		if (empty($this->mode)) {
+			throw new InternalServerErrorException('Mode of the Application is not defined');
+		}
+
+		return $this->mode;
 	}
 
 	/**
@@ -291,59 +306,47 @@ class App
 
 		$this->loadDatabase();
 
-		$this->determineMode();
+		$this->getMode()->determine($this->getBasePath());
 
-		$this->determineUrlPath();
+		$this->determineURLPath();
 
-		Config::load();
+		Core\Config::load();
 
-		if ($this->mode & self::MODE_DBAVAILABLE) {
-			Core\Addon::loadHooks();
+		if ($this->getMode()->has(App\Mode::DBAVAILABLE)) {
+			Core\Hook::loadHooks();
 
 			$this->loadAddonConfig();
 		}
 
 		$this->loadDefaultTimezone();
 
-		$this->page = [
-			'aside' => '',
-			'bottom' => '',
-			'content' => '',
-			'end' => '',
-			'footer' => '',
-			'htmlhead' => '',
-			'nav' => '',
-			'page_title' => '',
-			'right_aside' => '',
-			'template' => '',
-			'title' => ''
-		];
+		Core\L10n::init();
 
-		$this->process_id = System::processID('log');
+		$this->process_id = Core\System::processID('log');
 	}
 
 	/**
 	 * Load the configuration files
 	 *
 	 * First loads the default value for all the configuration keys, then the legacy configuration files, then the
-	 * expected local.ini.php
+	 * expected local.config.php
 	 */
 	private function loadConfigFiles()
 	{
-		$this->loadConfigFile($this->basepath . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'config.ini.php');
-		$this->loadConfigFile($this->basepath . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'settings.ini.php');
+		$this->loadConfigFile($this->getBasePath() . '/config/defaults.config.php');
+		$this->loadConfigFile($this->getBasePath() . '/config/settings.config.php');
 
 		// Legacy .htconfig.php support
-		if (file_exists($this->basepath . DIRECTORY_SEPARATOR . '.htpreconfig.php')) {
+		if (file_exists($this->getBasePath() . '/.htpreconfig.php')) {
 			$a = $this;
-			include $this->basepath . DIRECTORY_SEPARATOR . '.htpreconfig.php';
+			include $this->getBasePath() . '/.htpreconfig.php';
 		}
 
 		// Legacy .htconfig.php support
-		if (file_exists($this->basepath . DIRECTORY_SEPARATOR . '.htconfig.php')) {
+		if (file_exists($this->getBasePath() . '/.htconfig.php')) {
 			$a = $this;
 
-			include $this->basepath . DIRECTORY_SEPARATOR . '.htconfig.php';
+			include $this->getBasePath() . '/.htconfig.php';
 
 			$this->setConfigValue('database', 'hostname', $db_host);
 			$this->setConfigValue('database', 'username', $db_user);
@@ -371,32 +374,26 @@ class App
 			}
 		}
 
-		if (file_exists($this->basepath . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'local.ini.php')) {
-			$this->loadConfigFile($this->basepath . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'local.ini.php');
+		if (file_exists($this->getBasePath() . '/config/local.config.php')) {
+			$this->loadConfigFile($this->getBasePath() . '/config/local.config.php', true);
+		} elseif (file_exists($this->getBasePath() . '/config/local.ini.php')) {
+			$this->loadINIConfigFile($this->getBasePath() . '/config/local.ini.php', true);
 		}
 	}
 
 	/**
-	 * Tries to load the specified configuration file into the App->config array.
-	 * Overwrites previously set values.
+	 * Tries to load the specified legacy configuration file into the App->config array.
+	 * Doesn't overwrite previously set values by default to prevent default config files to supersede DB Config.
 	 *
-	 * The config format is INI and the template for configuration files is the following:
-	 *
-	 * <?php return <<<INI
-	 *
-	 * [section]
-	 * key = value
-	 *
-	 * INI;
-	 * // Keep this line
-	 *
-	 * @param type $filepath
+	 * @deprecated since version 2018.12
+	 * @param string $filepath
+	 * @param bool $overwrite Force value overwrite if the config key already exists
 	 * @throws Exception
 	 */
-	public function loadConfigFile($filepath)
+	public function loadINIConfigFile($filepath, $overwrite = false)
 	{
 		if (!file_exists($filepath)) {
-			throw new Exception('Error parsing non-existent config file ' . $filepath);
+			throw new Exception('Error parsing non-existent INI config file ' . $filepath);
 		}
 
 		$contents = include($filepath);
@@ -404,30 +401,79 @@ class App
 		$config = parse_ini_string($contents, true, INI_SCANNER_TYPED);
 
 		if ($config === false) {
-			throw new Exception('Error parsing config file ' . $filepath);
+			throw new Exception('Error parsing INI config file ' . $filepath);
 		}
 
-		foreach ($config as $category => $values) {
-			foreach ($values as $key => $value) {
-				$this->setConfigValue($category, $key, $value);
-			}
+		$this->loadConfigArray($config, $overwrite);
+	}
+
+	/**
+	 * Tries to load the specified configuration file into the App->config array.
+	 * Doesn't overwrite previously set values by default to prevent default config files to supersede DB Config.
+	 *
+	 * The config format is PHP array and the template for configuration files is the following:
+	 *
+	 * <?php return [
+	 *      'section' => [
+	 *          'key' => 'value',
+	 *      ],
+	 * ];
+	 *
+	 * @param string $filepath
+	 * @param bool $overwrite Force value overwrite if the config key already exists
+	 * @throws Exception
+	 */
+	public function loadConfigFile($filepath, $overwrite = false)
+	{
+		if (!file_exists($filepath)) {
+			throw new Exception('Error loading non-existent config file ' . $filepath);
 		}
+
+		$config = include($filepath);
+
+		if (!is_array($config)) {
+			throw new Exception('Error loading config file ' . $filepath);
+		}
+
+		$this->loadConfigArray($config, $overwrite);
 	}
 
 	/**
 	 * Loads addons configuration files
 	 *
-	 * First loads all activated addons default configuration throught the load_config hook, then load the local.ini.php
+	 * First loads all activated addons default configuration through the load_config hook, then load the local.config.php
 	 * again to overwrite potential local addon configuration.
 	 */
 	private function loadAddonConfig()
 	{
 		// Loads addons default config
-		Core\Addon::callHooks('load_config');
+		Core\Hook::callAll('load_config');
 
 		// Load the local addon config file to overwritten default addon config values
-		if (file_exists($this->basepath . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'addon.ini.php')) {
-			$this->loadConfigFile($this->basepath . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'addon.ini.php');
+		if (file_exists($this->getBasePath() . '/config/addon.config.php')) {
+			$this->loadConfigFile($this->getBasePath() . '/config/addon.config.php', true);
+		} elseif (file_exists($this->getBasePath() . '/config/addon.ini.php')) {
+			$this->loadINIConfigFile($this->getBasePath() . '/config/addon.ini.php', true);
+		}
+	}
+
+	/**
+	 * Tries to load the specified configuration array into the App->config array.
+	 * Doesn't overwrite previously set values by default to prevent default config files to supersede DB Config.
+	 *
+	 * @param array $config
+	 * @param bool  $overwrite Force value overwrite if the config key already exists
+	 */
+	private function loadConfigArray(array $config, $overwrite = false)
+	{
+		foreach ($config as $category => $values) {
+			foreach ($values as $key => $value) {
+				if ($overwrite) {
+					$this->setConfigValue($category, $key, $value);
+				} else {
+					$this->setDefaultConfigValue($category, $key, $value);
+				}
+			}
 		}
 	}
 
@@ -455,67 +501,38 @@ class App
 	/**
 	 * Figure out if we are running at the top of a domain or in a sub-directory and adjust accordingly
 	 */
-	private function determineUrlPath()
+	private function determineURLPath()
 	{
-		$this->urlpath = $this->getConfigValue('system', 'urlpath');
+		/* Relative script path to the web server root
+		 * Not all of those $_SERVER properties can be present, so we do by inverse priority order
+		 */
+		$relative_script_path = '';
+		$relative_script_path = defaults($_SERVER, 'REDIRECT_URL'       , $relative_script_path);
+		$relative_script_path = defaults($_SERVER, 'REDIRECT_URI'       , $relative_script_path);
+		$relative_script_path = defaults($_SERVER, 'REDIRECT_SCRIPT_URL', $relative_script_path);
+		$relative_script_path = defaults($_SERVER, 'SCRIPT_URL'         , $relative_script_path);
+		$relative_script_path = defaults($_SERVER, 'REQUEST_URI'        , $relative_script_path);
 
-		/* SCRIPT_URL gives /path/to/friendica/module/parameter
+		$this->urlPath = $this->getConfigValue('system', 'urlpath');
+
+		/* $relative_script_path gives /relative/path/to/friendica/module/parameter
 		 * QUERY_STRING gives pagename=module/parameter
 		 *
-		 * To get /path/to/friendica we perform dirname() for as many levels as there are slashes in the QUERY_STRING
+		 * To get /relative/path/to/friendica we perform dirname() for as many levels as there are slashes in the QUERY_STRING
 		 */
-		if (!empty($_SERVER['SCRIPT_URL'])) {
+		if (!empty($relative_script_path)) {
 			// Module
 			if (!empty($_SERVER['QUERY_STRING'])) {
-				$path = trim(dirname($_SERVER['SCRIPT_URL'], substr_count(trim($_SERVER['QUERY_STRING'], '/'), '/') + 1), '/');
+				$path = trim(dirname($relative_script_path, substr_count(trim($_SERVER['QUERY_STRING'], '/'), '/') + 1), '/');
 			} else {
 				// Root page
-				$path = trim($_SERVER['SCRIPT_URL'], '/');
+				$path = trim($relative_script_path, '/');
 			}
 
-			if ($path && $path != $this->urlpath) {
-				$this->urlpath = $path;
+			if ($path && $path != $this->urlPath) {
+				$this->urlPath = $path;
 			}
 		}
-	}
-
-	/**
-	 * Sets the App mode
-	 *
-	 * - App::MODE_INSTALL    : Either the database connection can't be established or the config table doesn't exist
-	 * - App::MODE_MAINTENANCE: The maintenance mode has been set
-	 * - App::MODE_NORMAL     : Normal run with all features enabled
-	 *
-	 * @return type
-	 */
-	private function determineMode()
-	{
-		$this->mode = 0;
-
-		if (!file_exists($this->basepath . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'local.ini.php')
-			&& !file_exists($this->basepath . DIRECTORY_SEPARATOR . '.htconfig.php')) {
-			return;
-		}
-
-		$this->mode |= App::MODE_LOCALCONFIGPRESENT;
-
-		if (!DBA::connected()) {
-			return;
-		}
-
-		$this->mode |= App::MODE_DBAVAILABLE;
-
-		if (DBA::fetchFirst("SHOW TABLES LIKE 'config'") === false) {
-			return;
-		}
-
-		$this->mode |= App::MODE_DBCONFIGAVAILABLE;
-
-		if (Config::get('system', 'maintenance')) {
-			return;
-		}
-
-		$this->mode |= App::MODE_MAINTENANCEDISABLED;
 	}
 
 	public function loadDatabase()
@@ -532,7 +549,7 @@ class App
 
 		// Use environment variables for mysql if they are set beforehand
 		if (!empty(getenv('MYSQL_HOST'))
-			&& (!empty(getenv('MYSQL_USERNAME')) || !empty(getenv('MYSQL_USER')))
+			&& !empty(getenv('MYSQL_USERNAME') || !empty(getenv('MYSQL_USER')))
 			&& getenv('MYSQL_PASSWORD') !== false
 			&& !empty(getenv('MYSQL_DATABASE')))
 		{
@@ -551,20 +568,14 @@ class App
 
 		$stamp1 = microtime(true);
 
-		DBA::connect($db_host, $db_user, $db_pass, $db_data, $charset);
+		if (DBA::connect($db_host, $db_user, $db_pass, $db_data, $charset)) {
+			// Loads DB_UPDATE_VERSION constant
+			Database\DBStructure::definition(false);
+		}
+
 		unset($db_host, $db_user, $db_pass, $db_data, $charset);
 
-		$this->save_timestamp($stamp1, 'network');
-	}
-
-	/**
-	 * Install mode is when the local config file is missing or the DB schema hasn't been installed yet.
-	 *
-	 * @return bool
-	 */
-	public function isInstallMode()
-	{
-		return !($this->mode & App::MODE_LOCALCONFIGPRESENT) || !($this->mode & App::MODE_DBCONFIGAVAILABLE);
+		$this->saveTimestamp($stamp1, 'network');
 	}
 
 	/**
@@ -575,23 +586,23 @@ class App
 	 *
 	 * @return string
 	 */
-	public function get_basepath()
+	public function getBasePath()
 	{
-		$basepath = $this->basepath;
+		$basepath = $this->basePath;
 
 		if (!$basepath) {
-			$basepath = Config::get('system', 'basepath');
+			$basepath = Core\Config::get('system', 'basepath');
 		}
 
-		if (!$basepath && x($_SERVER, 'DOCUMENT_ROOT')) {
+		if (!$basepath && !empty($_SERVER['DOCUMENT_ROOT'])) {
 			$basepath = $_SERVER['DOCUMENT_ROOT'];
 		}
 
-		if (!$basepath && x($_SERVER, 'PWD')) {
+		if (!$basepath && !empty($_SERVER['PWD'])) {
 			$basepath = $_SERVER['PWD'];
 		}
 
-		return self::realpath($basepath);
+		return self::getRealPath($basepath);
 	}
 
 	/**
@@ -604,7 +615,7 @@ class App
 	 * @param string $path The path that is about to be normalized
 	 * @return string normalized path - when possible
 	 */
-	public static function realpath($path)
+	public static function getRealPath($path)
 	{
 		$normalized = realpath($path);
 
@@ -615,7 +626,7 @@ class App
 		}
 	}
 
-	public function get_scheme()
+	public function getScheme()
 	{
 		return $this->scheme;
 	}
@@ -634,18 +645,18 @@ class App
 	 * @param bool $ssl Whether to append http or https under SSL_POLICY_SELFSIGN
 	 * @return string Friendica server base URL
 	 */
-	public function get_baseurl($ssl = false)
+	public function getBaseURL($ssl = false)
 	{
 		$scheme = $this->scheme;
 
-		if (Config::get('system', 'ssl_policy') == SSL_POLICY_FULL) {
+		if (Core\Config::get('system', 'ssl_policy') == SSL_POLICY_FULL) {
 			$scheme = 'https';
 		}
 
 		//	Basically, we have $ssl = true on any links which can only be seen by a logged in user
 		//	(and also the login link). Anything seen by an outsider will have it turned off.
 
-		if (Config::get('system', 'ssl_policy') == SSL_POLICY_SELFSIGN) {
+		if (Core\Config::get('system', 'ssl_policy') == SSL_POLICY_SELFSIGN) {
 			if ($ssl) {
 				$scheme = 'https';
 			} else {
@@ -653,11 +664,11 @@ class App
 			}
 		}
 
-		if (Config::get('config', 'hostname') != '') {
-			$this->hostname = Config::get('config', 'hostname');
+		if (Core\Config::get('config', 'hostname') != '') {
+			$this->hostname = Core\Config::get('config', 'hostname');
 		}
 
-		return $scheme . '://' . $this->hostname . (!empty($this->urlpath) ? '/' . $this->urlpath : '' );
+		return $scheme . '://' . $this->hostname . !empty($this->getURLPath() ? '/' . $this->getURLPath() : '' );
 	}
 
 	/**
@@ -667,12 +678,12 @@ class App
 	 *
 	 * @param string $url
 	 */
-	public function set_baseurl($url)
+	public function setBaseURL($url)
 	{
 		$parsed = @parse_url($url);
 		$hostname = '';
 
-		if (x($parsed)) {
+		if (!empty($parsed)) {
 			if (!empty($parsed['scheme'])) {
 				$this->scheme = $parsed['scheme'];
 			}
@@ -681,19 +692,19 @@ class App
 				$hostname = $parsed['host'];
 			}
 
-			if (x($parsed, 'port')) {
+			if (!empty($parsed['port'])) {
 				$hostname .= ':' . $parsed['port'];
 			}
-			if (x($parsed, 'path')) {
-				$this->urlpath = trim($parsed['path'], '\\/');
+			if (!empty($parsed['path'])) {
+				$this->urlPath = trim($parsed['path'], '\\/');
 			}
 
-			if (file_exists($this->basepath . DIRECTORY_SEPARATOR . '.htpreconfig.php')) {
-				include $this->basepath . DIRECTORY_SEPARATOR . '.htpreconfig.php';
+			if (file_exists($this->getBasePath() . '/.htpreconfig.php')) {
+				include $this->getBasePath() . '/.htpreconfig.php';
 			}
 
-			if (Config::get('config', 'hostname') != '') {
-				$this->hostname = Config::get('config', 'hostname');
+			if (Core\Config::get('config', 'hostname') != '') {
+				$this->hostname = Core\Config::get('config', 'hostname');
 			}
 
 			if (!isset($this->hostname) || ($this->hostname == '')) {
@@ -702,40 +713,33 @@ class App
 		}
 	}
 
-	public function get_hostname()
+	public function getHostName()
 	{
-		if (Config::get('config', 'hostname') != '') {
-			$this->hostname = Config::get('config', 'hostname');
+		if (Core\Config::get('config', 'hostname') != '') {
+			$this->hostname = Core\Config::get('config', 'hostname');
 		}
 
 		return $this->hostname;
 	}
 
-	public function get_path()
+	public function getURLPath()
 	{
-		return $this->urlpath;
+		return $this->urlPath;
 	}
 
-	public function set_pager_total($n)
+	/**
+	 * Initializes App->page['htmlhead'].
+	 *
+	 * Includes:
+	 * - Page title
+	 * - Favicons
+	 * - Registered stylesheets (through App->registerStylesheet())
+	 * - Infinite scroll data
+	 * - head.tpl template
+	 */
+	public function initHead()
 	{
-		$this->pager['total'] = intval($n);
-	}
-
-	public function set_pager_itemspage($n)
-	{
-		$this->pager['itemspage'] = ((intval($n) > 0) ? intval($n) : 0);
-		$this->pager['start'] = ($this->pager['page'] * $this->pager['itemspage']) - $this->pager['itemspage'];
-	}
-
-	public function set_pager_page($n)
-	{
-		$this->pager['page'] = $n;
-		$this->pager['start'] = ($this->pager['page'] * $this->pager['itemspage']) - $this->pager['itemspage'];
-	}
-
-	public function init_pagehead()
-	{
-		$interval = ((local_user()) ? PConfig::get(local_user(), 'system', 'update_interval') : 40000);
+		$interval = ((local_user()) ? Core\PConfig::get(local_user(), 'system', 'update_interval') : 40000);
 
 		// If the update is 'deactivated' set it to the highest integer number (~24 days)
 		if ($interval < 0) {
@@ -754,196 +758,128 @@ class App
 			$this->page['title'] = $this->config['sitename'];
 		}
 
-		/* put the head template at the beginning of page['htmlhead']
-		 * since the code added by the modules frequently depends on it
-		 * being first
-		 */
-		if (!isset($this->page['htmlhead'])) {
-			$this->page['htmlhead'] = '';
-		}
-
-		// If we're using Smarty, then doing replace_macros() will replace
-		// any unrecognized variables with a blank string. Since we delay
-		// replacing $stylesheet until later, we need to replace it now
-		// with another variable name
-		if ($this->theme['template_engine'] === 'smarty3') {
-			$stylesheet = $this->get_template_ldelim('smarty3') . '$stylesheet' . $this->get_template_rdelim('smarty3');
+		if (!empty(Core\Renderer::$theme['stylesheet'])) {
+			$stylesheet = Core\Renderer::$theme['stylesheet'];
 		} else {
-			$stylesheet = '$stylesheet';
+			$stylesheet = $this->getCurrentThemeStylesheetPath();
 		}
 
-		$shortcut_icon = Config::get('system', 'shortcut_icon');
+		$this->registerStylesheet($stylesheet);
+
+		$shortcut_icon = Core\Config::get('system', 'shortcut_icon');
 		if ($shortcut_icon == '') {
 			$shortcut_icon = 'images/friendica-32.png';
 		}
 
-		$touch_icon = Config::get('system', 'touch_icon');
+		$touch_icon = Core\Config::get('system', 'touch_icon');
 		if ($touch_icon == '') {
 			$touch_icon = 'images/friendica-128.png';
 		}
 
-		// get data wich is needed for infinite scroll on the network page
-		$invinite_scroll = infinite_scroll_data($this->module);
+		Core\Addon::callHooks('head', $this->page['htmlhead']);
 
-		$tpl = get_markup_template('head.tpl');
-		$this->page['htmlhead'] = replace_macros($tpl, [
-			'$baseurl'         => $this->get_baseurl(),
+		$tpl = Core\Renderer::getMarkupTemplate('head.tpl');
+		/* put the head template at the beginning of page['htmlhead']
+		 * since the code added by the modules frequently depends on it
+		 * being first
+		 */
+		$this->page['htmlhead'] = Core\Renderer::replaceMacros($tpl, [
+			'$baseurl'         => $this->getBaseURL(),
 			'$local_user'      => local_user(),
 			'$generator'       => 'Friendica' . ' ' . FRIENDICA_VERSION,
-			'$delitem'         => L10n::t('Delete this item?'),
-			'$showmore'        => L10n::t('show more'),
-			'$showfewer'       => L10n::t('show fewer'),
+			'$delitem'         => Core\L10n::t('Delete this item?'),
+			'$showmore'        => Core\L10n::t('show more'),
+			'$showfewer'       => Core\L10n::t('show fewer'),
 			'$update_interval' => $interval,
 			'$shortcut_icon'   => $shortcut_icon,
 			'$touch_icon'      => $touch_icon,
-			'$stylesheet'      => $stylesheet,
-			'$infinite_scroll' => $invinite_scroll,
-			'$block_public'    => intval(Config::get('system', 'block_public')),
+			'$block_public'    => intval(Core\Config::get('system', 'block_public')),
+			'$stylesheets'     => $this->stylesheets,
 		]) . $this->page['htmlhead'];
 	}
 
-	public function init_page_end()
+	/**
+	 * Initializes App->page['footer'].
+	 *
+	 * Includes:
+	 * - Javascript homebase
+	 * - Mobile toggle link
+	 * - Registered footer scripts (through App->registerFooterScript())
+	 * - footer.tpl template
+	 */
+	public function initFooter()
 	{
-		if (!isset($this->page['end'])) {
-			$this->page['end'] = '';
+		// If you're just visiting, let javascript take you home
+		if (!empty($_SESSION['visitor_home'])) {
+			$homebase = $_SESSION['visitor_home'];
+		} elseif (local_user()) {
+			$homebase = 'profile/' . $this->user['nickname'];
 		}
-		$tpl = get_markup_template('end.tpl');
-		$this->page['end'] = replace_macros($tpl, [
-			'$baseurl' => $this->get_baseurl()
-		]) . $this->page['end'];
-	}
 
-	public function set_curl_code($code)
-	{
-		$this->curl_code = $code;
-	}
+		if (isset($homebase)) {
+			$this->page['footer'] .= '<script>var homebase="' . $homebase . '";</script>' . "\n";
+		}
 
-	public function get_curl_code()
-	{
-		return $this->curl_code;
-	}
+		/*
+		 * Add a "toggle mobile" link if we're using a mobile device
+		 */
+		if ($this->is_mobile || $this->is_tablet) {
+			if (isset($_SESSION['show-mobile']) && !$_SESSION['show-mobile']) {
+				$link = 'toggle_mobile?address=' . urlencode(curPageURL());
+			} else {
+				$link = 'toggle_mobile?off=1&address=' . urlencode(curPageURL());
+			}
+			$this->page['footer'] .= Core\Renderer::replaceMacros(Core\Renderer::getMarkupTemplate("toggle_mobile_footer.tpl"), [
+				'$toggle_link' => $link,
+				'$toggle_text' => Core\L10n::t('toggle mobile')
+			]);
+		}
 
-	public function set_curl_content_type($content_type)
-	{
-		$this->curl_content_type = $content_type;
-	}
+		Core\Addon::callHooks('footer', $this->page['footer']);
 
-	public function get_curl_content_type()
-	{
-		return $this->curl_content_type;
-	}
-
-	public function set_curl_headers($headers)
-	{
-		$this->curl_headers = $headers;
-	}
-
-	public function get_curl_headers()
-	{
-		return $this->curl_headers;
+		$tpl = Core\Renderer::getMarkupTemplate('footer.tpl');
+		$this->page['footer'] = Core\Renderer::replaceMacros($tpl, [
+			'$baseurl' => $this->getBaseURL(),
+			'$footerScripts' => $this->footerScripts,
+		]) . $this->page['footer'];
 	}
 
 	/**
 	 * @brief Removes the base url from an url. This avoids some mixed content problems.
 	 *
-	 * @param string $orig_url
+	 * @param string $origURL
 	 *
 	 * @return string The cleaned url
 	 */
-	public function remove_baseurl($orig_url)
+	public function removeBaseURL($origURL)
 	{
 		// Remove the hostname from the url if it is an internal link
-		$nurl = normalise_link($orig_url);
-		$base = normalise_link($this->get_baseurl());
+		$nurl = Util\Strings::normaliseLink($origURL);
+		$base = Util\Strings::normaliseLink($this->getBaseURL());
 		$url = str_replace($base . '/', '', $nurl);
 
 		// if it is an external link return the orignal value
-		if ($url == normalise_link($orig_url)) {
-			return $orig_url;
+		if ($url == Util\Strings::normaliseLink($origURL)) {
+			return $origURL;
 		} else {
 			return $url;
 		}
 	}
 
 	/**
-	 * @brief Register template engine class
+	 * Saves a timestamp for a value - f.e. a call
+	 * Necessary for profiling Friendica
 	 *
-	 * @param string $class
+	 * @param int $timestamp the Timestamp
+	 * @param string $value A value to profile
 	 */
-	private function register_template_engine($class)
-	{
-		$v = get_class_vars($class);
-		if (x($v, 'name')) {
-			$name = $v['name'];
-			$this->template_engines[$name] = $class;
-		} else {
-			echo "template engine <tt>$class</tt> cannot be registered without a name.\n";
-			die();
-		}
-	}
-
-	/**
-	 * @brief Return template engine instance.
-	 *
-	 * If $name is not defined, return engine defined by theme,
-	 * or default
-	 *
-	 * @return object Template Engine instance
-	 */
-	public function template_engine()
-	{
-		$template_engine = 'smarty3';
-		if (x($this->theme, 'template_engine')) {
-			$template_engine = $this->theme['template_engine'];
-		}
-
-		if (isset($this->template_engines[$template_engine])) {
-			if (isset($this->template_engine_instance[$template_engine])) {
-				return $this->template_engine_instance[$template_engine];
-			} else {
-				$class = $this->template_engines[$template_engine];
-				$obj = new $class;
-				$this->template_engine_instance[$template_engine] = $obj;
-				return $obj;
-			}
-		}
-
-		echo "template engine <tt>$template_engine</tt> is not registered!\n";
-		killme();
-	}
-
-	/**
-	 * @brief Returns the active template engine.
-	 *
-	 * @return string
-	 */
-	public function get_template_engine()
-	{
-		return $this->theme['template_engine'];
-	}
-
-	public function set_template_engine($engine = 'smarty3')
-	{
-		$this->theme['template_engine'] = $engine;
-	}
-
-	public function get_template_ldelim($engine = 'smarty3')
-	{
-		return $this->ldelim[$engine];
-	}
-
-	public function get_template_rdelim($engine = 'smarty3')
-	{
-		return $this->rdelim[$engine];
-	}
-
-	public function save_timestamp($stamp, $value)
+	public function saveTimestamp($timestamp, $value)
 	{
 		if (!isset($this->config['system']['profiler']) || !$this->config['system']['profiler']) {
 			return;
 		}
 
-		$duration = (float) (microtime(true) - $stamp);
+		$duration = (float) (microtime(true) - $timestamp);
 
 		if (!isset($this->performance[$value])) {
 			// Prevent ugly E_NOTICE
@@ -953,7 +889,7 @@ class App
 		$this->performance[$value] += (float) $duration;
 		$this->performance['marktime'] += (float) $duration;
 
-		$callstack = System::callstack();
+		$callstack = Core\System::callstack();
 
 		if (!isset($this->callstack[$value][$callstack])) {
 			// Prevent ugly E_NOTICE
@@ -963,19 +899,41 @@ class App
 		$this->callstack[$value][$callstack] += (float) $duration;
 	}
 
-	public function get_useragent()
+	/**
+	 * Returns the current UserAgent as a String
+	 *
+	 * @return string the UserAgent as a String
+	 */
+	public function getUserAgent()
 	{
 		return
 			FRIENDICA_PLATFORM . " '" .
 			FRIENDICA_CODENAME . "' " .
 			FRIENDICA_VERSION . '-' .
 			DB_UPDATE_VERSION . '; ' .
-			$this->get_baseurl();
+			$this->getBaseURL();
 	}
 
-	public function is_friendica_app()
+	/**
+	 * Checks, if the call is from the Friendica App
+	 *
+	 * Reason:
+	 * The friendica client has problems with the GUID in the notify. this is some workaround
+	 */
+	private function checkFriendicaApp()
 	{
-		return $this->is_friendica_app;
+		// Friendica-Client
+		$this->isFriendicaApp = isset($_SERVER['HTTP_USER_AGENT']) && $_SERVER['HTTP_USER_AGENT'] == 'Apache-HttpClient/UNAVAILABLE (java 1.4)';
+	}
+
+	/**
+	 * 	Is the call via the Friendica app? (not a "normale" call)
+	 *
+	 * @return bool true if it's from the Friendica app
+	 */
+	public function isFriendicaApp()
+	{
+		return $this->isFriendicaApp;
 	}
 
 	/**
@@ -984,10 +942,10 @@ class App
 	 * This isn't a perfect solution. But we need this check very early.
 	 * So we cannot wait until the modules are loaded.
 	 *
-	 * @return bool Is it a known backend?
+	 * @param string $backend true, if the backend flag was set during App initialization
+	 *
 	 */
-	public function is_backend()
-	{
+	private function checkBackend($backend) {
 		static $backends = [
 			'_well_known',
 			'api',
@@ -1011,7 +969,17 @@ class App
 		];
 
 		// Check if current module is in backend or backend flag is set
-		return (in_array($this->module, $backends) || $this->backend);
+		$this->isBackend = (in_array($this->module, $backends) || $backend || $this->isBackend);
+	}
+
+	/**
+	 * Returns true, if the call is from a backend node (f.e. from a worker)
+	 *
+	 * @return bool Is it a known backend?
+	 */
+	public function isBackend()
+	{
+		return $this->isBackend;
 	}
 
 	/**
@@ -1029,13 +997,13 @@ class App
 		 *
 		if ($this->is_backend()) {
 			$process = 'backend';
-			$max_processes = Config::get('system', 'max_processes_backend');
+			$max_processes = Core\Config::get('system', 'max_processes_backend');
 			if (intval($max_processes) == 0) {
 				$max_processes = 5;
 			}
 		} else {
 			$process = 'frontend';
-			$max_processes = Config::get('system', 'max_processes_frontend');
+			$max_processes = Core\Config::get('system', 'max_processes_frontend');
 			if (intval($max_processes) == 0) {
 				$max_processes = 20;
 			}
@@ -1043,10 +1011,10 @@ class App
 
 		$processlist = DBA::processlist();
 		if ($processlist['list'] != '') {
-			logger('Processcheck: Processes: ' . $processlist['amount'] . ' - Processlist: ' . $processlist['list'], LOGGER_DEBUG);
+			Core\Logger::log('Processcheck: Processes: ' . $processlist['amount'] . ' - Processlist: ' . $processlist['list'], Core\Logger::DEBUG);
 
 			if ($processlist['amount'] > $max_processes) {
-				logger('Processcheck: Maximum number of processes for ' . $process . ' tasks (' . $max_processes . ') reached.', LOGGER_DEBUG);
+				Core\Logger::log('Processcheck: Maximum number of processes for ' . $process . ' tasks (' . $max_processes . ') reached.', Core\Logger::DEBUG);
 				return true;
 			}
 		}
@@ -1059,9 +1027,9 @@ class App
 	 *
 	 * @return bool Is the memory limit reached?
 	 */
-	public function min_memory_reached()
+	public function isMinMemoryReached()
 	{
-		$min_memory = Config::get('system', 'min_memory', 0);
+		$min_memory = Core\Config::get('system', 'min_memory', 0);
 		if ($min_memory == 0) {
 			return false;
 		}
@@ -1074,21 +1042,25 @@ class App
 
 		$meminfo = [];
 		foreach ($memdata as $line) {
-			list($key, $val) = explode(':', $line);
+			$data = explode(':', $line);
+			if (count($data) != 2) {
+				continue;
+			}
+			list($key, $val) = $data;
 			$meminfo[$key] = (int) trim(str_replace('kB', '', $val));
 			$meminfo[$key] = (int) ($meminfo[$key] / 1024);
 		}
 
-		if (!isset($meminfo['MemAvailable']) || !isset($meminfo['MemFree'])) {
+		if (!isset($meminfo['MemFree'])) {
 			return false;
 		}
 
-		$free = $meminfo['MemAvailable'] + $meminfo['MemFree'];
+		$free = $meminfo['MemFree'];
 
 		$reached = ($free < $min_memory);
 
 		if ($reached) {
-			logger('Minimal memory reached: ' . $free . '/' . $meminfo['MemTotal'] . ' - limit ' . $min_memory, LOGGER_DEBUG);
+			Core\Logger::log('Minimal memory reached: ' . $free . '/' . $meminfo['MemTotal'] . ' - limit ' . $min_memory, Core\Logger::DEBUG);
 		}
 
 		return $reached;
@@ -1101,24 +1073,24 @@ class App
 	 */
 	public function isMaxLoadReached()
 	{
-		if ($this->is_backend()) {
+		if ($this->isBackend()) {
 			$process = 'backend';
-			$maxsysload = intval(Config::get('system', 'maxloadavg'));
+			$maxsysload = intval(Core\Config::get('system', 'maxloadavg'));
 			if ($maxsysload < 1) {
 				$maxsysload = 50;
 			}
 		} else {
 			$process = 'frontend';
-			$maxsysload = intval(Config::get('system', 'maxloadavg_frontend'));
+			$maxsysload = intval(Core\Config::get('system', 'maxloadavg_frontend'));
 			if ($maxsysload < 1) {
 				$maxsysload = 50;
 			}
 		}
 
-		$load = current_load();
+		$load = Core\System::currentLoad();
 		if ($load) {
 			if (intval($load) > $maxsysload) {
-				logger('system: load ' . $load . ' for ' . $process . ' tasks (' . $maxsysload . ') too high.');
+				Core\Logger::log('system: load ' . $load . ' for ' . $process . ' tasks (' . $maxsysload . ') too high.');
 				return true;
 			}
 		}
@@ -1150,17 +1122,17 @@ class App
 			}
 		}
 
-		if ($this->min_memory_reached()) {
+		if ($this->isMinMemoryReached()) {
 			return;
 		}
 
 		if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
-			$resource = proc_open('cmd /c start /b ' . $cmdline, [], $foo, $this->get_basepath());
+			$resource = proc_open('cmd /c start /b ' . $cmdline, [], $foo, $this->getBasePath());
 		} else {
-			$resource = proc_open($cmdline . ' &', [], $foo, $this->get_basepath());
+			$resource = proc_open($cmdline . ' &', [], $foo, $this->getBasePath());
 		}
 		if (!is_resource($resource)) {
-			logger('We got no resource for command ' . $cmdline, LOGGER_DEBUG);
+			Core\Logger::log('We got no resource for command ' . $cmdline, Core\Logger::DEBUG);
 			return;
 		}
 		proc_close($resource);
@@ -1173,7 +1145,7 @@ class App
 	 *
 	 * @return string system username
 	 */
-	private static function systemuser()
+	private static function getSystemUser()
 	{
 		if (!function_exists('posix_getpwuid') || !function_exists('posix_geteuid')) {
 			return '';
@@ -1188,30 +1160,30 @@ class App
 	 *
 	 * @return boolean the directory is usable
 	 */
-	public static function directory_usable($directory, $check_writable = true)
+	public static function isDirectoryUsable($directory, $check_writable = true)
 	{
 		if ($directory == '') {
-			logger('Directory is empty. This shouldn\'t happen.', LOGGER_DEBUG);
+			Core\Logger::log('Directory is empty. This shouldn\'t happen.', Core\Logger::DEBUG);
 			return false;
 		}
 
 		if (!file_exists($directory)) {
-			logger('Path "' . $directory . '" does not exist for user ' . self::systemuser(), LOGGER_DEBUG);
+			Core\Logger::log('Path "' . $directory . '" does not exist for user ' . self::getSystemUser(), Core\Logger::DEBUG);
 			return false;
 		}
 
 		if (is_file($directory)) {
-			logger('Path "' . $directory . '" is a file for user ' . self::systemuser(), LOGGER_DEBUG);
+			Core\Logger::log('Path "' . $directory . '" is a file for user ' . self::getSystemUser(), Core\Logger::DEBUG);
 			return false;
 		}
 
 		if (!is_dir($directory)) {
-			logger('Path "' . $directory . '" is not a directory for user ' . self::systemuser(), LOGGER_DEBUG);
+			Core\Logger::log('Path "' . $directory . '" is not a directory for user ' . self::getSystemUser(), Core\Logger::DEBUG);
 			return false;
 		}
 
 		if ($check_writable && !is_writable($directory)) {
-			logger('Path "' . $directory . '" is not writable for user ' . self::systemuser(), LOGGER_DEBUG);
+			Core\Logger::log('Path "' . $directory . '" is not writable for user ' . self::getSystemUser(), Core\Logger::DEBUG);
 			return false;
 		}
 
@@ -1222,6 +1194,8 @@ class App
 	 * @param string $cat     Config category
 	 * @param string $k       Config key
 	 * @param mixed  $default Default value if it isn't set
+	 *
+	 * @return string Returns the value of the Config entry
 	 */
 	public function getConfigValue($cat, $k, $default = null)
 	{
@@ -1238,6 +1212,20 @@ class App
 		}
 
 		return $return;
+	}
+
+	/**
+	 * Sets a default value in the config cache. Ignores already existing keys.
+	 *
+	 * @param string $cat Config category
+	 * @param string $k   Config key
+	 * @param mixed  $v   Default value to set
+	 */
+	private function setDefaultConfigValue($cat, $k, $v)
+	{
+		if (!isset($this->config[$cat][$k])) {
+			$this->setConfigValue($cat, $k, $v);
+		}
 	}
 
 	/**
@@ -1290,6 +1278,8 @@ class App
 	 * @param string $cat     Config category
 	 * @param string $k       Config key
 	 * @param mixed  $default Default value if key isn't set
+	 *
+	 * @return string The value of the config entry
 	 */
 	public function getPConfigValue($uid, $cat, $k, $default = null)
 	{
@@ -1349,9 +1339,9 @@ class App
 	 */
 	public function getSenderEmailAddress()
 	{
-		$sender_email = Config::get('config', 'sender_email');
+		$sender_email = Core\Config::get('config', 'sender_email');
 		if (empty($sender_email)) {
-			$hostname = $this->get_hostname();
+			$hostname = $this->getHostName();
 			if (strpos($hostname, ':')) {
 				$hostname = substr($hostname, 0, strpos($hostname, ':'));
 			}
@@ -1365,11 +1355,11 @@ class App
 	/**
 	 * Returns the current theme name.
 	 *
-	 * @return string
+	 * @return string the name of the current theme
 	 */
 	public function getCurrentTheme()
 	{
-		if ($this->isInstallMode()) {
+		if ($this->getMode()->isInstall()) {
 			return '';
 		}
 
@@ -1378,7 +1368,7 @@ class App
 		/// https://github.com/friendica/friendica/issues/5092)
 		$this->computeCurrentTheme();
 
-		return $this->current_theme;
+		return $this->currentTheme;
 	}
 
 	/**
@@ -1388,15 +1378,15 @@ class App
 	 */
 	private function computeCurrentTheme()
 	{
-		$system_theme = Config::get('system', 'theme');
+		$system_theme = Core\Config::get('system', 'theme');
 		if (!$system_theme) {
-			throw new Exception(L10n::t('No system theme config value set.'));
+			throw new Exception(Core\L10n::t('No system theme config value set.'));
 		}
 
 		// Sane default
-		$this->current_theme = $system_theme;
+		$this->currentTheme = $system_theme;
 
-		$allowed_themes = explode(',', Config::get('system', 'allowed_themes', $system_theme));
+		$allowed_themes = explode(',', Core\Config::get('system', 'allowed_themes', $system_theme));
 
 		$page_theme = null;
 		// Find the theme that belongs to the user whose stuff we are looking at
@@ -1404,7 +1394,7 @@ class App
 			// Allow folks to override user themes and always use their own on their own site.
 			// This works only if the user is on the same server
 			$user = DBA::selectFirst('user', ['theme'], ['uid' => $this->profile_uid]);
-			if (DBA::isResult($user) && !PConfig::get(local_user(), 'system', 'always_my_theme')) {
+			if (DBA::isResult($user) && !Core\PConfig::get(local_user(), 'system', 'always_my_theme')) {
 				$page_theme = $user['theme'];
 			}
 		}
@@ -1413,7 +1403,7 @@ class App
 
 		// Specific mobile theme override
 		if (($this->is_mobile || $this->is_tablet) && Core\Session::get('show-mobile', true)) {
-			$system_mobile_theme = Config::get('system', 'mobile-theme');
+			$system_mobile_theme = Core\Config::get('system', 'mobile-theme');
 			$user_mobile_theme = Core\Session::get('mobile-theme', $system_mobile_theme);
 
 			// --- means same mobile theme as desktop
@@ -1433,7 +1423,7 @@ class App
 			&& (file_exists('view/theme/' . $theme_name . '/style.css')
 			|| file_exists('view/theme/' . $theme_name . '/style.php'))
 		) {
-			$this->current_theme = $theme_name;
+			$this->currentTheme = $theme_name;
 		}
 	}
 
@@ -1447,5 +1437,470 @@ class App
 	public function getCurrentThemeStylesheetPath()
 	{
 		return Core\Theme::getStylesheetPath($this->getCurrentTheme());
+	}
+
+	/**
+	 * Check if request was an AJAX (xmlhttprequest) request.
+	 *
+	 * @return boolean true if it was an AJAX request
+	 */
+	public function isAjax()
+	{
+		return $this->isAjax;
+	}
+
+	/**
+	 * Returns the value of a argv key
+	 * TODO there are a lot of $a->argv usages in combination with defaults() which can be replaced with this method
+	 *
+	 * @param int $position the position of the argument
+	 * @param mixed $default the default value if not found
+	 *
+	 * @return mixed returns the value of the argument
+	 */
+	public function getArgumentValue($position, $default = '')
+	{
+		if (array_key_exists($position, $this->argv)) {
+			return $this->argv[$position];
+		}
+
+		return $default;
+	}
+
+	/**
+	 * Sets the base url for use in cmdline programs which don't have
+	 * $_SERVER variables
+	 */
+	public function checkURL()
+	{
+		$url = Core\Config::get('system', 'url');
+
+		// if the url isn't set or the stored url is radically different
+		// than the currently visited url, store the current value accordingly.
+		// "Radically different" ignores common variations such as http vs https
+		// and www.example.com vs example.com.
+		// We will only change the url to an ip address if there is no existing setting
+
+		if (empty($url) || (!Util\Strings::compareLink($url, $this->getBaseURL())) && (!preg_match("/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/", $this->getHostName()))) {
+			Core\Config::set('system', 'url', $this->getBaseURL());
+		}
+	}
+
+	/**
+	 * Frontend App script
+	 *
+	 * The App object behaves like a container and a dispatcher at the same time, including a representation of the
+	 * request and a representation of the response.
+	 *
+	 * This probably should change to limit the size of this monster method.
+	 */
+	public function runFrontend()
+	{
+		// Missing DB connection: ERROR
+		if ($this->getMode()->has(App\Mode::LOCALCONFIGPRESENT) && !$this->getMode()->has(App\Mode::DBAVAILABLE)) {
+			Core\System::httpExit(500, ['title' => 'Error 500 - Internal Server Error', 'description' => 'Apologies but the website is unavailable at the moment.']);
+		}
+
+		// Max Load Average reached: ERROR
+		if ($this->isMaxProcessesReached() || $this->isMaxLoadReached()) {
+			header('Retry-After: 120');
+			header('Refresh: 120; url=' . $this->getBaseURL() . "/" . $this->query_string);
+
+			Core\System::httpExit(503, ['title' => 'Error 503 - Service Temporarily Unavailable', 'description' => 'Core\System is currently overloaded. Please try again later.']);
+		}
+
+		if (strstr($this->query_string, '.well-known/host-meta') && ($this->query_string != '.well-known/host-meta')) {
+			Core\System::httpExit(404);
+		}
+
+		if (!$this->getMode()->isInstall()) {
+			// Force SSL redirection
+			if (Core\Config::get('system', 'force_ssl') && ($this->getScheme() == "http")
+				&& intval(Core\Config::get('system', 'ssl_policy')) == SSL_POLICY_FULL
+				&& strpos($this->getBaseURL(), 'https://') === 0
+				&& $_SERVER['REQUEST_METHOD'] == 'GET') {
+				header('HTTP/1.1 302 Moved Temporarily');
+				header('Location: ' . $this->getBaseURL() . '/' . $this->query_string);
+				exit();
+			}
+
+			Core\Session::init();
+			Core\Addon::callHooks('init_1');
+		}
+
+		// Exclude the backend processes from the session management
+		if (!$this->isBackend()) {
+			$stamp1 = microtime(true);
+			session_start();
+			$this->saveTimestamp($stamp1, 'parser');
+			Core\L10n::setSessionVariable();
+			Core\L10n::setLangFromSession();
+		} else {
+			$_SESSION = [];
+			Core\Worker::executeIfIdle();
+		}
+
+		// ZRL
+		if (!empty($_GET['zrl']) && $this->getMode()->isNormal()) {
+			$this->query_string = Model\Profile::stripZrls($this->query_string);
+			if (!local_user()) {
+				// Only continue when the given profile link seems valid
+				// Valid profile links contain a path with "/profile/" and no query parameters
+				if ((parse_url($_GET['zrl'], PHP_URL_QUERY) == "") &&
+					strstr(parse_url($_GET['zrl'], PHP_URL_PATH), "/profile/")) {
+					if (defaults($_SESSION, "visitor_home", "") != $_GET["zrl"]) {
+						$_SESSION['my_url'] = $_GET['zrl'];
+						$_SESSION['authenticated'] = 0;
+					}
+					Model\Profile::zrlInit($this);
+				} else {
+					// Someone came with an invalid parameter, maybe as a DDoS attempt
+					// We simply stop processing here
+					Core\Logger::log("Invalid ZRL parameter " . $_GET['zrl'], Core\Logger::DEBUG);
+					Core\System::httpExit(403, ['title' => '403 Forbidden']);
+				}
+			}
+		}
+
+		if (!empty($_GET['owt']) && $this->getMode()->isNormal()) {
+			$token = $_GET['owt'];
+			$this->query_string = Model\Profile::stripQueryParam($this->query_string, 'owt');
+			Model\Profile::openWebAuthInit($token);
+		}
+
+		Module\Login::sessionAuth();
+
+		if (empty($_SESSION['authenticated'])) {
+			header('X-Account-Management-Status: none');
+		}
+
+		$_SESSION['sysmsg']       = defaults($_SESSION, 'sysmsg'      , []);
+		$_SESSION['sysmsg_info']  = defaults($_SESSION, 'sysmsg_info' , []);
+		$_SESSION['last_updated'] = defaults($_SESSION, 'last_updated', []);
+
+		/*
+		 * check_config() is responsible for running update scripts. These automatically
+		 * update the DB schema whenever we push a new one out. It also checks to see if
+		 * any addons have been added or removed and reacts accordingly.
+		 */
+
+		// in install mode, any url loads install module
+		// but we need "view" module for stylesheet
+		if ($this->getMode()->isInstall() && $this->module != 'view') {
+			$this->module = 'install';
+		} elseif (!$this->getMode()->has(App\Mode::MAINTENANCEDISABLED) && $this->module != 'view') {
+			$this->module = 'maintenance';
+		} else {
+			$this->checkURL();
+			Core\Update::check(false);
+			Core\Addon::loadAddons();
+			Core\Hook::loadHooks();
+		}
+
+		$this->page = [
+			'aside' => '',
+			'bottom' => '',
+			'content' => '',
+			'footer' => '',
+			'htmlhead' => '',
+			'nav' => '',
+			'page_title' => '',
+			'right_aside' => '',
+			'template' => '',
+			'title' => ''
+		];
+
+		if (strlen($this->module)) {
+			// Compatibility with the Android Diaspora client
+			if ($this->module == 'stream') {
+				$this->internalRedirect('network?f=&order=post');
+			}
+
+			if ($this->module == 'conversations') {
+				$this->internalRedirect('message');
+			}
+
+			if ($this->module == 'commented') {
+				$this->internalRedirect('network?f=&order=comment');
+			}
+
+			if ($this->module == 'liked') {
+				$this->internalRedirect('network?f=&order=comment');
+			}
+
+			if ($this->module == 'activity') {
+				$this->internalRedirect('network/?f=&conv=1');
+			}
+
+			if (($this->module == 'status_messages') && ($this->cmd == 'status_messages/new')) {
+				$this->internalRedirect('bookmarklet');
+			}
+
+			if (($this->module == 'user') && ($this->cmd == 'user/edit')) {
+				$this->internalRedirect('settings');
+			}
+
+			if (($this->module == 'tag_followings') && ($this->cmd == 'tag_followings/manage')) {
+				$this->internalRedirect('search');
+			}
+
+			// Compatibility with the Firefox App
+			if (($this->module == "users") && ($this->cmd == "users/sign_in")) {
+				$this->module = "login";
+			}
+
+			$privateapps = Core\Config::get('config', 'private_addons', false);
+			if (Core\Addon::isEnabled($this->module) && file_exists("addon/{$this->module}/{$this->module}.php")) {
+				//Check if module is an app and if public access to apps is allowed or not
+				if ((!local_user()) && Core\Hook::isAddonApp($this->module) && $privateapps) {
+					info(Core\L10n::t("You must be logged in to use addons. "));
+				} else {
+					include_once "addon/{$this->module}/{$this->module}.php";
+					if (function_exists($this->module . '_module')) {
+						LegacyModule::setModuleFile("addon/{$this->module}/{$this->module}.php");
+						$this->module_class = 'Friendica\\LegacyModule';
+						$this->module_loaded = true;
+					}
+				}
+			}
+
+			// Controller class routing
+			if (! $this->module_loaded && class_exists('Friendica\\Module\\' . ucfirst($this->module))) {
+				$this->module_class = 'Friendica\\Module\\' . ucfirst($this->module);
+				$this->module_loaded = true;
+			}
+
+			/* If not, next look for a 'standard' program module in the 'mod' directory
+			 * We emulate a Module class through the LegacyModule class
+			 */
+			if (! $this->module_loaded && file_exists("mod/{$this->module}.php")) {
+				LegacyModule::setModuleFile("mod/{$this->module}.php");
+				$this->module_class = 'Friendica\\LegacyModule';
+				$this->module_loaded = true;
+			}
+
+			/* The URL provided does not resolve to a valid module.
+			 *
+			 * On Dreamhost sites, quite often things go wrong for no apparent reason and they send us to '/internal_error.html'.
+			 * We don't like doing this, but as it occasionally accounts for 10-20% or more of all site traffic -
+			 * we are going to trap this and redirect back to the requested page. As long as you don't have a critical error on your page
+			 * this will often succeed and eventually do the right thing.
+			 *
+			 * Otherwise we are going to emit a 404 not found.
+			 */
+			if (! $this->module_loaded) {
+				// Stupid browser tried to pre-fetch our Javascript img template. Don't log the event or return anything - just quietly exit.
+				if (!empty($_SERVER['QUERY_STRING']) && preg_match('/{[0-9]}/', $_SERVER['QUERY_STRING']) !== 0) {
+					exit();
+				}
+
+				if (!empty($_SERVER['QUERY_STRING']) && ($_SERVER['QUERY_STRING'] === 'q=internal_error.html') && isset($dreamhost_error_hack)) {
+					Core\Logger::log('index.php: dreamhost_error_hack invoked. Original URI =' . $_SERVER['REQUEST_URI']);
+					$this->internalRedirect($_SERVER['REQUEST_URI']);
+				}
+
+				Core\Logger::log('index.php: page not found: ' . $_SERVER['REQUEST_URI'] . ' ADDRESS: ' . $_SERVER['REMOTE_ADDR'] . ' QUERY: ' . $_SERVER['QUERY_STRING'], Core\Logger::DEBUG);
+
+				header($_SERVER["SERVER_PROTOCOL"] . ' 404 ' . Core\L10n::t('Not Found'));
+				$tpl = Core\Renderer::getMarkupTemplate("404.tpl");
+				$this->page['content'] = Core\Renderer::replaceMacros($tpl, [
+					'$message' =>  Core\L10n::t('Page not found.')
+				]);
+			}
+		}
+
+		// Load current theme info
+		$theme_info_file = 'view/theme/' . $this->getCurrentTheme() . '/theme.php';
+		if (file_exists($theme_info_file)) {
+			require_once $theme_info_file;
+		}
+
+		// initialise content region
+		if ($this->getMode()->isNormal()) {
+			Core\Addon::callHooks('page_content_top', $this->page['content']);
+		}
+
+		// Call module functions
+		if ($this->module_loaded) {
+			$this->page['page_title'] = $this->module;
+			$placeholder = '';
+
+			Core\Addon::callHooks($this->module . '_mod_init', $placeholder);
+
+			call_user_func([$this->module_class, 'init']);
+
+			// "rawContent" is especially meant for technical endpoints.
+			// This endpoint doesn't need any theme initialization or other comparable stuff.
+			if (!$this->error) {
+				call_user_func([$this->module_class, 'rawContent']);
+			}
+
+			if (function_exists(str_replace('-', '_', $this->getCurrentTheme()) . '_init')) {
+				$func = str_replace('-', '_', $this->getCurrentTheme()) . '_init';
+				$func($this);
+			}
+
+			if (! $this->error && $_SERVER['REQUEST_METHOD'] === 'POST') {
+				Core\Addon::callHooks($this->module . '_mod_post', $_POST);
+				call_user_func([$this->module_class, 'post']);
+			}
+
+			if (! $this->error) {
+				Core\Addon::callHooks($this->module . '_mod_afterpost', $placeholder);
+				call_user_func([$this->module_class, 'afterpost']);
+			}
+
+			if (! $this->error) {
+				$arr = ['content' => $this->page['content']];
+				Core\Addon::callHooks($this->module . '_mod_content', $arr);
+				$this->page['content'] = $arr['content'];
+				$arr = ['content' => call_user_func([$this->module_class, 'content'])];
+				Core\Addon::callHooks($this->module . '_mod_aftercontent', $arr);
+				$this->page['content'] .= $arr['content'];
+			}
+
+			if (function_exists(str_replace('-', '_', $this->getCurrentTheme()) . '_content_loaded')) {
+				$func = str_replace('-', '_', $this->getCurrentTheme()) . '_content_loaded';
+				$func($this);
+			}
+		}
+
+		/* Create the page head after setting the language
+		 * and getting any auth credentials.
+		 *
+		 * Moved initHead() and initFooter() to after
+		 * all the module functions have executed so that all
+		 * theme choices made by the modules can take effect.
+		 */
+		$this->initHead();
+
+		/* Build the page ending -- this is stuff that goes right before
+		 * the closing </body> tag
+		 */
+		$this->initFooter();
+
+		/* now that we've been through the module content, see if the page reported
+		 * a permission problem and if so, a 403 response would seem to be in order.
+		 */
+		if (stristr(implode("", $_SESSION['sysmsg']), Core\L10n::t('Permission denied'))) {
+			header($_SERVER["SERVER_PROTOCOL"] . ' 403 ' . Core\L10n::t('Permission denied.'));
+		}
+
+		// Report anything which needs to be communicated in the notification area (before the main body)
+		Core\Addon::callHooks('page_end', $this->page['content']);
+
+		// Add the navigation (menu) template
+		if ($this->module != 'install' && $this->module != 'maintenance') {
+			$this->page['htmlhead'] .= Core\Renderer::replaceMacros(Core\Renderer::getMarkupTemplate('nav_head.tpl'), []);
+			$this->page['nav']       = Content\Nav::build($this);
+		}
+
+		// Build the page - now that we have all the components
+		if (isset($_GET["mode"]) && (($_GET["mode"] == "raw") || ($_GET["mode"] == "minimal"))) {
+			$doc = new DOMDocument();
+
+			$target = new DOMDocument();
+			$target->loadXML("<root></root>");
+
+			$content = mb_convert_encoding($this->page["content"], 'HTML-ENTITIES', "UTF-8");
+
+			/// @TODO one day, kill those error-surpressing @ stuff, or PHP should ban it
+			@$doc->loadHTML($content);
+
+			$xpath = new DOMXPath($doc);
+
+			$list = $xpath->query("//*[contains(@id,'tread-wrapper-')]");  /* */
+
+			foreach ($list as $item) {
+				$item = $target->importNode($item, true);
+
+				// And then append it to the target
+				$target->documentElement->appendChild($item);
+			}
+		}
+
+		if (isset($_GET["mode"]) && ($_GET["mode"] == "raw")) {
+			header("Content-type: text/html; charset=utf-8");
+
+			echo substr($target->saveHTML(), 6, -8);
+
+			exit();
+		}
+
+		$page    = $this->page;
+		$profile = $this->profile;
+
+		header("X-Friendica-Version: " . FRIENDICA_VERSION);
+		header("Content-type: text/html; charset=utf-8");
+
+		if (Core\Config::get('system', 'hsts') && (Core\Config::get('system', 'ssl_policy') == SSL_POLICY_FULL)) {
+			header("Strict-Transport-Security: max-age=31536000");
+		}
+
+		// Some security stuff
+		header('X-Content-Type-Options: nosniff');
+		header('X-XSS-Protection: 1; mode=block');
+		header('X-Permitted-Cross-Domain-Policies: none');
+		header('X-Frame-Options: sameorigin');
+
+		// Things like embedded OSM maps don't work, when this is enabled
+		// header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' https: data:; media-src 'self' https:; child-src 'self' https:; object-src 'none'");
+
+		/* We use $_GET["mode"] for special page templates. So we will check if we have
+		 * to load another page template than the default one.
+		 * The page templates are located in /view/php/ or in the theme directory.
+		 */
+		if (isset($_GET["mode"])) {
+			$template = Core\Theme::getPathForFile($_GET["mode"] . '.php');
+		}
+
+		// If there is no page template use the default page template
+		if (empty($template)) {
+			$template = Core\Theme::getPathForFile("default.php");
+		}
+
+		// Theme templates expect $a as an App instance
+		$a = $this;
+
+		// Used as is in view/php/default.php
+		$lang = Core\L10n::getCurrentLang();
+
+		/// @TODO Looks unsafe (remote-inclusion), is maybe not but Core\Theme::getPathForFile() uses file_exists() but does not escape anything
+		require_once $template;
+	}
+
+	/**
+	 * Redirects to another module relative to the current Friendica base.
+	 * If you want to redirect to a external URL, use System::externalRedirectTo()
+	 *
+	 * @param string $toUrl The destination URL (Default is empty, which is the default page of the Friendica node)
+	 * @param bool $ssl if true, base URL will try to get called with https:// (works just for relative paths)
+	 *
+	 * @throws InternalServerErrorException In Case the given URL is not relative to the Friendica node
+	 */
+	public function internalRedirect($toUrl = '', $ssl = false)
+	{
+		if (!empty(parse_url($toUrl, PHP_URL_SCHEME))) {
+			throw new InternalServerErrorException("'$toUrl is not a relative path, please use System::externalRedirectTo");
+		}
+
+		$redirectTo = $this->getBaseURL($ssl) . '/' . ltrim($toUrl, '/');
+		Core\System::externalRedirect($redirectTo);
+	}
+
+	/**
+	 * Automatically redirects to relative or absolute URL
+	 * Should only be used if it isn't clear if the URL is either internal or external
+	 *
+	 * @param string $toUrl The target URL
+	 *
+	 */
+	public function redirect($toUrl)
+	{
+		if (!empty(parse_url($toUrl, PHP_URL_SCHEME))) {
+			Core\System::externalRedirect($toUrl);
+		} else {
+			$this->internalRedirect($toUrl);
+		}
 	}
 }

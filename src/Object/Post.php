@@ -10,14 +10,18 @@ use Friendica\Content\Feature;
 use Friendica\Core\Addon;
 use Friendica\Core\Config;
 use Friendica\Core\L10n;
+use Friendica\Core\Logger;
 use Friendica\Core\PConfig;
 use Friendica\Core\Protocol;
+use Friendica\Core\Renderer;
 use Friendica\Database\DBA;
 use Friendica\Model\Contact;
 use Friendica\Model\Item;
 use Friendica\Model\Term;
+use Friendica\Util\Crypto;
 use Friendica\Util\DateTimeFormat;
 use Friendica\Util\Proxy as ProxyUtils;
+use Friendica\Util\Strings;
 use Friendica\Util\Temporal;
 
 require_once 'include/dba.php';
@@ -63,7 +67,7 @@ class Post extends BaseObject
 		$this->setTemplate('wall');
 		$this->toplevel = $this->getId() == $this->getDataValue('parent');
 
-		if (x($_SESSION, 'remote') && is_array($_SESSION['remote'])) {
+		if (!empty($_SESSION['remote']) && is_array($_SESSION['remote'])) {
 			foreach ($_SESSION['remote'] as $visitor) {
 				if ($visitor['cid'] == $this->getDataValue('contact-id')) {
 					$this->visiting = true;
@@ -153,15 +157,17 @@ class Post extends BaseObject
 
 		$shareable = in_array($conv->getProfileOwner(), [0, local_user()]) && $item['private'] != 1;
 
-		if (local_user() && link_compare($a->contact['url'], $item['author-link'])) {
-			if ($item["event-id"] != 0) {
-				$edpost = ["events/event/" . $item['event-id'], L10n::t("Edit")];
-			} else {
-				$edpost = ["editpost/" . $item['id'], L10n::t("Edit")];
+		$edpost = false;
+
+		if (local_user()) {
+			if (Strings::compareLink($a->contact['url'], $item['author-link'])) {
+				if ($item["event-id"] != 0) {
+					$edpost = ["events/event/" . $item['event-id'], L10n::t("Edit")];
+				} else {
+					$edpost = ["editpost/" . $item['id'], L10n::t("Edit")];
+				}
 			}
 			$dropping = in_array($item['uid'], [0, local_user()]);
-		} else {
-			$edpost = false;
 		}
 
 		// Editing on items of not subscribed users isn't currently possible
@@ -186,30 +192,41 @@ class Post extends BaseObject
 			}
 		}
 
-		// Showing the one or the other text, depending upon if we can only hide it or really delete it.
-		$delete = $origin ? L10n::t('Delete globally') : L10n::t('Remove locally');
+		if ($origin && ($item['id'] != $item['parent']) && ($item['network'] == Protocol::ACTIVITYPUB)) {
+			// ActivityPub doesn't allow removal of remote comments
+			$delete = L10n::t('Delete locally');
+		} else {
+			// Showing the one or the other text, depending upon if we can only hide it or really delete it.
+			$delete = $origin ? L10n::t('Delete globally') : L10n::t('Remove locally');
+		}
 
 		$drop = [
 			'dropping' => $dropping,
-			'pagedrop' => ((Feature::isEnabled($conv->getProfileOwner(), 'multi_delete')) ? $item['pagedrop'] : ''),
+			'pagedrop' => $item['pagedrop'],
 			'select'   => L10n::t('Select'),
 			'delete'   => $delete,
 		];
 
-		if (!local_user() || ($item['uid'] == 0)) {
+		if (!local_user()) {
 			$drop = false;
 		}
 
 		$filer = (($conv->getProfileOwner() == local_user() && ($item['uid'] != 0)) ? L10n::t("save to folder") : false);
 
-		$profile_name = htmlentities($item['author-name']);
+		$profile_name = $item['author-name'];
 		if (!empty($item['author-link']) && empty($item['author-name'])) {
 			$profile_name = $item['author-link'];
 		}
 
 		$author = ['uid' => 0, 'id' => $item['author-id'],
 			'network' => $item['author-network'], 'url' => $item['author-link']];
-		$profile_link = Contact::magicLinkbyContact($author);
+
+		if (local_user() || remote_user()) {
+			$profile_link = Contact::magicLinkbyContact($author);
+		} else {
+			$profile_link = $item['author-link'];
+		}
+
 		if (strpos($profile_link, 'redir/') === 0) {
 			$sparkle = ' sparkle';
 		}
@@ -236,7 +253,7 @@ class Post extends BaseObject
 		$responses = get_responses($conv_responses, $response_verbs, $this, $item);
 
 		foreach ($response_verbs as $value => $verbs) {
-			$responses[$verbs]['output'] = x($conv_responses[$verbs], $item['uri']) ? format_like($conv_responses[$verbs][$item['uri']], $conv_responses[$verbs][$item['uri'] . '-l'], $verbs, $item['uri']) : '';
+			$responses[$verbs]['output'] = !empty($conv_responses[$verbs][$item['uri']]) ? format_like($conv_responses[$verbs][$item['uri']], $conv_responses[$verbs][$item['uri'] . '-l'], $verbs, $item['uri']) : '';
 		}
 
 		/*
@@ -253,31 +270,31 @@ class Post extends BaseObject
 		$tagger = '';
 
 		if ($this->isToplevel()) {
-			$thread = Item::selectFirstThreadForUser(local_user(), ['ignored'], ['iid' => $item['id']]);
-			if (DBA::isResult($thread)) {
-				$ignore = [
-					'do'        => L10n::t("ignore thread"),
-					'undo'      => L10n::t("unignore thread"),
-					'toggle'    => L10n::t("toggle ignore status"),
-					'classdo'   => $thread['ignored'] ? "hidden" : "",
-					'classundo' => $thread['ignored'] ? "" : "hidden",
-					'ignored'   => L10n::t('ignored'),
-				];
-			}
+			if(local_user()) {
+				$thread = Item::selectFirstThreadForUser(local_user(), ['ignored'], ['iid' => $item['id']]);
+				if (DBA::isResult($thread)) {
+					$ignore = [
+						'do'        => L10n::t("ignore thread"),
+						'undo'      => L10n::t("unignore thread"),
+						'toggle'    => L10n::t("toggle ignore status"),
+						'classdo'   => $thread['ignored'] ? "hidden" : "",
+						'classundo' => $thread['ignored'] ? "" : "hidden",
+						'ignored'   => L10n::t('ignored'),
+					];
+				}
 
-			if ($conv->getProfileOwner() == local_user() && ($item['uid'] != 0)) {
-				$isstarred = (($item['starred']) ? "starred" : "unstarred");
+				if ($conv->getProfileOwner() == local_user() && ($item['uid'] != 0)) {
+					$isstarred = (($item['starred']) ? "starred" : "unstarred");
 
-				$star = [
-					'do'        => L10n::t("add star"),
-					'undo'      => L10n::t("remove star"),
-					'toggle'    => L10n::t("toggle star status"),
-					'classdo'   => $item['starred'] ? "hidden" : "",
-					'classundo' => $item['starred'] ? "" : "hidden",
-					'starred'   => L10n::t('starred'),
-				];
+					$star = [
+						'do'        => L10n::t("add star"),
+						'undo'      => L10n::t("remove star"),
+						'toggle'    => L10n::t("toggle star status"),
+						'classdo'   => $item['starred'] ? "hidden" : "",
+						'classundo' => $item['starred'] ? "" : "hidden",
+						'starred'   => L10n::t('starred'),
+					];
 
-				if (Feature::isEnabled($conv->getProfileOwner(), 'commtag')) {
 					$tagger = [
 						'add'   => L10n::t("add tag"),
 						'class' => "",
@@ -291,7 +308,7 @@ class Post extends BaseObject
 		if ($conv->isWritable()) {
 			$buttons = [
 				'like'    => [L10n::t("I like this \x28toggle\x29"), L10n::t("like")],
-				'dislike' => Feature::isEnabled($conv->getProfileOwner(), 'dislike') ? [L10n::t("I don't like this \x28toggle\x29"), L10n::t("dislike")] : '',
+				'dislike' => [L10n::t("I don't like this \x28toggle\x29"), L10n::t("dislike")],
 			];
 			if ($shareable) {
 				$buttons['share'] = [L10n::t('Share this'), L10n::t('share')];
@@ -306,7 +323,7 @@ class Post extends BaseObject
 
 		localize_item($item);
 
-		$body = prepare_body($item, true);
+		$body = Item::prepareBody($item, true);
 
 		list($categories, $folders) = get_cats_and_terms($item);
 
@@ -324,7 +341,7 @@ class Post extends BaseObject
 		$owner_name_e = $this->getOwnerName();
 
 		// Disable features that aren't available in several networks
-		if (!in_array($item["network"], [Protocol::DFRN, Protocol::DIASPORA]) && isset($buttons["dislike"])) {
+		if (!in_array($item["network"], [Protocol::ACTIVITYPUB, Protocol::DFRN, Protocol::DIASPORA]) && isset($buttons["dislike"])) {
 			unset($buttons["dislike"]);
 			$isevent = false;
 			$tagger = '';
@@ -360,7 +377,7 @@ class Post extends BaseObject
 			'isevent'         => $isevent,
 			'attend'          => $attend,
 			'linktitle'       => L10n::t('View %s\'s profile @ %s', $profile_name, $item['author-link']),
-			'olinktitle'      => L10n::t('View %s\'s profile @ %s', htmlentities($this->getOwnerName()), $item['owner-link']),
+			'olinktitle'      => L10n::t('View %s\'s profile @ %s', $this->getOwnerName(), $item['owner-link']),
 			'to'              => L10n::t('to'),
 			'via'             => L10n::t('via'),
 			'wall'            => L10n::t('Wall-to-Wall'),
@@ -368,7 +385,7 @@ class Post extends BaseObject
 			'profile_url'     => $profile_link,
 			'item_photo_menu' => item_photo_menu($item),
 			'name'            => $name_e,
-			'thumb'           => $a->remove_baseurl(ProxyUtils::proxifyUrl($item['author-avatar'], false, ProxyUtils::SIZE_THUMB)),
+			'thumb'           => $a->removeBaseURL(ProxyUtils::proxifyUrl($item['author-avatar'], false, ProxyUtils::SIZE_THUMB)),
 			'osparkle'        => $osparkle,
 			'sparkle'         => $sparkle,
 			'title'           => $title_e,
@@ -381,15 +398,15 @@ class Post extends BaseObject
 			'indent'          => $indent,
 			'shiny'           => $shiny,
 			'owner_url'       => $this->getOwnerUrl(),
-			'owner_photo'     => $a->remove_baseurl(ProxyUtils::proxifyUrl($item['owner-avatar'], false, ProxyUtils::SIZE_THUMB)),
-			'owner_name'      => htmlentities($owner_name_e),
-			'plink'           => get_plink($item),
-			'edpost'          => Feature::isEnabled($conv->getProfileOwner(), 'edit_posts') ? $edpost : '',
+			'owner_photo'     => $a->removeBaseURL(ProxyUtils::proxifyUrl($item['owner-avatar'], false, ProxyUtils::SIZE_THUMB)),
+			'owner_name'      => $owner_name_e,
+			'plink'           => Item::getPlink($item),
+			'edpost'          => $edpost,
 			'isstarred'       => $isstarred,
-			'star'            => Feature::isEnabled($conv->getProfileOwner(), 'star_posts') ? $star : '',
-			'ignore'          => Feature::isEnabled($conv->getProfileOwner(), 'ignore_posts') ? $ignore : '',
+			'star'            => $star,
+			'ignore'          => $ignore,
 			'tagger'          => $tagger,
-			'filer'           => Feature::isEnabled($conv->getProfileOwner(), 'filing') ? $filer : '',
+			'filer'           => $filer,
 			'drop'            => $drop,
 			'vote'            => $buttons,
 			'like'            => $responses['like']['output'],
@@ -402,10 +419,11 @@ class Post extends BaseObject
 			'thread_level'    => $thread_level,
 			'edited'          => $edited,
 			'network'         => $item["network"],
-			'network_name'    => ContactSelector::networkToName($item['network'], $profile_link),
+			'network_name'    => ContactSelector::networkToName($item['network'], $item['author-link']),
 			'received'        => $item['received'],
 			'commented'       => $item['commented'],
 			'created_date'    => $item['created'],
+			'return'          => ($a->cmd) ? bin2hex($a->cmd) : '',
 		];
 
 		$arr = ['item' => $item, 'output' => $tmp_item];
@@ -481,10 +499,10 @@ class Post extends BaseObject
 	{
 		$item_id = $item->getId();
 		if (!$item_id) {
-			logger('[ERROR] Post::addChild : Item has no ID!!', LOGGER_DEBUG);
+			Logger::log('[ERROR] Post::addChild : Item has no ID!!', Logger::DEBUG);
 			return false;
 		} elseif ($this->getChild($item->getId())) {
-			logger('[WARN] Post::addChild : Item already exists (' . $item->getId() . ').', LOGGER_DEBUG);
+			Logger::log('[WARN] Post::addChild : Item already exists (' . $item->getId() . ').', Logger::DEBUG);
 			return false;
 		}
 		/*
@@ -578,7 +596,7 @@ class Post extends BaseObject
 				return true;
 			}
 		}
-		logger('[WARN] Item::removeChild : Item is not a child (' . $id . ').', LOGGER_DEBUG);
+		Logger::log('[WARN] Item::removeChild : Item is not a child (' . $id . ').', Logger::DEBUG);
 		return false;
 	}
 
@@ -644,7 +662,7 @@ class Post extends BaseObject
 	public function getDataValue($name)
 	{
 		if (!isset($this->data[$name])) {
-			// logger('[ERROR] Item::getDataValue : Item has no value name "'. $name .'".', LOGGER_DEBUG);
+			// Logger::log('[ERROR] Item::getDataValue : Item has no value name "'. $name .'".', Logger::DEBUG);
 			return false;
 		}
 
@@ -660,8 +678,8 @@ class Post extends BaseObject
 	 */
 	private function setTemplate($name)
 	{
-		if (!x($this->available_templates, $name)) {
-			logger('[ERROR] Item::setTemplate : Template not available ("' . $name . '").', LOGGER_DEBUG);
+		if (empty($this->available_templates[$name])) {
+			Logger::log('[ERROR] Item::setTemplate : Template not available ("' . $name . '").', Logger::DEBUG);
 			return false;
 		}
 
@@ -765,7 +783,7 @@ class Post extends BaseObject
 			 * Hmmm, code depending on the presence of a particular addon?
 			 * This should be better if done by a hook
 			 */
-			if (in_array('qcomment', $a->addons)) {
+			if (Addon::isEnabled('qcomment')) {
 				$qc = ((local_user()) ? PConfig::get(local_user(), 'qcomment', 'words') : null);
 				$qcomment = (($qc) ? explode("\n", $qc) : null);
 			}
@@ -778,8 +796,8 @@ class Post extends BaseObject
 				$uid = $parent_uid;
 			}
 
-			$template = get_markup_template($this->getCommentBoxTemplate());
-			$comment_box = replace_macros($template, [
+			$template = Renderer::getMarkupTemplate($this->getCommentBoxTemplate());
+			$comment_box = Renderer::replaceMacros($template, [
 				'$return_path' => $a->query_string,
 				'$threaded'    => $this->isThreaded(),
 				'$jsreload'    => '',
@@ -788,9 +806,9 @@ class Post extends BaseObject
 				'$parent'      => $this->getId(),
 				'$qcomment'    => $qcomment,
 				'$profile_uid' => $uid,
-				'$mylink'      => $a->remove_baseurl($a->contact['url']),
+				'$mylink'      => $a->removeBaseURL($a->contact['url']),
 				'$mytitle'     => L10n::t('This is you'),
-				'$myphoto'     => $a->remove_baseurl($a->contact['thumb']),
+				'$myphoto'     => $a->removeBaseURL($a->contact['thumb']),
 				'$comment'     => L10n::t('Comment'),
 				'$submit'      => L10n::t('Submit'),
 				'$edbold'      => L10n::t('Bold'),
@@ -800,12 +818,13 @@ class Post extends BaseObject
 				'$edcode'      => L10n::t('Code'),
 				'$edimg'       => L10n::t('Image'),
 				'$edurl'       => L10n::t('Link'),
-				'$edvideo'     => L10n::t('Video'),
-				'$preview'     => ((Feature::isEnabled($conv->getProfileOwner(), 'preview')) ? L10n::t('Preview') : ''),
+				'$edattach'    => L10n::t('Link or Media'),
+				'$prompttext'  => L10n::t('Please enter a image/video/audio/webpage URL:'),
+				'$preview'     => L10n::t('Preview'),
 				'$indent'      => $indent,
 				'$sourceapp'   => L10n::t($a->sourcename),
 				'$ww'          => $conv->getMode() === 'network' ? $ww : '',
-				'$rand_num'    => random_digits(12)
+				'$rand_num'    => Crypto::randomDigits(12)
 			]);
 		}
 
@@ -843,8 +862,8 @@ class Post extends BaseObject
 					$this->owner_name = $a->page_contact['name'];
 					$this->wall_to_wall = true;
 				} elseif ($this->getDataValue('owner-link')) {
-					$owner_linkmatch = (($this->getDataValue('owner-link')) && link_compare($this->getDataValue('owner-link'), $this->getDataValue('author-link')));
-					$alias_linkmatch = (($this->getDataValue('alias')) && link_compare($this->getDataValue('alias'), $this->getDataValue('author-link')));
+					$owner_linkmatch = (($this->getDataValue('owner-link')) && Strings::compareLink($this->getDataValue('owner-link'), $this->getDataValue('author-link')));
+					$alias_linkmatch = (($this->getDataValue('alias')) && Strings::compareLink($this->getDataValue('alias'), $this->getDataValue('author-link')));
 					$owner_namematch = (($this->getDataValue('owner-name')) && $this->getDataValue('owner-name') == $this->getDataValue('author-name'));
 
 					if (!$owner_linkmatch && !$alias_linkmatch && !$owner_namematch) {

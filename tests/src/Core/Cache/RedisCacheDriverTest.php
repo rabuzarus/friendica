@@ -3,7 +3,10 @@
 
 namespace Friendica\Test\src\Core\Cache;
 
-
+/**
+ * @runTestsInSeparateProcesses
+ * @preserveGlobalState disabled
+ */
 use Friendica\Core\Cache\CacheDriverFactory;
 
 /**
@@ -11,11 +14,6 @@ use Friendica\Core\Cache\CacheDriverFactory;
  */
 class RedisCacheDriverTest extends MemoryCacheTest
 {
-	/**
-	 * @var \Friendica\Core\Cache\IMemoryCacheDriver
-	 */
-	private $cache;
-
 	protected function getInstance()
 	{
 		$this->cache = CacheDriverFactory::create('redis');

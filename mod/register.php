@@ -4,23 +4,25 @@
  */
 
 use Friendica\App;
+use Friendica\BaseModule;
 use Friendica\Content\Text\BBCode;
 use Friendica\Core\Addon;
 use Friendica\Core\Config;
 use Friendica\Core\L10n;
+use Friendica\Core\Logger;
 use Friendica\Core\PConfig;
+use Friendica\Core\Renderer;
 use Friendica\Core\System;
 use Friendica\Core\Worker;
-use Friendica\Database\DBA;
-use Friendica\Model\User;
+use Friendica\Model;
 use Friendica\Module\Tos;
-use Friendica\Util\DateTimeFormat;
+use Friendica\Util\Strings;
 
 require_once 'include/enotify.php';
 
 function register_post(App $a)
 {
-	check_form_security_token_redirectOnErr('/register', 'register');
+	BaseModule::checkFormSecurityTokenRedirectOnError('/register', 'register');
 
 	$verified = 0;
 	$blocked  = 1;
@@ -64,10 +66,10 @@ function register_post(App $a)
 
 	$arr['blocked'] = $blocked;
 	$arr['verified'] = $verified;
-	$arr['language'] = L10n::getBrowserLanguage();
+	$arr['language'] = L10n::detectLanguage();
 
 	try {
-		$result = User::create($arr);
+		$result = Model\User::create($arr);
 	} catch (Exception $e) {
 		notice($e->getMessage());
 		return;
@@ -76,28 +78,32 @@ function register_post(App $a)
 	$user = $result['user'];
 
 	if ($netpublish && intval(Config::get('config', 'register_policy')) !== REGISTER_APPROVE) {
-		$url = System::baseUrl() . '/profile/' . $user['nickname'];
+		$url = $a->getBaseUrl() . '/profile/' . $user['nickname'];
 		Worker::add(PRIORITY_LOW, "Directory", $url);
 	}
 
 	$using_invites = Config::get('system', 'invitation_only');
 	$num_invites   = Config::get('system', 'number_invites');
-	$invite_id = ((x($_POST, 'invite_id')) ? notags(trim($_POST['invite_id'])) : '');
+	$invite_id = (!empty($_POST['invite_id']) ? Strings::escapeTags(trim($_POST['invite_id'])) : '');
 
 	if (intval(Config::get('config', 'register_policy')) === REGISTER_OPEN) {
 		if ($using_invites && $invite_id) {
-			q("delete * from register where hash = '%s' limit 1", DBA::escape($invite_id));
+			Model\Register::deleteByHash($invite_id);
 			PConfig::set($user['uid'], 'system', 'invites_remaining', $num_invites);
 		}
 
 		// Only send a password mail when the password wasn't manually provided
-		if (!x($_POST, 'password1') || !x($_POST, 'confirm')) {
-			$res = User::sendRegisterOpenEmail(
-					$user['email'], Config::get('config', 'sitename'), System::baseUrl(), $user['username'], $result['password'], $user);
+		if (empty($_POST['password1']) || empty($_POST['confirm'])) {
+			$res = Model\User::sendRegisterOpenEmail(
+				$user,
+				Config::get('config', 'sitename'),
+				$a->getBaseUrl(),
+				$result['password']
+			);
 
 			if ($res) {
 				info(L10n::t('Registration successful. Please check your email for further instructions.') . EOL);
-				goaway(System::baseUrl());
+				$a->internalRedirect();
 			} else {
 				notice(
 					L10n::t('Failed to send email message. Here your accout details:<br> login: %s<br> password: %s<br><br>You can change your password after login.',
@@ -108,27 +114,19 @@ function register_post(App $a)
 			}
 		} else {
 			info(L10n::t('Registration successful.') . EOL);
-			goaway(System::baseUrl());
+			$a->internalRedirect();
 		}
 	} elseif (intval(Config::get('config', 'register_policy')) === REGISTER_APPROVE) {
 		if (!strlen(Config::get('config', 'admin_email'))) {
 			notice(L10n::t('Your registration can not be processed.') . EOL);
-			goaway(System::baseUrl());
+			$a->internalRedirect();
 		}
 
-		$hash = random_string();
-		$r = q("INSERT INTO `register` ( `hash`, `created`, `uid`, `password`, `language`, `note` ) VALUES ( '%s', '%s', %d, '%s', '%s', '%s' ) ",
-			DBA::escape($hash),
-			DBA::escape(DateTimeFormat::utcNow()),
-			intval($user['uid']),
-			DBA::escape($result['password']),
-			DBA::escape(Config::get('system', 'language')),
-			DBA::escape($_POST['permonlybox'])
-		);
+		Model\Register::createForApproval($user['uid'], Config::get('system', 'language'), $_POST['permonlybox']);
 
 		// invite system
 		if ($using_invites && $invite_id) {
-			q("DELETE * FROM `register` WHERE `hash` = '%s' LIMIT 1", DBA::escape($invite_id));
+			Model\Register::deleteByHash($invite_id);
 			PConfig::set($user['uid'], 'system', 'invites_remaining', $num_invites);
 		}
 
@@ -146,9 +144,9 @@ function register_post(App $a)
 				'source_name'  => $user['username'],
 				'source_mail'  => $user['email'],
 				'source_nick'  => $user['nickname'],
-				'source_link'  => System::baseUrl() . "/admin/users/",
-				'link'         => System::baseUrl() . "/admin/users/",
-				'source_photo' => System::baseUrl() . "/photo/avatar/" . $user['uid'] . ".jpg",
+				'source_link'  => $a->getBaseUrl() . "/admin/users/",
+				'link'         => $a->getBaseUrl() . "/admin/users/",
+				'source_photo' => $a->getBaseUrl() . "/photo/avatar/" . $user['uid'] . ".jpg",
 				'to_email'     => $admin['email'],
 				'uid'          => $admin['uid'],
 				'language'     => $admin['language'] ? $admin['language'] : 'en',
@@ -156,11 +154,15 @@ function register_post(App $a)
 			]);
 		}
 		// send notification to the user, that the registration is pending
-		User::sendRegisterPendingEmail(
-			$user['email'], Config::get('config', 'sitename'), $user['username']);
+		Model\User::sendRegisterPendingEmail(
+			$user,
+			Config::get('config', 'sitename'),
+			$a->getBaseURL(),
+			$result['password']
+		);
 
 		info(L10n::t('Your registration is pending approval by the site owner.') . EOL);
-		goaway(System::baseUrl());
+		$a->internalRedirect();
 	}
 
 	return;
@@ -187,26 +189,26 @@ function register_content(App $a)
 	if ($max_dailies) {
 		$r = q("select count(*) as total from user where register_date > UTC_TIMESTAMP - INTERVAL 1 day");
 		if ($r && $r[0]['total'] >= $max_dailies) {
-			logger('max daily registrations exceeded.');
+			Logger::log('max daily registrations exceeded.');
 			notice(L10n::t('This site has exceeded the number of allowed daily account registrations. Please try again tomorrow.') . EOL);
 			return;
 		}
 	}
 
-	if (x($_SESSION, 'theme')) {
+	if (!empty($_SESSION['theme'])) {
 		unset($_SESSION['theme']);
 	}
-	if (x($_SESSION, 'mobile-theme')) {
+	if (!empty($_SESSION['mobile-theme'])) {
 		unset($_SESSION['mobile-theme']);
 	}
 
 
-	$username   = x($_REQUEST, 'username')   ? $_REQUEST['username']   : '';
-	$email      = x($_REQUEST, 'email')      ? $_REQUEST['email']      : '';
-	$openid_url = x($_REQUEST, 'openid_url') ? $_REQUEST['openid_url'] : '';
-	$nickname   = x($_REQUEST, 'nickname')   ? $_REQUEST['nickname']   : '';
-	$photo      = x($_REQUEST, 'photo')      ? $_REQUEST['photo']      : '';
-	$invite_id  = x($_REQUEST, 'invite_id')  ? $_REQUEST['invite_id']  : '';
+	$username   = defaults($_REQUEST, 'username'  , '');
+	$email      = defaults($_REQUEST, 'email'     , '');
+	$openid_url = defaults($_REQUEST, 'openid_url', '');
+	$nickname   = defaults($_REQUEST, 'nickname'  , '');
+	$photo      = defaults($_REQUEST, 'photo'     , '');
+	$invite_id  = defaults($_REQUEST, 'invite_id' , '');
 
 	$noid = Config::get('system', 'no_openid');
 
@@ -228,8 +230,8 @@ function register_content(App $a)
 	if (Config::get('system', 'publish_all')) {
 		$profile_publish = '<input type="hidden" name="profile_publish_reg" value="1" />';
 	} else {
-		$publish_tpl = get_markup_template("profile_publish.tpl");
-		$profile_publish = replace_macros($publish_tpl, [
+		$publish_tpl = Renderer::getMarkupTemplate("profile_publish.tpl");
+		$profile_publish = Renderer::replaceMacros($publish_tpl, [
 			'$instance' => 'reg',
 			'$pubdesc' => L10n::t('Include your profile in member directory?'),
 			'$yes_selected' => '',
@@ -244,7 +246,7 @@ function register_content(App $a)
 
 	$license = '';
 
-	$tpl = get_markup_template("register.tpl");
+	$tpl = Renderer::getMarkupTemplate("register.tpl");
 
 	$arr = ['template' => $tpl];
 
@@ -254,7 +256,7 @@ function register_content(App $a)
 
 	$tos = new Tos();
 
-	$o = replace_macros($tpl, [
+	$o = Renderer::replaceMacros($tpl, [
 		'$oidhtml' => $oidhtml,
 		'$invitations' => Config::get('system', 'invitation_only'),
 		'$permonly'    => intval(Config::get('config', 'register_policy')) === REGISTER_APPROVE,
@@ -274,7 +276,7 @@ function register_content(App $a)
 		'$passwords' => $passwords,
 		'$password1' => ['password1', L10n::t('New Password:'), '', L10n::t('Leave empty for an auto generated password.')],
 		'$password2' => ['confirm', L10n::t('Confirm:'), '', ''],
-		'$nickdesc'  => L10n::t('Choose a profile nickname. This must begin with a text character. Your profile address on this site will then be \'<strong>nickname@%s</strong>\'.', $a->get_hostname()),
+		'$nickdesc'  => L10n::t('Choose a profile nickname. This must begin with a text character. Your profile address on this site will then be \'<strong>nickname@%s</strong>\'.', $a->getHostName()),
 		'$nicklabel' => L10n::t('Choose a nickname: '),
 		'$photo'     => $photo,
 		'$publish'   => $profile_publish,
@@ -283,7 +285,7 @@ function register_content(App $a)
 		'$email'     => $email,
 		'$nickname'  => $nickname,
 		'$license'   => $license,
-		'$sitename'  => $a->get_hostname(),
+		'$sitename'  => $a->getHostName(),
 		'$importh'   => L10n::t('Import'),
 		'$importt'   => L10n::t('Import your profile to this friendica instance'),
 		'$showtoslink' => Config::get('system', 'tosdisplay'),
@@ -291,7 +293,7 @@ function register_content(App $a)
 		'$showprivstatement' => Config::get('system', 'tosprivstatement'),
 		'$privstatement' => $tos->privacy_complete,
 		'$baseurl'   => System::baseurl(),
-		'$form_security_token' => get_form_security_token("register"),
+		'$form_security_token' => BaseModule::getFormSecurityToken("register"),
 		'$explicit_content' => Config::get('system', 'explicit_content', false),
 		'$explicit_content_note' => L10n::t('Note: This node explicitly contains adult content')
 	]);

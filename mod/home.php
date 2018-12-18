@@ -6,6 +6,7 @@ use Friendica\App;
 use Friendica\Core\Addon;
 use Friendica\Core\Config;
 use Friendica\Core\L10n;
+use Friendica\Core\Renderer;
 use Friendica\Core\System;
 use Friendica\Module\Login;
 
@@ -16,11 +17,11 @@ function home_init(App $a) {
 	Addon::callHooks('home_init',$ret);
 
 	if (local_user() && ($a->user['nickname'])) {
-		goaway(System::baseUrl()."/network");
+		$a->internalRedirect('network');
 	}
 
 	if (strlen(Config::get('system','singleuser'))) {
-		goaway(System::baseUrl()."/profile/" . Config::get('system','singleuser'));
+		$a->internalRedirect('profile/' . Config::get('system','singleuser'));
 	}
 
 }}
@@ -28,18 +29,18 @@ function home_init(App $a) {
 if(! function_exists('home_content')) {
 function home_content(App $a) {
 
-	if (x($_SESSION,'theme')) {
+	if (!empty($_SESSION['theme'])) {
 		unset($_SESSION['theme']);
 	}
-	if (x($_SESSION,'mobile-theme')) {
+	if (!empty($_SESSION['mobile-theme'])) {
 		unset($_SESSION['mobile-theme']);
 	}
 
 	$customhome = false;
 	$defaultheader = '<h1>' . (Config::get('config', 'sitename') ? L10n::t('Welcome to %s', Config::get('config', 'sitename')) : '') . '</h1>';
 
-	$homefilepath = $a->basepath . "/home.html";
-	$cssfilepath = $a->basepath . "/home.css";
+	$homefilepath = $a->getBasePath() . "/home.html";
+	$cssfilepath = $a->getBasePath() . "/home.css";
 	if (file_exists($homefilepath)) {
 		$customhome = $homefilepath;
 		if (file_exists($cssfilepath)) {
@@ -53,8 +54,8 @@ function home_content(App $a) {
 	Addon::callHooks("home_content",$content);
 
 
-	$tpl = get_markup_template('home.tpl');
-	return replace_macros($tpl, [
+	$tpl = Renderer::getMarkupTemplate('home.tpl');
+	return Renderer::replaceMacros($tpl, [
 		'$defaultheader' => $defaultheader,
 		'$customhome' => $customhome,
 		'$login' => $login,

@@ -33,7 +33,7 @@ If you don't want to translate the UI, or it is already done to your satisfactio
 Are you good at designing things?
 If you have seen Friendica you probably have ideas to improve it, haven't you?
 
-* If you would like to work with us on enhancing the user interface, please join the [UX Watchdogs forum](https://fc.oscp.info/profile/ux-watchdogs)
+* If you would like to work with us on enhancing the user interface, please join the [forum for Friendica development](https://forum.friendi.ca/profile/developers).
 * Make plans for a better Friendica interface design and share them with us.
 * Tell us if you are able to realize your ideas or what kind of help you need.
 	We can't promise we have the right skills in the group but we'll try.
@@ -149,7 +149,7 @@ As Friendica is using a [Twitter/GNU Social compatible API](help/api) any of the
 Furthermore there are several client projects, especially for use with Friendica.
 If you are interested in improving those clients, please contact the developers of the clients directly.
 
-* Android / LinageOS: **Friendiqa** [src](https://github.com/LubuWest/Friendiqa) developed by [Marco R](https://freunde.ma-nic.de/profile/marco)
+* Android / LinageOS: **Friendiqa** [src](https://git.friendi.ca/lubuwest/Friendiqa)/[Google Play](https://play.google.com/store/apps/details?id=org.qtproject.friendiqa) developed by [Marco R](https://freunde.ma-nic.de/profile/marco)
 * iOS: *currently no client*
 * SailfishOS: **Friendiy** [src](https://kirgroup.com/projects/fabrixxm/harbour-friendly) - developed by [Fabio](https://kirgroup.com/profile/fabrixxm/?tab=profile)
 * Windows: **Friendica Mobile** for Windows versions [before 8.1](http://windowsphone.com/s?appid=e3257730-c9cf-4935-9620-5261e3505c67) and [Windows 10](https://www.microsoft.com/store/apps/9nblggh0fhmn) - developed by [Gerhard Seeber](http://mozartweg.dyndns.org/friendica/profile/gerhard/?tab=profile)

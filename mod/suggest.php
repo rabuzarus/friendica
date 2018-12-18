@@ -7,6 +7,7 @@ use Friendica\App;
 use Friendica\Content\ContactSelector;
 use Friendica\Content\Widget;
 use Friendica\Core\L10n;
+use Friendica\Core\Renderer;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
 use Friendica\Model\Contact;
@@ -19,7 +20,7 @@ function suggest_init(App $a)
 		return;
 	}
 
-	if (x($_GET,'ignore') && intval($_GET['ignore'])) {
+	if (!empty($_GET['ignore'])) {
 		// Check if we should do HTML-based delete confirmation
 		if ($_REQUEST['confirm']) {
 			// <form> can't take arguments in its "action" parameter
@@ -33,7 +34,7 @@ function suggest_init(App $a)
 				}
 			}
 
-			$a->page['content'] = replace_macros(get_markup_template('confirm.tpl'), [
+			$a->page['content'] = Renderer::replaceMacros(Renderer::getMarkupTemplate('confirm.tpl'), [
 				'$method' => 'get',
 				'$message' => L10n::t('Do you really want to delete this suggestion?'),
 				'$extra_inputs' => $inputs,
@@ -62,7 +63,7 @@ function suggest_content(App $a)
 		return;
 	}
 
-	$_SESSION['return_url'] = System::baseUrl() . '/' . $a->cmd;
+	$_SESSION['return_path'] = $a->cmd;
 
 	$a->page['aside'] .= Widget::findPeople();
 	$a->page['aside'] .= Widget::follow();
@@ -111,9 +112,9 @@ function suggest_content(App $a)
 		$entries[] = $entry;
 	}
 
-	$tpl = get_markup_template('viewcontact_template.tpl');
+	$tpl = Renderer::getMarkupTemplate('viewcontact_template.tpl');
 
-	$o .= replace_macros($tpl,[
+	$o .= Renderer::replaceMacros($tpl,[
 		'$title' => L10n::t('Friend Suggestions'),
 		'$contacts' => $entries,
 	]);

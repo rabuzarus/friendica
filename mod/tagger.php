@@ -5,12 +5,14 @@
 use Friendica\App;
 use Friendica\Core\Addon;
 use Friendica\Core\L10n;
+use Friendica\Core\Logger;
 use Friendica\Core\System;
 use Friendica\Core\Worker;
 use Friendica\Database\DBA;
 use Friendica\Model\Item;
+use Friendica\Util\Strings;
+use Friendica\Util\XML;
 
-require_once 'include/security.php';
 require_once 'include/items.php';
 
 function tagger_content(App $a) {
@@ -19,7 +21,7 @@ function tagger_content(App $a) {
 		return;
 	}
 
-	$term = notags(trim($_GET['term']));
+	$term = Strings::escapeTags(trim($_GET['term']));
 	// no commas allowed
 	$term = str_replace([',',' '],['','_'],$term);
 
@@ -27,15 +29,15 @@ function tagger_content(App $a) {
 		return;
 	}
 
-	$item_id = (($a->argc > 1) ? notags(trim($a->argv[1])) : 0);
+	$item_id = (($a->argc > 1) ? Strings::escapeTags(trim($a->argv[1])) : 0);
 
-	logger('tagger: tag ' . $term . ' item ' . $item_id);
+	Logger::log('tagger: tag ' . $term . ' item ' . $item_id);
 
 
 	$item = Item::selectFirst([], ['id' => $item_id]);
 
 	if (!$item_id || !DBA::isResult($item)) {
-		logger('tagger: no item ' . $item_id);
+		Logger::log('tagger: no item ' . $item_id);
 		return;
 	}
 
@@ -61,12 +63,12 @@ function tagger_content(App $a) {
 	if (DBA::isResult($r)) {
 			$contact = $r[0];
 	} else {
-		logger('tagger: no contact_id');
+		Logger::log('tagger: no contact_id');
 		return;
 	}
 
 	$uri = Item::newURI($owner_uid);
-	$xterm = xmlify($term);
+	$xterm = XML::escape($term);
 	$post_type = (($item['resource-id']) ? L10n::t('photo') : L10n::t('status'));
 	$targettype = (($item['resource-id']) ? ACTIVITY_OBJ_IMAGE : ACTIVITY_OBJ_NOTE );
 
@@ -76,9 +78,9 @@ function tagger_content(App $a) {
 		$href = System::baseUrl() . '/display/' . $item['guid'];
 	}
 
-	$link = xmlify('<link rel="alternate" type="text/html" href="'. $href . '" />' . "\n") ;
+	$link = XML::escape('<link rel="alternate" type="text/html" href="'. $href . '" />' . "\n");
 
-	$body = xmlify($item['body']);
+	$body = XML::escape($item['body']);
 
 	$target = <<< EOT
 	<target>
@@ -91,7 +93,7 @@ function tagger_content(App $a) {
 	</target>
 EOT;
 
-	$tagid = System::baseUrl() . '/search?tag=' . $term;
+	$tagid = System::baseUrl() . '/search?tag=' . $xterm;
 	$objtype = ACTIVITY_OBJ_TAGTERM;
 
 	$obj = <<< EOT
@@ -111,11 +113,11 @@ EOT;
 		return;
 	}
 
-	$termlink = html_entity_decode('&#x2317;') . '[url=' . System::baseUrl() . '/search?tag=' . urlencode($term) . ']'. $term . '[/url]';
+	$termlink = html_entity_decode('&#x2317;') . '[url=' . System::baseUrl() . '/search?tag=' . $term . ']'. $term . '[/url]';
 
 	$arr = [];
 
-	$arr['guid'] = System::createGUID(32);
+	$arr['guid'] = System::createUUID();
 	$arr['uri'] = $uri;
 	$arr['uid'] = $owner_uid;
 	$arr['contact-id'] = $contact['id'];
@@ -168,7 +170,7 @@ EOT;
 		   $term_objtype,
 		   TERM_HASHTAG,
 		   DBA::escape($term),
-		   DBA::escape(System::baseUrl() . '/search?tag=' . $term),
+		   '',
 		   intval($owner_uid)
 		);
 	}
@@ -190,7 +192,7 @@ EOT;
 				$term_objtype,
 				TERM_HASHTAG,
 				DBA::escape($term),
-				DBA::escape(System::baseUrl() . '/search?tag=' . $term),
+				'',
 				intval($owner_uid)
 			);
 		}

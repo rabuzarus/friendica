@@ -5,6 +5,7 @@ namespace Friendica\Core\Console;
 use Friendica\Core\Protocol;
 use Friendica\Database\DBA;
 use Friendica\Network\Probe;
+use Friendica\Util\Strings;
 use RuntimeException;
 
 require_once 'include/text.php';
@@ -19,8 +20,8 @@ require_once 'include/text.php';
  *
  * License: AGPLv3 or later, same as Friendica
  *
- * @author Tobias Diekershoff
- * @author Hypolite Petovan <mrpetovan@gmail.com>
+ * @author Tobias Diekershoff <tobias.diekershoff@gmx.net>
+ * @author Hypolite Petovan <hypolite@mrpetovan.com>
  */
 class GlobalCommunitySilence extends \Asika\SimpleConsole\Console
 {
@@ -65,7 +66,7 @@ HELP;
 			throw new \Asika\SimpleConsole\CommandArgsException('Too many arguments');
 		}
 
-		if ($a->isInstallMode()) {
+		if ($a->getMode()->isInstall()) {
 			throw new RuntimeException('Database isn\'t ready or populated yet');
 		}
 
@@ -79,7 +80,7 @@ HELP;
 			throw new RuntimeException('This account seems not to exist.');
 		}
 
-		$nurl = normalise_link($net['url']);
+		$nurl = Strings::normaliseLink($net['url']);
 		$contact = DBA::selectFirst("contact", ["id"], ["nurl" => $nurl, "uid" => 0]);
 		if (DBA::isResult($contact)) {
 			DBA::update("contact", ["hidden" => true], ["id" => $contact["id"]]);

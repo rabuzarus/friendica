@@ -9,11 +9,15 @@ use Friendica\BaseObject;
 use Friendica\Content\Text\BBCode;
 use Friendica\Core\Addon;
 use Friendica\Core\L10n;
+use Friendica\Core\Logger;
 use Friendica\Core\PConfig;
+use Friendica\Core\Renderer;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
+use Friendica\Model\Contact;
 use Friendica\Util\DateTimeFormat;
 use Friendica\Util\Map;
+use Friendica\Util\XML;
 
 require_once 'boot.php';
 require_once 'include/dba.php';
@@ -33,13 +37,13 @@ class Event extends BaseObject
 
 		$bd_format = L10n::t('l F d, Y \@ g:i A'); // Friday January 18, 2011 @ 8 AM.
 
-		$event_start = day_translate(
+		$event_start = L10n::getDay(
 			!empty($event['adjust']) ?
 			DateTimeFormat::local($event['start'], $bd_format) : DateTimeFormat::utc($event['start'], $bd_format)
 		);
 
 		if (!empty($event['finish'])) {
-			$event_end = day_translate(
+			$event_end = L10n::getDay(
 				!empty($event['adjust']) ?
 				DateTimeFormat::local($event['finish'], $bd_format) : DateTimeFormat::utc($event['finish'], $bd_format)
 			);
@@ -223,7 +227,7 @@ class Event extends BaseObject
 		}
 
 		DBA::delete('event', ['id' => $event_id]);
-		logger("Deleted event ".$event_id, LOGGER_DEBUG);
+		Logger::log("Deleted event ".$event_id, Logger::DEBUG);
 	}
 
 	/**
@@ -256,10 +260,10 @@ class Event extends BaseObject
 
 		$event['created']   = DateTimeFormat::utc(defaults($arr, 'created'  , 'now'));
 		$event['edited']    = DateTimeFormat::utc(defaults($arr, 'edited'   , 'now'));
-		$event['start']     = DateTimeFormat::utc(defaults($arr, 'start'    , NULL_DATE));
-		$event['finish']    = DateTimeFormat::utc(defaults($arr, 'finish'   , NULL_DATE));
-		if ($event['finish'] < NULL_DATE) {
-			$event['finish'] = NULL_DATE;
+		$event['start']     = DateTimeFormat::utc(defaults($arr, 'start'    , DBA::NULL_DATETIME));
+		$event['finish']    = DateTimeFormat::utc(defaults($arr, 'finish'   , DBA::NULL_DATETIME));
+		if ($event['finish'] < DBA::NULL_DATETIME) {
+			$event['finish'] = DBA::NULL_DATETIME;
 		}
 		$private = intval(defaults($arr, 'private', 0));
 
@@ -299,8 +303,8 @@ class Event extends BaseObject
 
 			$item = Item::selectFirst(['id'], ['event-id' => $event['id'], 'uid' => $event['uid']]);
 			if (DBA::isResult($item)) {
-				$object = '<object><type>' . xmlify(ACTIVITY_OBJ_EVENT) . '</type><title></title><id>' . xmlify($event['uri']) . '</id>';
-				$object .= '<content>' . xmlify(self::getBBCode($event)) . '</content>';
+				$object = '<object><type>' . XML::escape(ACTIVITY_OBJ_EVENT) . '</type><title></title><id>' . XML::escape($event['uri']) . '</id>';
+				$object .= '<content>' . XML::escape(self::getBBCode($event)) . '</content>';
 				$object .= '</object>' . "\n";
 
 				$fields = ['body' => self::getBBCode($event), 'object' => $object, 'edited' => $event['edited']];
@@ -313,48 +317,53 @@ class Event extends BaseObject
 
 			Addon::callHooks('event_updated', $event['id']);
 		} else {
-			$event['guid']  = defaults($arr, 'guid', System::createGUID(32));
+			$event['guid']  = defaults($arr, 'guid', System::createUUID());
 
 			// New event. Store it.
 			DBA::insert('event', $event);
 
-			$event['id'] = DBA::lastInsertId();
+			$item_id = 0;
 
-			$item_arr = [];
+			// Don't create an item for birthday events
+			if ($event['type'] == 'event') {
+				$event['id'] = DBA::lastInsertId();
 
-			$item_arr['uid']           = $event['uid'];
-			$item_arr['contact-id']    = $event['cid'];
-			$item_arr['uri']           = $event['uri'];
-			$item_arr['parent-uri']    = $event['uri'];
-			$item_arr['guid']          = $event['guid'];
-			$item_arr['plink']         = defaults($arr, 'plink', '');
-			$item_arr['post-type']     = Item::PT_EVENT;
-			$item_arr['wall']          = $event['cid'] ? 0 : 1;
-			$item_arr['contact-id']    = $contact['id'];
-			$item_arr['owner-name']    = $contact['name'];
-			$item_arr['owner-link']    = $contact['url'];
-			$item_arr['owner-avatar']  = $contact['thumb'];
-			$item_arr['author-name']   = $contact['name'];
-			$item_arr['author-link']   = $contact['url'];
-			$item_arr['author-avatar'] = $contact['thumb'];
-			$item_arr['title']         = '';
-			$item_arr['allow_cid']     = $event['allow_cid'];
-			$item_arr['allow_gid']     = $event['allow_gid'];
-			$item_arr['deny_cid']      = $event['deny_cid'];
-			$item_arr['deny_gid']      = $event['deny_gid'];
-			$item_arr['private']       = $private;
-			$item_arr['visible']       = 1;
-			$item_arr['verb']          = ACTIVITY_POST;
-			$item_arr['object-type']   = ACTIVITY_OBJ_EVENT;
-			$item_arr['origin']        = $event['cid'] === 0 ? 1 : 0;
-			$item_arr['body']          = self::getBBCode($event);
-			$item_arr['event-id']      = $event['id'];
+				$item_arr = [];
 
-			$item_arr['object']  = '<object><type>' . xmlify(ACTIVITY_OBJ_EVENT) . '</type><title></title><id>' . xmlify($event['uri']) . '</id>';
-			$item_arr['object'] .= '<content>' . xmlify(self::getBBCode($event)) . '</content>';
-			$item_arr['object'] .= '</object>' . "\n";
+				$item_arr['uid']           = $event['uid'];
+				$item_arr['contact-id']    = $event['cid'];
+				$item_arr['uri']           = $event['uri'];
+				$item_arr['parent-uri']    = $event['uri'];
+				$item_arr['guid']          = $event['guid'];
+				$item_arr['plink']         = defaults($arr, 'plink', '');
+				$item_arr['post-type']     = Item::PT_EVENT;
+				$item_arr['wall']          = $event['cid'] ? 0 : 1;
+				$item_arr['contact-id']    = $contact['id'];
+				$item_arr['owner-name']    = $contact['name'];
+				$item_arr['owner-link']    = $contact['url'];
+				$item_arr['owner-avatar']  = $contact['thumb'];
+				$item_arr['author-name']   = $contact['name'];
+				$item_arr['author-link']   = $contact['url'];
+				$item_arr['author-avatar'] = $contact['thumb'];
+				$item_arr['title']         = '';
+				$item_arr['allow_cid']     = $event['allow_cid'];
+				$item_arr['allow_gid']     = $event['allow_gid'];
+				$item_arr['deny_cid']      = $event['deny_cid'];
+				$item_arr['deny_gid']      = $event['deny_gid'];
+				$item_arr['private']       = $private;
+				$item_arr['visible']       = 1;
+				$item_arr['verb']          = ACTIVITY_POST;
+				$item_arr['object-type']   = ACTIVITY_OBJ_EVENT;
+				$item_arr['origin']        = $event['cid'] === 0 ? 1 : 0;
+				$item_arr['body']          = self::getBBCode($event);
+				$item_arr['event-id']      = $event['id'];
 
-			$item_id = Item::insert($item_arr);
+				$item_arr['object']  = '<object><type>' . XML::escape(ACTIVITY_OBJ_EVENT) . '</type><title></title><id>' . XML::escape($event['uri']) . '</id>';
+				$item_arr['object'] .= '<content>' . XML::escape(self::getBBCode($event)) . '</content>';
+				$item_arr['object'] .= '</object>' . "\n";
+
+				$item_id = Item::insert($item_arr);
+			}
 
 			Addon::callHooks("event_created", $event['id']);
 		}
@@ -560,7 +569,7 @@ class Event extends BaseObject
 			$start = $event['adjust'] ? DateTimeFormat::local($event['start'], 'c')  : DateTimeFormat::utc($event['start'], 'c');
 			$j     = $event['adjust'] ? DateTimeFormat::local($event['start'], 'j')  : DateTimeFormat::utc($event['start'], 'j');
 			$day   = $event['adjust'] ? DateTimeFormat::local($event['start'], $fmt) : DateTimeFormat::utc($event['start'], $fmt);
-			$day   = day_translate($day);
+			$day   = L10n::getDay($day);
 
 			if ($event['nofinish']) {
 				$end = null;
@@ -588,6 +597,12 @@ class Event extends BaseObject
 				list($title, $_trash) = explode("<br", BBCode::convert($event['desc']), 2);
 				$title = strip_tags(html_entity_decode($title, ENT_QUOTES, 'UTF-8'));
 			}
+
+			$author_link = $event['author-link'];
+			$plink       = $event['plink'];
+
+			$event['author-link'] = Contact::magicLink($author_link);
+			$event['plink']       = Contact::magicLink($author_link, $plink);
 
 			$html = self::getHTML($event);
 			$event['desc']     = BBCode::convert($event['desc']);
@@ -831,14 +846,14 @@ class Event extends BaseObject
 		$tformat       = L10n::t('g:i A'); // 8:01 AM.
 
 		// Convert the time to different formats.
-		$dtstart_dt = day_translate(
+		$dtstart_dt = L10n::getDay(
 			$item['event-adjust'] ?
 				DateTimeFormat::local($item['event-start'], $dformat)
 				: DateTimeFormat::utc($item['event-start'], $dformat)
 		);
 		$dtstart_title = DateTimeFormat::utc($item['event-start'], $item['event-adjust'] ? DateTimeFormat::ATOM : 'Y-m-d\TH:i:s');
 		// Format: Jan till Dec.
-		$month_short = day_short_translate(
+		$month_short = L10n::getDayShort(
 			$item['event-adjust'] ?
 				DateTimeFormat::local($item['event-start'], 'M')
 				: DateTimeFormat::utc($item['event-start'], 'M')
@@ -850,7 +865,7 @@ class Event extends BaseObject
 		$start_time = $item['event-adjust'] ?
 			DateTimeFormat::local($item['event-start'], $tformat)
 			: DateTimeFormat::utc($item['event-start'], $tformat);
-		$start_short = day_short_translate(
+		$start_short = L10n::getDayShort(
 			$item['event-adjust'] ?
 				DateTimeFormat::local($item['event-start'], $dformat_short)
 				: DateTimeFormat::utc($item['event-start'], $dformat_short)
@@ -859,13 +874,13 @@ class Event extends BaseObject
 		// If the option 'nofinisch' isn't set, we need to format the finish date/time.
 		if (!$item['event-nofinish']) {
 			$finish = true;
-			$dtend_dt  = day_translate(
+			$dtend_dt  = L10n::getDay(
 				$item['event-adjust'] ?
 					DateTimeFormat::local($item['event-finish'], $dformat)
 					: DateTimeFormat::utc($item['event-finish'], $dformat)
 			);
 			$dtend_title = DateTimeFormat::utc($item['event-finish'], $item['event-adjust'] ? DateTimeFormat::ATOM : 'Y-m-d\TH:i:s');
-			$end_short = day_short_translate(
+			$end_short = L10n::getDayShort(
 				$item['event-adjust'] ?
 					DateTimeFormat::local($item['event-finish'], $dformat_short)
 					: DateTimeFormat::utc($item['event-finish'], $dformat_short)
@@ -890,8 +905,8 @@ class Event extends BaseObject
 		// Construct the profile link (magic-auth).
 		$profile_link = Contact::magicLinkById($item['author-id']);
 
-		$tpl = get_markup_template('event_stream_item.tpl');
-		$return = replace_macros($tpl, [
+		$tpl = Renderer::getMarkupTemplate('event_stream_item.tpl');
+		$return = Renderer::replaceMacros($tpl, [
 			'$id'             => $item['event-id'],
 			'$title'          => prepare_text($item['event-summary']),
 			'$dtstart_label'  => L10n::t('Starts:'),
@@ -970,5 +985,48 @@ class Event extends BaseObject
 		}
 
 		return $location;
+	}
+
+	/**
+	 * @brief Add new birthday event for this person
+	 *
+	 * @param array  $contact  Contact array, expects: id, uid, url, name
+	 * @param string $birthday Birthday of the contact
+	 * @return bool
+	 */
+	public static function createBirthday($contact, $birthday)
+	{
+		// Check for duplicates
+		$condition = [
+			'uid' => $contact['uid'],
+			'cid' => $contact['id'],
+			'start' => DateTimeFormat::utc($birthday),
+			'type' => 'birthday'
+		];
+		if (DBA::exists('event', $condition)) {
+			return false;
+		}
+
+		/*
+		 * Add new birthday event for this person
+		 *
+		 * summary is just a readable placeholder in case the event is shared
+		 * with others. We will replace it during presentation to our $importer
+		 * to contain a sparkle link and perhaps a photo.
+		 */
+		$values = [
+			'uid'     => $contact['uid'],
+			'cid'     => $contact['id'],
+			'start'   => DateTimeFormat::utc($birthday),
+			'finish'  => DateTimeFormat::utc($birthday . ' + 1 day '),
+			'summary' => L10n::t('%s\'s birthday', $contact['name']),
+			'desc'    => L10n::t('Happy Birthday %s', ' [url=' . $contact['url'] . ']' . $contact['name'] . '[/url]'),
+			'type'    => 'birthday',
+			'adjust'  => 0
+		];
+
+		self::store($values);
+
+		return true;
 	}
 }

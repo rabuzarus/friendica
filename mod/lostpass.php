@@ -6,10 +6,12 @@
 use Friendica\App;
 use Friendica\Core\Config;
 use Friendica\Core\L10n;
+use Friendica\Core\Renderer;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
 use Friendica\Model\User;
 use Friendica\Util\DateTimeFormat;
+use Friendica\Util\Strings;
 
 require_once 'boot.php';
 require_once 'include/enotify.php';
@@ -17,19 +19,19 @@ require_once 'include/text.php';
 
 function lostpass_post(App $a)
 {
-	$loginame = notags(trim($_POST['login-name']));
+	$loginame = Strings::escapeTags(trim($_POST['login-name']));
 	if (!$loginame) {
-		goaway(System::baseUrl());
+		$a->internalRedirect();
 	}
 
 	$condition = ['(`email` = ? OR `nickname` = ?) AND `verified` = 1 AND `blocked` = 0', $loginame, $loginame];
 	$user = DBA::selectFirst('user', ['uid', 'username', 'email', 'language'], $condition);
 	if (!DBA::isResult($user)) {
 		notice(L10n::t('No valid account found.') . EOL);
-		goaway(System::baseUrl());
+		$a->internalRedirect();
 	}
 
-	$pwdreset_token = autoname(12) . mt_rand(1000, 9999);
+	$pwdreset_token = Strings::getRandomName(12) . mt_rand(1000, 9999);
 
 	$fields = [
 		'pwdreset' => $pwdreset_token,
@@ -43,7 +45,7 @@ function lostpass_post(App $a)
 	$sitename = Config::get('config', 'sitename');
 	$resetlink = System::baseUrl() . '/lostpass/' . $pwdreset_token;
 
-	$preamble = deindent(L10n::t('
+	$preamble = Strings::deindent(L10n::t('
 		Dear %1$s,
 			A request was recently received at "%2$s" to reset your account
 		password. In order to confirm this request, please select the verification link
@@ -54,7 +56,7 @@ function lostpass_post(App $a)
 
 		Your password will not be changed unless we can verify that you
 		issued this request.', $user['username'], $sitename));
-	$body = deindent(L10n::t('
+	$body = Strings::deindent(L10n::t('
 		Follow this link soon to verify your identity:
 
 		%1$s
@@ -78,7 +80,7 @@ function lostpass_post(App $a)
 		'body'     => $body
 	]);
 
-	goaway(System::baseUrl());
+	$a->internalRedirect();
 }
 
 function lostpass_content(App $a)
@@ -115,8 +117,8 @@ function lostpass_content(App $a)
 
 function lostpass_form()
 {
-	$tpl = get_markup_template('lostpass.tpl');
-	$o = replace_macros($tpl, [
+	$tpl = Renderer::getMarkupTemplate('lostpass.tpl');
+	$o = Renderer::replaceMacros($tpl, [
 		'$title' => L10n::t('Forgot your Password?'),
 		'$desc' => L10n::t('Enter your email address and submit to have your password reset. Then check your email for further instructions.'),
 		'$name' => L10n::t('Nickname or Email: '),
@@ -134,8 +136,8 @@ function lostpass_generate_password($user)
 	$new_password = User::generateNewPassword();
 	$result = User::updatePassword($user['uid'], $new_password);
 	if (DBA::isResult($result)) {
-		$tpl = get_markup_template('pwdreset.tpl');
-		$o .= replace_macros($tpl, [
+		$tpl = Renderer::getMarkupTemplate('pwdreset.tpl');
+		$o .= Renderer::replaceMacros($tpl, [
 			'$lbl1'    => L10n::t('Password Reset'),
 			'$lbl2'    => L10n::t('Your password has been reset as requested.'),
 			'$lbl3'    => L10n::t('Your new password is'),
@@ -149,13 +151,13 @@ function lostpass_generate_password($user)
 		info("Your password has been reset." . EOL);
 
 		$sitename = Config::get('config', 'sitename');
-		$preamble = deindent(L10n::t('
+		$preamble = Strings::deindent(L10n::t('
 			Dear %1$s,
 				Your password has been changed as requested. Please retain this
 			information for your records ' . "\x28" . 'or change your password immediately to
 			something that you will remember' . "\x29" . '.
 		', $user['username']));
-		$body = deindent(L10n::t('
+		$body = Strings::deindent(L10n::t('
 			Your login details are as follows:
 
 			Site Location:	%1$s

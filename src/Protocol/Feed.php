@@ -9,6 +9,7 @@ namespace Friendica\Protocol;
 use DOMDocument;
 use DOMXPath;
 use Friendica\Content\Text\HTML;
+use Friendica\Core\Logger;
 use Friendica\Core\Protocol;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
@@ -40,12 +41,12 @@ class Feed {
 		$a = get_app();
 
 		if (!$simulate) {
-			logger("Import Atom/RSS feed '".$contact["name"]."' (Contact ".$contact["id"].") for user ".$importer["uid"], LOGGER_DEBUG);
+			Logger::log("Import Atom/RSS feed '".$contact["name"]."' (Contact ".$contact["id"].") for user ".$importer["uid"], Logger::DEBUG);
 		} else {
-			logger("Test Atom/RSS feed", LOGGER_DEBUG);
+			Logger::log("Test Atom/RSS feed", Logger::DEBUG);
 		}
 		if (empty($xml)) {
-			logger('XML is empty.', LOGGER_DEBUG);
+			Logger::log('XML is empty.', Logger::DEBUG);
 			return;
 		}
 
@@ -122,7 +123,13 @@ class Feed {
 				$author["author-name"] = $value;
 			}
 			if ($simulate) {
-				$author["author-id"] = XML::getFirstNodeValue($xpath, '/atom:feed/atom:author/atom:uri/text()');
+				$author["author-id"] = XML::getFirstNodeValue($xpath, '/atom:feed/atom:author/atom:id/text()');
+
+				// See https://tools.ietf.org/html/rfc4287#section-3.2.2
+				$value = XML::getFirstNodeValue($xpath, 'atom:author/atom:uri/text()');
+				if ($value != "") {
+					$author["author-link"] = $value;
+				}
 
 				$value = XML::getFirstNodeValue($xpath, 'atom:author/poco:preferredUsername/text()');
 				if ($value != "") {
@@ -199,7 +206,7 @@ class Feed {
 		$header["contact-id"] = $contact["id"];
 
 		if (!is_object($entries)) {
-			logger("There are no entries in this feed.", LOGGER_DEBUG);
+			Logger::log("There are no entries in this feed.", Logger::DEBUG);
 			return;
 		}
 
@@ -248,7 +255,7 @@ class Feed {
 					$importer["uid"], $item["uri"], Protocol::FEED, Protocol::DFRN];
 				$previous = Item::selectFirst(['id'], $condition);
 				if (DBA::isResult($previous)) {
-					logger("Item with uri ".$item["uri"]." for user ".$importer["uid"]." already existed under id ".$previous["id"], LOGGER_DEBUG);
+					Logger::log("Item with uri ".$item["uri"]." for user ".$importer["uid"]." already existed under id ".$previous["id"], Logger::DEBUG);
 					continue;
 				}
 			}
@@ -271,9 +278,14 @@ class Feed {
 			}
 			$updated = XML::getFirstNodeValue($xpath, 'atom:updated/text()', $entry);
 
-			if (empty($updated)) {
+			if (empty($updated) && !empty($published)) {
 				$updated = $published;
 			}
+
+			if (empty($published) && !empty($updated)) {
+				$published = $updated;
+			}
+
 			if ($published != "") {
 				$item["created"] = $published;
 			}
@@ -338,7 +350,7 @@ class Feed {
 					$tags .= ', ';
 				}
 
-				$taglink = "#[url=" . System::baseUrl() . "/search?tag=" . rawurlencode($hashtag) . "]" . $hashtag . "[/url]";
+				$taglink = "#[url=" . System::baseUrl() . "/search?tag=" . $hashtag . "]" . $hashtag . "[/url]";
 				$tags .= $taglink;
 			}
 
@@ -418,14 +430,14 @@ class Feed {
 			}
 
 			if (!$simulate) {
-				logger("Stored feed: ".print_r($item, true), LOGGER_DEBUG);
+				Logger::log("Stored feed: ".print_r($item, true), Logger::DEBUG);
 
 				$notify = Item::isRemoteSelf($contact, $item);
 
 				// Distributed items should have a well formatted URI.
 				// Additionally we have to avoid conflicts with identical URI between imported feeds and these items.
 				if ($notify) {
-					$item['guid'] = Item::guidFromUri($orig_plink, $a->get_hostname());
+					$item['guid'] = Item::guidFromUri($orig_plink, $a->getHostName());
 					unset($item['uri']);
 					unset($item['parent-uri']);
 
@@ -435,7 +447,7 @@ class Feed {
 
 				$id = Item::insert($item, false, $notify);
 
-				logger("Feed for contact ".$contact["url"]." stored under id ".$id);
+				Logger::log("Feed for contact ".$contact["url"]." stored under id ".$id);
 			} else {
 				$items[] = $item;
 			}

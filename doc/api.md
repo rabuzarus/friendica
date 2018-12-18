@@ -379,6 +379,18 @@ Friendica doesn't allow showing the friends of other users.
 
 * media: image data
 
+#### Return values
+
+Object of:
+
+* media_id: a media identifier (integer)
+* media_id_string: a media identifier (string)
+* size: size in byte
+* image.w: image width
+* image.h: image height
+* image.image_type: image mime type
+* image.friendica_preview_url: image preview url
+
 ---
 
 ### oauth/request_token (*)
@@ -1061,7 +1073,7 @@ possibile scale value are:
 * 1: image with or height at <= 640
 * 2: image with or height at <= 320
 * 3: thumbnail 160x160
-* 4: Profile image at 175x175
+* 4: Profile image at 300x300
 * 5: Profile image at 80x80
 * 6: Profile image at 48x48
 

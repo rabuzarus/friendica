@@ -4,13 +4,12 @@ namespace Friendica\Test\src\Core\Cache;
 
 use Friendica\Core\Cache\CacheDriverFactory;
 
+/**
+ * @runTestsInSeparateProcesses
+ * @preserveGlobalState disabled
+ */
 class DatabaseCacheDriverTest extends CacheTest
 {
-	/**
-	 * @var \Friendica\Core\Cache\IMemoryCacheDriver
-	 */
-	private $cache;
-
 	protected function getInstance()
 	{
 		$this->cache = CacheDriverFactory::create('database');

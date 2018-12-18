@@ -11,10 +11,11 @@ use Friendica\Database\DBA;
 use Friendica\Model\Contact;
 use Friendica\Util\DateTimeFormat;
 use Friendica\Util\Mimetype;
+use Friendica\Util\Strings;
 
 function wall_attach_post(App $a) {
 
-	$r_json = (x($_GET,'response') && $_GET['response']=='json');
+	$r_json = (!empty($_GET['response']) && $_GET['response']=='json');
 
 	if ($a->argc > 1) {
 		$nick = $a->argv[1];
@@ -84,7 +85,7 @@ function wall_attach_post(App $a) {
 		killme();
 	}
 
-	if (! x($_FILES,'userfile')) {
+	if (empty($_FILES['userfile'])) {
 		if ($r_json) {
 			echo json_encode(['error' => L10n::t('Invalid request.')]);
 		}
@@ -115,11 +116,11 @@ function wall_attach_post(App $a) {
 	}
 
 	if ($maxfilesize && $filesize > $maxfilesize) {
-		$msg = L10n::t('File exceeds size limit of %s', formatBytes($maxfilesize));
+		$msg = L10n::t('File exceeds size limit of %s', Strings::formatBytes($maxfilesize));
 		if ($r_json) {
 			echo json_encode(['error' => $msg]);
 		} else {
-			echo $msg . EOL ;
+			echo $msg . EOL;
 		}
 		@unlink($src);
 		killme();
@@ -143,7 +144,7 @@ function wall_attach_post(App $a) {
 		if ($r_json) {
 			echo json_encode(['error' => $msg]);
 		} else {
-			echo $msg . EOL ;
+			echo $msg . EOL;
 		}
 		killme();
 	}
@@ -159,7 +160,7 @@ function wall_attach_post(App $a) {
 		if ($r_json) {
 			echo json_encode(['error' => $msg]);
 		} else {
-			echo $msg . EOL ;
+			echo $msg . EOL;
 		}
 		killme();
 	}

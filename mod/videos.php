@@ -5,8 +5,10 @@
 
 use Friendica\App;
 use Friendica\Content\Nav;
+use Friendica\Content\Pager;
 use Friendica\Core\Config;
 use Friendica\Core\L10n;
+use Friendica\Core\Renderer;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
 use Friendica\Model\Contact;
@@ -14,9 +16,9 @@ use Friendica\Model\Group;
 use Friendica\Model\Item;
 use Friendica\Model\Profile;
 use Friendica\Protocol\DFRN;
+use Friendica\Util\Security;
 
 require_once 'include/items.php';
-require_once 'include/security.php';
 
 function videos_init(App $a)
 {
@@ -49,9 +51,9 @@ function videos_init(App $a)
 
 		$account_type = Contact::getAccountType($profile);
 
-		$tpl = get_markup_template("vcard-widget.tpl");
+		$tpl = Renderer::getMarkupTemplate("vcard-widget.tpl");
 
-		$vcard_widget = replace_macros($tpl, [
+		$vcard_widget = Renderer::replaceMacros($tpl, [
 			'$name' => $profile['name'],
 			'$photo' => $profile['photo'],
 			'$addr' => defaults($profile, 'addr', ''),
@@ -60,7 +62,7 @@ function videos_init(App $a)
 		]);
 
 		/// @TODO Old-lost code?
-		/*$sql_extra = permissions_sql($a->data['user']['uid']);
+		/*$sql_extra = Security::getPermissionsSQLByUserId($a->data['user']['uid']);
 
 		$albums = q("SELECT distinct(`album`) AS `album` FROM `photo` WHERE `uid` = %d $sql_extra order by created desc",
 			intval($a->data['user']['uid'])
@@ -101,16 +103,10 @@ function videos_init(App $a)
 
 		$a->page['aside'] .= $vcard_widget;
 
-		$tpl = get_markup_template("videos_head.tpl");
-		$a->page['htmlhead'] .= replace_macros($tpl,[
+		$tpl = Renderer::getMarkupTemplate("videos_head.tpl");
+		$a->page['htmlhead'] .= Renderer::replaceMacros($tpl,[
 			'$baseurl' => System::baseUrl(),
 		]);
-
-		$tpl = get_markup_template("videos_end.tpl");
-		$a->page['end'] .= replace_macros($tpl,[
-			'$baseurl' => System::baseUrl(),
-		]);
-
 	}
 
 	return;
@@ -121,19 +117,19 @@ function videos_post(App $a)
 	$owner_uid = $a->data['user']['uid'];
 
 	if (local_user() != $owner_uid) {
-		goaway(System::baseUrl() . '/videos/' . $a->data['user']['nickname']);
+		$a->internalRedirect('videos/' . $a->data['user']['nickname']);
 	}
 
 	if (($a->argc == 2) && !empty($_POST['delete']) && !empty($_POST['id'])) {
 		// Check if we should do HTML-based delete confirmation
 		if (empty($_REQUEST['confirm'])) {
 			if (!empty($_REQUEST['canceled'])) {
-				goaway(System::baseUrl() . '/videos/' . $a->data['user']['nickname']);
+				$a->internalRedirect('videos/' . $a->data['user']['nickname']);
 			}
 
 			$drop_url = $a->query_string;
 
-			$a->page['content'] = replace_macros(get_markup_template('confirm.tpl'), [
+			$a->page['content'] = Renderer::replaceMacros(Renderer::getMarkupTemplate('confirm.tpl'), [
 				'$method' => 'post',
 				'$message' => L10n::t('Do you really want to delete this video?'),
 				'$extra_inputs' => [
@@ -175,11 +171,11 @@ function videos_post(App $a)
 			}
 		}
 
-		goaway(System::baseUrl() . '/videos/' . $a->data['user']['nickname']);
+		$a->internalRedirect('videos/' . $a->data['user']['nickname']);
 		return; // NOTREACHED
 	}
 
-	goaway(System::baseUrl() . '/videos/' . $a->data['user']['nickname']);
+	$a->internalRedirect('videos/' . $a->data['user']['nickname']);
 }
 
 function videos_content(App $a)
@@ -199,7 +195,6 @@ function videos_content(App $a)
 		return;
 	}
 
-	require_once 'include/security.php';
 	require_once 'include/conversation.php';
 
 	if (empty($a->data['user'])) {
@@ -308,7 +303,7 @@ function videos_content(App $a)
 		return;
 	}
 
-	$sql_extra = permissions_sql($owner_uid, $remote_contact, $groups);
+	$sql_extra = Security::getPermissionsSQLByUserId($owner_uid, $remote_contact, $groups);
 
 	$o = "";
 
@@ -341,15 +336,16 @@ function videos_content(App $a)
 	// Default - show recent videos (no upload link for now)
 	//$o = '';
 
+	$total = 0;
 	$r = q("SELECT hash FROM `attach` WHERE `uid` = %d AND filetype LIKE '%%video%%'
 		$sql_extra GROUP BY hash",
 		intval($a->data['user']['uid'])
 	);
-
 	if (DBA::isResult($r)) {
-		$a->set_pager_total(count($r));
-		$a->set_pager_itemspage(20);
+		$total = count($r);
 	}
+
+	$pager = new Pager($a->query_string, 20);
 
 	$r = q("SELECT hash, ANY_VALUE(`id`) AS `id`, ANY_VALUE(`created`) AS `created`,
 		ANY_VALUE(`filename`) AS `filename`, ANY_VALUE(`filetype`) as `filetype`
@@ -357,8 +353,8 @@ function videos_content(App $a)
 		WHERE `uid` = %d AND filetype LIKE '%%video%%'
 		$sql_extra GROUP BY hash ORDER BY `created` DESC LIMIT %d , %d",
 		intval($a->data['user']['uid']),
-		intval($a->pager['start']),
-		intval($a->pager['itemspage'])
+		$pager->getStart(),
+		$pager->getItemsPerPage()
 	);
 
 	$videos = [];
@@ -367,11 +363,12 @@ function videos_content(App $a)
 		foreach ($r as $rr) {
 			$alt_e = $rr['filename'];
 			/// @todo The album isn't part of the above query. This seems to be some unfinished code that needs to be reworked completely.
+			$rr['album'] = '';
 			$name_e = $rr['album'];
 
 			$videos[] = [
 				'id'       => $rr['id'],
-				'link'     => System::baseUrl() . '/videos/' . $a->data['user']['nickname'] . '/video/' . $rr['resource-id'],
+				'link'     => System::baseUrl() . '/videos/' . $a->data['user']['nickname'] . '/video/' . $rr['hash'],
 				'title'    => L10n::t('View Video'),
 				'src'      => System::baseUrl() . '/attach/' . $rr['id'] . '?attachment=0',
 				'alt'      => $alt_e,
@@ -385,8 +382,8 @@ function videos_content(App $a)
 		}
 	}
 
-	$tpl = get_markup_template('videos_recent.tpl');
-	$o .= replace_macros($tpl, [
+	$tpl = Renderer::getMarkupTemplate('videos_recent.tpl');
+	$o .= Renderer::replaceMacros($tpl, [
 		'$title'      => L10n::t('Recent Videos'),
 		'$can_post'   => $can_post,
 		'$upload'     => [L10n::t('Upload New Videos'), System::baseUrl() . '/videos/' . $a->data['user']['nickname'] . '/upload'],
@@ -394,7 +391,7 @@ function videos_content(App $a)
 		'$delete_url' => (($can_post) ? System::baseUrl() . '/videos/' . $a->data['user']['nickname'] : false)
 	]);
 
-	$o .= paginate($a);
+	$o .= $pager->renderFull($total);
 
 	return $o;
 }

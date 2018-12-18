@@ -5,6 +5,9 @@
 namespace Friendica\Core;
 
 use Friendica\BaseObject;
+use Friendica\Core\Logger;
+use Friendica\Core\Renderer;
+use Friendica\Network\HTTPException\InternalServerErrorException;
 use Friendica\Util\XML;
 
 /**
@@ -27,7 +30,7 @@ class System extends BaseObject
 	 */
 	public static function baseUrl($ssl = false)
 	{
-		return self::getApp()->get_baseurl($ssl);
+		return self::getApp()->getBaseURL($ssl);
 	}
 
 	/**
@@ -39,7 +42,7 @@ class System extends BaseObject
 	 */
 	public static function removedBaseUrl($orig_url)
 	{
-		return self::getApp()->remove_baseurl($orig_url);
+		return self::getApp()->removeBaseURL($orig_url);
 	}
 
 	/**
@@ -99,7 +102,7 @@ class System extends BaseObject
 		}
 
 		if ($st) {
-			logger('xml_status returning non_zero: ' . $st . " message=" . $message);
+			Logger::log('xml_status returning non_zero: ' . $st . " message=" . $message);
 		}
 
 		header("Content-type: text/xml");
@@ -123,9 +126,33 @@ class System extends BaseObject
 	{
 		$err = '';
 		if ($val >= 400) {
-			$err = 'Error';
-			if (!isset($description["title"])) {
-				$description["title"] = $err." ".$val;
+			if (!empty($description['title'])) {
+				$err = $description['title'];
+			} else {
+				$title = [
+					'400' => L10n::t('Error 400 - Bad Request'),
+					'401' => L10n::t('Error 401 - Unauthorized'),
+					'403' => L10n::t('Error 403 - Forbidden'),
+					'404' => L10n::t('Error 404 - Not Found'),
+					'500' => L10n::t('Error 500 - Internal Server Error'),
+					'503' => L10n::t('Error 503 - Service Unavailable'),
+					];
+				$err = defaults($title, $val, 'Error ' . $val);
+				$description['title'] = $err;
+			}
+			if (empty($description['description'])) {
+				// Explanations are taken from https://en.wikipedia.org/wiki/List_of_HTTP_status_codes
+				$explanation = [
+					'400' => L10n::t('The server cannot or will not process the request due to an apparent client error.'),
+					'401' => L10n::t('Authentication is required and has failed or has not yet been provided.'),
+					'403' => L10n::t('The request was valid, but the server is refusing action. The user might not have the necessary permissions for a resource, or may need an account.'),
+					'404' => L10n::t('The requested resource could not be found but may be available in the future.'),
+					'500' => L10n::t('An unexpected condition was encountered and no more specific message is suitable.'),
+					'503' => L10n::t('The server is currently unavailable (because it is overloaded or down for maintenance). Please try again later.'),
+					];
+				if (!empty($explanation[$val])) {
+					$description['description'] = $explanation[$val];
+				}
 			}
 		}
 
@@ -133,16 +160,16 @@ class System extends BaseObject
 			$err = 'OK';
 		}
 
-		logger('http_status_exit ' . $val);
+		Logger::log('http_status_exit ' . $val);
 		header($_SERVER["SERVER_PROTOCOL"] . ' ' . $val . ' ' . $err);
 
 		if (isset($description["title"])) {
-			$tpl = get_markup_template('http_status.tpl');
-			echo replace_macros($tpl, ['$title' => $description["title"],
+			$tpl = Renderer::getMarkupTemplate('http_status.tpl');
+			echo Renderer::replaceMacros($tpl, ['$title' => $description["title"],
 				'$description' => defaults($description, 'description', '')]);
 		}
 
-		killme();
+		exit();
 	}
 
 	/**
@@ -162,6 +189,18 @@ class System extends BaseObject
 	}
 
 	/**
+	 * Generates a random string in the UUID format
+	 *
+	 * @param bool|string  $prefix   A given prefix (default is empty)
+	 * @return string a generated UUID
+	 */
+	public static function createUUID($prefix = '')
+	{
+		$guid = System::createGUID(32, $prefix);
+		return substr($guid, 0, 8) . '-' . substr($guid, 8, 4) . '-' . substr($guid, 12, 4) . '-' . substr($guid, 16, 4) . '-' . substr($guid, 20, 12);
+	}
+
+	/**
 	 * Generates a GUID with the given parameters
 	 *
 	 * @param int          $size     The size of the GUID (default is 16)
@@ -173,7 +212,7 @@ class System extends BaseObject
 		if (is_bool($prefix) && !$prefix) {
 			$prefix = '';
 		} elseif (empty($prefix)) {
-			$prefix = hash('crc32', self::getApp()->get_hostname());
+			$prefix = hash('crc32', self::getApp()->getHostName());
 		}
 
 		while (strlen($prefix) < ($size - 13)) {
@@ -204,22 +243,56 @@ class System extends BaseObject
 		return substr($trailer . uniqid('') . mt_rand(), 0, 26);
 	}
 
+	/**
+	 * Returns the current Load of the System
+	 *
+	 * @return integer
+	 */
+	public static function currentLoad()
+	{
+		if (!function_exists('sys_getloadavg')) {
+			return false;
+		}
+
+		$load_arr = sys_getloadavg();
+
+		if (!is_array($load_arr)) {
+			return false;
+		}
+
+		return max($load_arr[0], $load_arr[1]);
+	}
+
+	/**
+	 * Redirects to an external URL (fully qualified URL)
+	 * If you want to route relative to the current Friendica base, use App->internalRedirect()
+	 *
+	 * @param string $url The new Location to redirect
+	 * @throws InternalServerErrorException If the URL is not fully qualified
+	 */
+	public static function externalRedirect($url)
+	{
+		if (empty(parse_url($url, PHP_URL_SCHEME))) {
+			throw new InternalServerErrorException("'$url' is not a fully qualified URL, please use App->internalRedirect() instead");
+		}
+
+		header("Location: $url");
+		exit();
+	}
+
 	/// @todo Move the following functions from boot.php
 	/*
 	function killme()
-	function goaway($s)
 	function local_user()
 	function public_contact()
 	function remote_user()
 	function notice($s)
 	function info($s)
 	function is_site_admin()
-	function random_digits($digits)
 	function get_server()
 	function get_temppath()
 	function get_cachefile($file, $writemode = true)
 	function get_itemcachepath()
 	function get_spoolpath()
-	function current_load()
 	*/
 }

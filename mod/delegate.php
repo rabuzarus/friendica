@@ -4,11 +4,15 @@
  */
 
 use Friendica\App;
+use Friendica\BaseModule;
 use Friendica\Core\L10n;
 use Friendica\Core\Protocol;
+use Friendica\Core\Renderer;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
 use Friendica\Model\User;
+use Friendica\Util\Security;
+use Friendica\Util\Strings;
 
 require_once 'mod/settings.php';
 
@@ -23,12 +27,12 @@ function delegate_post(App $a)
 		return;
 	}
 
-	if (count($a->user) && x($a->user, 'uid') && $a->user['uid'] != local_user()) {
+	if (count($a->user) && !empty($a->user['uid']) && $a->user['uid'] != local_user()) {
 		notice(L10n::t('Permission denied.') . EOL);
 		return;
 	}
 
-	check_form_security_token_redirectOnErr('/delegate', 'delegate');
+	BaseModule::checkFormSecurityTokenRedirectOnError('/delegate', 'delegate');
 
 	$parent_uid = defaults($_POST, 'parent_user', 0);
 	$parent_password = defaults($_POST, 'parent_password', '');
@@ -59,8 +63,8 @@ function delegate_content(App $a)
 
 	if ($a->argc > 2 && $a->argv[1] === 'add' && intval($a->argv[2])) {
 		// delegated admins can view but not change delegation permissions
-		if (x($_SESSION, 'submanage')) {
-			goaway(System::baseUrl() . '/delegate');
+		if (!empty($_SESSION['submanage'])) {
+			$a->internalRedirect('delegate');
 		}
 
 		$user_id = $a->argv[2];
@@ -69,23 +73,23 @@ function delegate_content(App $a)
 		if (DBA::isResult($user)) {
 			$condition = [
 				'uid' => local_user(),
-				'nurl' => normalise_link(System::baseUrl() . '/profile/' . $user['nickname'])
+				'nurl' => Strings::normaliseLink(System::baseUrl() . '/profile/' . $user['nickname'])
 			];
 			if (DBA::exists('contact', $condition)) {
 				DBA::insert('manage', ['uid' => $user_id, 'mid' => local_user()]);
 			}
 		}
-		goaway(System::baseUrl() . '/delegate');
+		$a->internalRedirect('delegate');
 	}
 
 	if ($a->argc > 2 && $a->argv[1] === 'remove' && intval($a->argv[2])) {
 		// delegated admins can view but not change delegation permissions
-		if (x($_SESSION, 'submanage')) {
-			goaway(System::baseUrl() . '/delegate');
+		if (!empty($_SESSION['submanage'])) {
+			$a->internalRedirect('delegate');
 		}
 
 		DBA::delete('manage', ['uid' => $a->argv[2], 'mid' => local_user()]);
-		goaway(System::baseUrl() . '/delegate');
+		$a->internalRedirect('delegate');
 	}
 
 	// find everybody that currently has delegated management to this account/page
@@ -111,7 +115,7 @@ function delegate_content(App $a)
 		AND SUBSTRING_INDEX(`nurl`, '/', 3) = '%s'
 		AND `uid` = %d
 		AND `network` = '%s' ",
-		DBA::escape(normalise_link(System::baseUrl())),
+		DBA::escape(Strings::normaliseLink(System::baseUrl())),
 		intval(local_user()),
 		DBA::escape(Protocol::DFRN)
 	);
@@ -159,10 +163,12 @@ function delegate_content(App $a)
 
 	if (!is_null($parent_user)) {
 		$parent_password = ['parent_password', L10n::t('Parent Password:'), '', L10n::t('Please enter the password of the parent account to legitimize your request.')];
+	} else {
+		$parent_password = '';
 	}
 
-	$o = replace_macros(get_markup_template('delegate.tpl'), [
-		'$form_security_token' => get_form_security_token('delegate'),
+	$o = Renderer::replaceMacros(Renderer::getMarkupTemplate('delegate.tpl'), [
+		'$form_security_token' => BaseModule::getFormSecurityToken('delegate'),
 		'$parent_header' => L10n::t('Parent User'),
 		'$parent_user' => $parent_user,
 		'$parent_password' => $parent_password,

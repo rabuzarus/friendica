@@ -8,7 +8,9 @@ use Friendica\Content\Nav;
 use Friendica\Content\Text\Markdown;
 use Friendica\Core\Config;
 use Friendica\Core\L10n;
+use Friendica\Core\Renderer;
 use Friendica\Core\System;
+use Friendica\Util\Strings;
 
 function load_doc_file($s)
 {
@@ -36,17 +38,17 @@ function help_content(App $a)
 		$path = '';
 		// looping through the argv keys bigger than 0 to build
 		// a path relative to /help
-		for ($x = 1; $x < argc(); $x ++) {
+		for ($x = 1; $x < $a->argc; $x ++) {
 			if (strlen($path)) {
 				$path .= '/';
 			}
 
-			$path .= argv($x);
+			$path .= $a->getArgumentValue($x);
 		}
 		$title = basename($path);
 		$filename = $path;
 		$text = load_doc_file('doc/' . $path . '.md');
-		$a->page['title'] = L10n::t('Help:') . ' ' . str_replace('-', ' ', notags($title));
+		$a->page['title'] = L10n::t('Help:') . ' ' . str_replace('-', ' ', Strings::escapeTags($title));
 	}
 
 	$home = load_doc_file('doc/Home.md');
@@ -60,8 +62,8 @@ function help_content(App $a)
 
 	if (!strlen($text)) {
 		header($_SERVER["SERVER_PROTOCOL"] . ' 404 ' . L10n::t('Not Found'));
-		$tpl = get_markup_template("404.tpl");
-		return replace_macros($tpl, [
+		$tpl = Renderer::getMarkupTemplate("404.tpl");
+		return Renderer::replaceMacros($tpl, [
 			'$message' => L10n::t('Page not found.')
 		]);
 	}

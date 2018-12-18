@@ -5,21 +5,23 @@
 
 use Friendica\App;
 use Friendica\Content\ContactSelector;
+use Friendica\Content\Pager;
 use Friendica\Content\Widget;
 use Friendica\Core\Config;
 use Friendica\Core\L10n;
 use Friendica\Core\Protocol;
+use Friendica\Core\Renderer;
 use Friendica\Core\System;
 use Friendica\Core\Worker;
 use Friendica\Database\DBA;
-use Friendica\Model\Contact;
-use Friendica\Model\GContact;
+use Friendica\Model;
+use Friendica\Module;
 use Friendica\Network\Probe;
 use Friendica\Protocol\PortableContact;
 use Friendica\Util\Network;
 use Friendica\Util\Proxy as ProxyUtils;
+use Friendica\Util\Strings;
 
-require_once 'mod/contacts.php';
 
 function dirfind_init(App $a) {
 
@@ -28,7 +30,7 @@ function dirfind_init(App $a) {
 		return;
 	}
 
-	if (! x($a->page,'aside')) {
+	if (empty($a->page['aside'])) {
 		$a->page['aside'] = '';
 	}
 
@@ -44,17 +46,17 @@ function dirfind_content(App $a, $prefix = "") {
 
 	$local = Config::get('system','poco_local_search');
 
-	$search = $prefix.notags(trim($_REQUEST['search']));
+	$search = $prefix.Strings::escapeTags(trim(defaults($_REQUEST, 'search', '')));
 
 	$header = '';
 
 	if (strpos($search,'@') === 0) {
 		$search = substr($search,1);
 		$header = L10n::t('People Search - %s', $search);
-		if ((valid_email($search) && Network::isEmailDomainValid($search)) ||
-			(substr(normalise_link($search), 0, 7) == "http://")) {
+		if ((filter_var($search, FILTER_VALIDATE_EMAIL) && Network::isEmailDomainValid($search)) ||
+			(substr(Strings::normaliseLink($search), 0, 7) == "http://")) {
 			$user_data = Probe::uri($search);
-			$discover_user = (in_array($user_data["network"], [Protocol::DFRN, Protocol::OSTATUS, Protocol::DIASPORA]));
+			$discover_user = (in_array($user_data["network"], [Protocol::ACTIVITYPUB, Protocol::DFRN, Protocol::OSTATUS, Protocol::DIASPORA]));
 		}
 	}
 
@@ -67,12 +69,13 @@ function dirfind_content(App $a, $prefix = "") {
 	$o = '';
 
 	if ($search) {
+		$pager = new Pager($a->query_string);
 
 		if ($discover_user) {
 			$j = new stdClass();
 			$j->total = 1;
 			$j->items_page = 1;
-			$j->page = $a->pager['page'];
+			$j->page = $pager->getPage();
 
 			$objresult = new stdClass();
 			$objresult->cid = 0;
@@ -83,7 +86,7 @@ function dirfind_content(App $a, $prefix = "") {
 			$objresult->tags = "";
 			$objresult->network = $user_data["network"];
 
-			$contact = Contact::getDetailsByURL($user_data["url"], local_user());
+			$contact = Model\Contact::getDetailsByURL($user_data["url"], local_user());
 			$objresult->cid = $contact["cid"];
 			$objresult->pcid = $contact["zid"];
 
@@ -91,17 +94,16 @@ function dirfind_content(App $a, $prefix = "") {
 
 			// Add the contact to the global contacts if it isn't already in our system
 			if (($contact["cid"] == 0) && ($contact["zid"] == 0) && ($contact["gid"] == 0)) {
-				GContact::update($user_data);
+				Model\GContact::update($user_data);
 			}
 		} elseif ($local) {
-
-			if ($community)
+			if ($community) {
 				$extra_sql = " AND `community`";
-			else
+			} else {
 				$extra_sql = "";
+			}
 
-			$perpage = 80;
-			$startrec = (($a->pager['page']) * $perpage) - $perpage;
+			$pager->setItemsPerPage(80);
 
 			if (Config::get('system','diaspora_enabled')) {
 				$diaspora = Protocol::DIASPORA;
@@ -119,30 +121,30 @@ function dirfind_content(App $a, $prefix = "") {
 
 			/// @TODO These 2 SELECTs are not checked on validity with DBA::isResult()
 			$count = q("SELECT count(*) AS `total` FROM `gcontact`
-					WHERE NOT `hide` AND `network` IN ('%s', '%s', '%s') AND
+					WHERE NOT `hide` AND `network` IN ('%s', '%s', '%s', '%s') AND
 						((`last_contact` >= `last_failure`) OR (`updated` >= `last_failure`)) AND
 						(`url` LIKE '%s' OR `name` LIKE '%s' OR `location` LIKE '%s' OR
 						`addr` LIKE '%s' OR `about` LIKE '%s' OR `keywords` LIKE '%s') $extra_sql",
-					DBA::escape(Protocol::DFRN), DBA::escape($ostatus), DBA::escape($diaspora),
-					DBA::escape(escape_tags($search2)), DBA::escape(escape_tags($search2)), DBA::escape(escape_tags($search2)),
-					DBA::escape(escape_tags($search2)), DBA::escape(escape_tags($search2)), DBA::escape(escape_tags($search2)));
+					DBA::escape(Protocol::ACTIVITYPUB), DBA::escape(Protocol::DFRN), DBA::escape($ostatus), DBA::escape($diaspora),
+					DBA::escape(Strings::escapeHtml($search2)), DBA::escape(Strings::escapeHtml($search2)), DBA::escape(Strings::escapeHtml($search2)),
+					DBA::escape(Strings::escapeHtml($search2)), DBA::escape(Strings::escapeHtml($search2)), DBA::escape(Strings::escapeHtml($search2)));
 
 			$results = q("SELECT `nurl`
 					FROM `gcontact`
-					WHERE NOT `hide` AND `network` IN ('%s', '%s', '%s') AND
+					WHERE NOT `hide` AND `network` IN ('%s', '%s', '%s', '%s') AND
 						((`last_contact` >= `last_failure`) OR (`updated` >= `last_failure`)) AND
 						(`url` LIKE '%s' OR `name` LIKE '%s' OR `location` LIKE '%s' OR
 						`addr` LIKE '%s' OR `about` LIKE '%s' OR `keywords` LIKE '%s') $extra_sql
 						GROUP BY `nurl`
 						ORDER BY `updated` DESC LIMIT %d, %d",
-					DBA::escape(Protocol::DFRN), DBA::escape($ostatus), DBA::escape($diaspora),
-					DBA::escape(escape_tags($search2)), DBA::escape(escape_tags($search2)), DBA::escape(escape_tags($search2)),
-					DBA::escape(escape_tags($search2)), DBA::escape(escape_tags($search2)), DBA::escape(escape_tags($search2)),
-					intval($startrec), intval($perpage));
+					DBA::escape(Protocol::ACTIVITYPUB), DBA::escape(Protocol::DFRN), DBA::escape($ostatus), DBA::escape($diaspora),
+					DBA::escape(Strings::escapeHtml($search2)), DBA::escape(Strings::escapeHtml($search2)), DBA::escape(Strings::escapeHtml($search2)),
+					DBA::escape(Strings::escapeHtml($search2)), DBA::escape(Strings::escapeHtml($search2)), DBA::escape(Strings::escapeHtml($search2)),
+					$pager->getStart(), $pager->getItemsPerPage());
 			$j = new stdClass();
 			$j->total = $count[0]["total"];
-			$j->items_page = $perpage;
-			$j->page = $a->pager['page'];
+			$j->items_page = $pager->getItemsPerPage();
+			$j->page = $pager->getPage();
 			foreach ($results AS $result) {
 				if (PortableContact::alternateOStatusUrl($result["nurl"])) {
 					continue;
@@ -156,7 +158,7 @@ function dirfind_content(App $a, $prefix = "") {
 					continue;
 				}
 
-				$result = Contact::getDetailsByURL($result["nurl"], local_user());
+				$result = Model\Contact::getDetailsByURL($result["nurl"], local_user());
 
 				if ($result["name"] == "") {
 					$result["name"] = end(explode("/", $urlparts["path"]));
@@ -178,29 +180,25 @@ function dirfind_content(App $a, $prefix = "") {
 			// Add found profiles from the global directory to the local directory
 			Worker::add(PRIORITY_LOW, 'DiscoverPoCo', "dirsearch", urlencode($search));
 		} else {
+			$p = (($pager->getPage() != 1) ? '&p=' . $pager->getPage() : '');
 
-			$p = (($a->pager['page'] != 1) ? '&p=' . $a->pager['page'] : '');
-
-			if(strlen(Config::get('system','directory')))
-				$x = Network::fetchUrl(get_server().'/lsearch?f=' . $p .  '&search=' . urlencode($search));
+			if (strlen(Config::get('system','directory'))) {
+				$x = Network::fetchUrl(get_server() . '/lsearch?f=' . $p .  '&search=' . urlencode($search));
+			}
 
 			$j = json_decode($x);
-		}
 
-		if ($j->total) {
-			$a->set_pager_total($j->total);
-			$a->set_pager_itemspage($j->items_page);
+			$pager->setItemsPerPage($j->items_page);
 		}
 
 		if (!empty($j->results)) {
-
 			$id = 0;
 
 			foreach ($j->results as $jj) {
 
 				$alt_text = "";
 
-				$contact_details = Contact::getDetailsByURL($jj->url, local_user());
+				$contact_details = Model\Contact::getDetailsByURL($jj->url, local_user());
 
 				$itemurl = (($contact_details["addr"] != "") ? $contact_details["addr"] : $jj->url);
 
@@ -210,8 +208,8 @@ function dirfind_content(App $a, $prefix = "") {
 					$conntxt = "";
 					$contact = DBA::selectFirst('contact', [], ['id' => $jj->cid]);
 					if (DBA::isResult($contact)) {
-						$photo_menu = Contact::photoMenu($contact);
-						$details = _contact_detail_for_template($contact);
+						$photo_menu = Model\Contact::photoMenu($contact);
+						$details = Module\Contact::getContactTemplateVars($contact);
 						$alt_text = $details['alt_text'];
 					} else {
 						$photo_menu = [];
@@ -222,12 +220,12 @@ function dirfind_content(App $a, $prefix = "") {
 
 					$contact = DBA::selectFirst('contact', [], ['id' => $jj->pcid]);
 					if (DBA::isResult($contact)) {
-						$photo_menu = Contact::photoMenu($contact);
+						$photo_menu = Model\Contact::photoMenu($contact);
 					} else {
 						$photo_menu = [];
 					}
 
-					$photo_menu['profile'] = [L10n::t("View Profile"), Contact::magicLink($jj->url)];
+					$photo_menu['profile'] = [L10n::t("View Profile"), Model\Contact::magicLink($jj->url)];
 					$photo_menu['follow'] = [L10n::t("Connect/Follow"), $connlnk];
 				}
 
@@ -235,9 +233,9 @@ function dirfind_content(App $a, $prefix = "") {
 
 				$entry = [
 					'alt_text' => $alt_text,
-					'url' => Contact::magicLink($jj->url),
+					'url' => Model\Contact::magicLink($jj->url),
 					'itemurl' => $itemurl,
-					'name' => htmlentities($jj->name),
+					'name' => $jj->name,
 					'thumb' => ProxyUtils::proxifyUrl($jj->photo, false, ProxyUtils::SIZE_THUMB),
 					'img_hover' => $jj->tags,
 					'conntxt' => $conntxt,
@@ -246,21 +244,19 @@ function dirfind_content(App $a, $prefix = "") {
 					'details'       => $contact_details['location'],
 					'tags'          => $contact_details['keywords'],
 					'about'         => $contact_details['about'],
-					'account_type'  => Contact::getAccountType($contact_details),
+					'account_type'  => Model\Contact::getAccountType($contact_details),
 					'network' => ContactSelector::networkToName($jj->network, $jj->url),
 					'id' => ++$id,
 				];
 				$entries[] = $entry;
 			}
 
-		$tpl = get_markup_template('viewcontact_template.tpl');
-
-		$o .= replace_macros($tpl,[
-			'title' => $header,
-			'$contacts' => $entries,
-			'$paginate' => paginate($a),
-		]);
-
+			$tpl = Renderer::getMarkupTemplate('viewcontact_template.tpl');
+			$o .= Renderer::replaceMacros($tpl,[
+				'title' => $header,
+				'$contacts' => $entries,
+				'$paginate' => $pager->renderFull($j->total),
+			]);
 		} else {
 			info(L10n::t('No matches') . EOL);
 		}

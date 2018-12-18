@@ -6,20 +6,22 @@
 
 namespace Friendica\Worker;
 
+use Friendica\Core\Logger;
 use Friendica\Core\Protocol;
 use Friendica\Database\DBA;
 use Friendica\Network\Probe;
 use Friendica\Protocol\PortableContact;
 use Friendica\Util\DateTimeFormat;
+use Friendica\Util\Strings;
 
 class UpdateGContact
 {
 	public static function execute($contact_id)
 	{
-		logger('update_gcontact: start');
+		Logger::log('update_gcontact: start');
 
 		if (empty($contact_id)) {
-			logger('update_gcontact: no contact');
+			Logger::log('update_gcontact: no contact');
 			return;
 		}
 
@@ -29,13 +31,13 @@ class UpdateGContact
 			return;
 		}
 
-		if (!in_array($r[0]["network"], [Protocol::DFRN, Protocol::DIASPORA, Protocol::OSTATUS])) {
+		if (!in_array($r[0]["network"], [Protocol::ACTIVITYPUB, Protocol::DFRN, Protocol::DIASPORA, Protocol::OSTATUS])) {
 			return;
 		}
 
 		$data = Probe::uri($r[0]["url"]);
 
-		if (!in_array($data["network"], [Protocol::DFRN, Protocol::DIASPORA, Protocol::OSTATUS])) {
+		if (!in_array($data["network"], [Protocol::ACTIVITYPUB, Protocol::DFRN, Protocol::DIASPORA, Protocol::OSTATUS])) {
 			if ($r[0]["server_url"] != "") {
 				PortableContact::checkServer($r[0]["server_url"], $r[0]["network"]);
 			}
@@ -77,13 +79,13 @@ class UpdateGContact
 					DBA::escape($data["nick"]),
 					DBA::escape($data["addr"]),
 					DBA::escape($data["photo"]),
-					DBA::escape(normalise_link($data["url"]))
+					DBA::escape(Strings::normaliseLink($data["url"]))
 		);
 
 		q("UPDATE `contact` SET `addr` = '%s'
 					WHERE `uid` != 0 AND `addr` = '' AND `nurl` = '%s'",
 					DBA::escape($data["addr"]),
-					DBA::escape(normalise_link($data["url"]))
+					DBA::escape(Strings::normaliseLink($data["url"]))
 		);
 	}
 }

@@ -9,6 +9,7 @@ namespace Friendica\Core;
 use Friendica\BaseObject;
 use Friendica\Content\Text\BBCode;
 use Friendica\Content\Text\HTML;
+use Friendica\Core\Logger;
 use Friendica\Core\Protocol;
 use Friendica\Database\DBA;
 use Friendica\Model\Contact;
@@ -358,7 +359,7 @@ class NotificationsManager extends BaseObject
 							break;
 						}
 						/// @todo Check if this part here is used at all
-						logger('Complete data: ' . json_encode($it) . ' - ' . System::callstack(20), LOGGER_DEBUG);
+						Logger::log('Complete data: ' . json_encode($it) . ' - ' . System::callstack(20), Logger::DEBUG);
 
 						$xmlhead = "<" . "?xml version='1.0' encoding='UTF-8' ?" . ">";
 						$obj = XML::parseString($xmlhead . $it['object']);
@@ -631,7 +632,7 @@ class NotificationsManager extends BaseObject
 			// We have to distinguish between these two because they use different data.
 			// Contact suggestions
 			if ($it['fid']) {
-				$return_addr = bin2hex(self::getApp()->user['nickname'] . '@' . self::getApp()->get_hostname() . ((self::getApp()->urlpath) ? '/' . self::getApp()->urlpath : ''));
+				$return_addr = bin2hex(self::getApp()->user['nickname'] . '@' . self::getApp()->getHostName() . ((self::getApp()->getURLPath()) ? '/' . self::getApp()->getURLPath() : ''));
 
 				$intro = [
 					'label' => 'friend_suggestion',
@@ -642,7 +643,7 @@ class NotificationsManager extends BaseObject
 					'madeby_zrl' => Contact::magicLink($it['url']),
 					'madeby_addr' => $it['addr'],
 					'contact_id' => $it['contact-id'],
-					'photo' => ((x($it, 'fphoto')) ? ProxyUtils::proxifyUrl($it['fphoto'], false, ProxyUtils::SIZE_SMALL) : "images/person-175.jpg"),
+					'photo' => (!empty($it['fphoto']) ? ProxyUtils::proxifyUrl($it['fphoto'], false, ProxyUtils::SIZE_SMALL) : "images/person-300.jpg"),
 					'name' => $it['fname'],
 					'url' => $it['furl'],
 					'zrl' => Contact::magicLink($it['furl']),
@@ -674,7 +675,7 @@ class NotificationsManager extends BaseObject
 					'uid' => $_SESSION['uid'],
 					'intro_id' => $it['intro_id'],
 					'contact_id' => $it['contact-id'],
-					'photo' => ((x($it, 'photo')) ? ProxyUtils::proxifyUrl($it['photo'], false, ProxyUtils::SIZE_SMALL) : "images/person-175.jpg"),
+					'photo' => (!empty($it['photo']) ? ProxyUtils::proxifyUrl($it['photo'], false, ProxyUtils::SIZE_SMALL) : "images/person-300.jpg"),
 					'name' => $it['name'],
 					'location' => BBCode::convert($it['glocation'], false),
 					'about' => BBCode::convert($it['gabout'], false),

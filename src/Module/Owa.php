@@ -5,11 +5,13 @@
 namespace Friendica\Module;
 
 use Friendica\BaseModule;
+use Friendica\Core\Logger;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
 use Friendica\Model\Contact;
 use Friendica\Model\OpenWebAuthToken;
 use Friendica\Util\HTTPSignature;
+use Friendica\Util\Strings;
 
 /**
  * @brief OpenWebAuth verifier and token generator
@@ -54,14 +56,14 @@ class Owa extends BaseModule
 						if (DBA::isResult($contact)) {
 							// Try to verify the signed header with the public key of the contact record
 							// we have found.
-							$verified = HTTPSignature::verify('', $contact['pubkey']);
+							$verified = HTTPSignature::verifyMagic($contact['pubkey']);
 
 							if ($verified && $verified['header_signed'] && $verified['header_valid']) {
-								logger('OWA header: ' . print_r($verified, true), LOGGER_DATA);
-								logger('OWA success: ' . $contact['addr'], LOGGER_DATA);
+								Logger::log('OWA header: ' . print_r($verified, true), Logger::DATA);
+								Logger::log('OWA success: ' . $contact['addr'], Logger::DATA);
 
 								$ret['success'] = true;
-								$token = random_string(32);
+								$token = Strings::getRandomHex(32);
 
 								// Store the generated token in the databe.
 								OpenWebAuthToken::create('owt', 0, $token, $contact['addr']);
@@ -73,12 +75,12 @@ class Owa extends BaseModule
 								// At a later time, we will compare weather the token we're getting
 								// is really the same token we have stored in the database.
 								openssl_public_encrypt($token, $result, $contact['pubkey']);
-								$ret['encrypted_token'] = base64url_encode($result);
+								$ret['encrypted_token'] = Strings::base64UrlEncode($result);
 							} else {
-								logger('OWA fail: ' . $contact['id'] . ' ' . $contact['addr'] . ' ' . $contact['url'], LOGGER_DEBUG);
+								Logger::log('OWA fail: ' . $contact['id'] . ' ' . $contact['addr'] . ' ' . $contact['url'], Logger::DEBUG);
 							}
 						} else {
-							logger('Contact not found: ' . $handle, LOGGER_DEBUG);
+							Logger::log('Contact not found: ' . $handle, Logger::DEBUG);
 						}
 					}
 				}

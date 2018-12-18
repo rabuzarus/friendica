@@ -11,6 +11,8 @@ use DateTimeZone;
 use Friendica\Core\Config;
 use Friendica\Core\L10n;
 use Friendica\Core\PConfig;
+use Friendica\Core\Renderer;
+use Friendica\Database\DBA;
 
 require_once 'boot.php';
 require_once 'include/text.php';
@@ -113,8 +115,8 @@ class Temporal
 		$options = str_replace('<select id="timezone_select" name="timezone">', '', $options);
 		$options = str_replace('</select>', '', $options);
 
-		$tpl = get_markup_template('field_select_raw.tpl');
-		return replace_macros($tpl, [
+		$tpl = Renderer::getMarkupTemplate('field_select_raw.tpl');
+		return Renderer::replaceMacros($tpl, [
 			'$field' => [$name, $label, $current, $help, $options],
 		]);
 	}
@@ -139,8 +141,8 @@ class Temporal
 
 		$age = (intval($value) ? self::getAgeByTimezone($value, $a->user["timezone"], $a->user["timezone"]) : "");
 
-		$tpl = get_markup_template("field_input.tpl");
-		$o = replace_macros($tpl,
+		$tpl = Renderer::getMarkupTemplate("field_input.tpl");
+		$o = Renderer::replaceMacros($tpl,
 			[
 			'$field' => [
 				'dob',
@@ -217,13 +219,13 @@ class Temporal
 		// First day of the week (0 = Sunday)
 		$firstDay = PConfig::get(local_user(), 'system', 'first_day_of_week', 0);
 
-		$lang = substr(L10n::getBrowserLanguage(), 0, 2);
+		$lang = substr(L10n::getCurrentLang(), 0, 2);
 
 		// Check if the detected language is supported by the picker
 		if (!in_array($lang,
 				["ar", "ro", "id", "bg", "fa", "ru", "uk", "en", "el", "de", "nl", "tr", "fr", "es", "th", "pl", "pt", "ch", "se", "kr",
 				"it", "da", "no", "ja", "vi", "sl", "cs", "hu"])) {
-			$lang = Config::get('system', 'language', 'en');
+			$lang = 'en';
 		}
 
 		$o = '';
@@ -245,8 +247,8 @@ class Temporal
 
 		$readable_format = str_replace(['Y', 'm', 'd', 'H', 'i'], ['yyyy', 'mm', 'dd', 'HH', 'MM'], $dateformat);
 
-		$tpl = get_markup_template('field_datetime.tpl');
-		$o .= replace_macros($tpl, [
+		$tpl = Renderer::getMarkupTemplate('field_datetime.tpl');
+		$o .= Renderer::replaceMacros($tpl, [
 			'$field' => [
 				$id,
 				$label,
@@ -290,14 +292,20 @@ class Temporal
 
 		$abs = strtotime($localtime);
 
-		if (is_null($posted_date) || $posted_date <= NULL_DATE || $abs === false) {
+		if (is_null($posted_date) || $posted_date <= DBA::NULL_DATETIME || $abs === false) {
 			return L10n::t('never');
 		}
 
+		$isfuture = false;
 		$etime = time() - $abs;
 
-		if ($etime < 1) {
+		if ($etime < 1 && $etime >= 0) {
 			return L10n::t('less than a second ago');
+		}
+
+		if ($etime < 0){
+			$etime = -$etime;
+			$isfuture = true;
 		}
 
 		$a = [12 * 30 * 24 * 60 * 60 => [L10n::t('year'), L10n::t('years')],
@@ -315,7 +323,12 @@ class Temporal
 				$r = round($d);
 				// translators - e.g. 22 hours ago, 1 minute ago
 				if (!$format) {
-					$format = L10n::t('%1$d %2$s ago');
+					if($isfuture){
+						$format = L10n::t('in %1$d %2$s');
+					}
+					else {
+						$format = L10n::t('%1$d %2$s ago');
+					}
 				}
 
 				return sprintf($format, $r, (($r == 1) ? $str[0] : $str[1]));
@@ -450,11 +463,11 @@ class Temporal
 			$tddate = intval(DateTimeFormat::localNow('j'));
 		}
 
-		$str_month = day_translate($mtab[$m]);
+		$str_month = L10n::getDay($mtab[$m]);
 		$o = '<table class="calendar' . $class . '">';
 		$o .= "<caption>$str_month $y</caption><tr>";
 		for ($a = 0; $a < 7; $a ++) {
-			$o .= '<th>' . mb_substr(day_translate($dn[$a]), 0, 3, 'UTF-8') . '</th>';
+			$o .= '<th>' . mb_substr(L10n::getDay($dn[$a]), 0, 3, 'UTF-8') . '</th>';
 		}
 
 		$o .= '</tr><tr>';
@@ -468,7 +481,7 @@ class Temporal
 			$o .= "<td $today>";
 			$day = str_replace(' ', '&nbsp;', sprintf('%2.2d', $d));
 			if ($started) {
-				if (x($links, $d) !== false) {
+				if (isset($links[$d])) {
 					$o .= "<a href=\"{$links[$d]}\">$day</a>";
 				} else {
 					$o .= $day;

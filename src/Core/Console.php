@@ -5,7 +5,7 @@ namespace Friendica\Core;
 /**
  * Description of Console
  *
- * @author Hypolite Petovan <mrpetovan@gmail.com>
+ * @author Hypolite Petovan <hypolite@mrpetovan.com>
  */
 class Console extends \Asika\SimpleConsole\Console
 {
@@ -14,6 +14,7 @@ class Console extends \Asika\SimpleConsole\Console
 	protected $customHelpOptions = ['h', 'help', '?'];
 
 	protected $subConsoles = [
+		'cache'                  => __NAMESPACE__ . '\Console\Cache',
 		'config'                 => __NAMESPACE__ . '\Console\Config',
 		'createdoxygen'          => __NAMESPACE__ . '\Console\CreateDoxygen',
 		'docbloxerrorchecker'    => __NAMESPACE__ . '\Console\DocBloxErrorChecker',
@@ -29,6 +30,7 @@ class Console extends \Asika\SimpleConsole\Console
 		'po2php'                 => __NAMESPACE__ . '\Console\PoToPhp',
 		'typo'                   => __NAMESPACE__ . '\Console\Typo',
 		'postupdate'             => __NAMESPACE__ . '\Console\PostUpdate',
+		'storage'                => __NAMESPACE__ . '\Console\Storage',
 	];
 
 	protected function getHelp()
@@ -37,6 +39,7 @@ class Console extends \Asika\SimpleConsole\Console
 Usage: bin/console [--version] [-h|--help|-?] <command> [<args>] [-v]
 
 Commands:
+	cache                  Manage node cache
 	config                 Edit site config
 	createdoxygen          Generate Doxygen headers
 	dbstructure            Do database updates
@@ -53,6 +56,7 @@ Commands:
 	po2php                 Generate a strings.php file from a messages.po file
 	typo                   Checks for parse errors in Friendica files
 	postupdate             Execute pending post update scripts (can last days)
+	storage                Manage storage backend
 
 Options:
 	-h|--help|-? Show help information

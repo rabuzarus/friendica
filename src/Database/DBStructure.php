@@ -5,9 +5,10 @@
 namespace Friendica\Database;
 
 use Exception;
-use Friendica\Core\Addon;
 use Friendica\Core\Config;
+use Friendica\Core\Hook;
 use Friendica\Core\L10n;
+use Friendica\Core\Logger;
 use Friendica\Util\DateTimeFormat;
 
 require_once 'boot.php';
@@ -22,6 +23,17 @@ require_once 'include/text.php';
  */
 class DBStructure
 {
+	const UPDATE_NOT_CHECKED = 0; // Database check wasn't executed before
+	const UPDATE_SUCCESSFUL  = 1; // Database check was successful
+	const UPDATE_FAILED      = 2; // Database check failed
+
+	/**
+	 * Database structure definition loaded from config/dbstructure.config.php
+	 *
+	 * @var array
+	 */
+	private static $definition = [];
+
 	/*
 	 * Converts all tables from MyISAM to InnoDB
 	 */
@@ -44,57 +56,6 @@ class DBStructure
 			}
 		}
 	}
-
-	/*
-	 * send the email and do what is needed to do on update fails
-	 *
-	 * @param update_id		(int) number of failed update
-	 * @param error_message	(str) error message
-	 */
-	public static function updateFail($update_id, $error_message) {
-		$a = get_app();
-
-		//send the administrators an e-mail
-		$admin_mail_list = "'".implode("','", array_map(['Friendica\Database\DBA', 'escape'], explode(",", str_replace(" ", "", Config::get('config', 'admin_email')))))."'";
-		$adminlist = q("SELECT uid, language, email FROM user WHERE email IN (%s)",
-			$admin_mail_list
-		);
-
-		// No valid result?
-		if (!DBA::isResult($adminlist)) {
-			logger(sprintf('Cannot notify administrators about update_id=%d, error_message=%s', $update_id, $error_message), LOGGER_INFO);
-
-			// Don't continue
-			return;
-		}
-
-		// every admin could had different language
-		foreach ($adminlist as $admin) {
-			$lang = (($admin['language'])?$admin['language']:'en');
-			L10n::pushLang($lang);
-
-			$preamble = deindent(L10n::t("
-				The friendica developers released update %s recently,
-				but when I tried to install it, something went terribly wrong.
-				This needs to be fixed soon and I can't do it alone. Please contact a
-				friendica developer if you can not help me on your own. My database might be invalid."));
-			$body = L10n::t("The error message is\n[pre]%s[/pre]");
-			$preamble = sprintf($preamble, $update_id);
-			$body = sprintf($body, $error_message);
-
-			notification([
-				'type' => SYSTEM_EMAIL,
-				'to_email' => $admin['email'],
-				'preamble' => $preamble,
-				'body' => $body,
-				'language' => $lang]
-			);
-		}
-
-		//try the logger
-		logger("CRITICAL: Database structure update failed: ".$error_message);
-	}
-
 
 	private static function tableStructure($table) {
 		$structures = q("DESCRIBE `%s`", $table);
@@ -165,7 +126,7 @@ class DBStructure
 	}
 
 	public static function printStructure() {
-		$database = self::definition();
+		$database = self::definition(false);
 
 		echo "-- ------------------------------------------\n";
 		echo "-- ".FRIENDICA_PLATFORM." ".FRIENDICA_VERSION." (".FRIENDICA_CODENAME,")\n";
@@ -213,7 +174,7 @@ class DBStructure
 
 		$errors = '';
 
-		logger('updating structure', LOGGER_DEBUG);
+		Logger::log('updating structure', Logger::DEBUG);
 
 		// Get the current structure
 		$database = [];
@@ -226,7 +187,7 @@ class DBStructure
 			foreach ($tables AS $table) {
 				$table = current($table);
 
-				logger(sprintf('updating structure for table %s ...', $table), LOGGER_DEBUG);
+				Logger::log(sprintf('updating structure for table %s ...', $table), Logger::DEBUG);
 				$database[$table] = self::tableStructure($table);
 			}
 		}
@@ -368,8 +329,9 @@ class DBStructure
 				}
 
 				if (isset($database[$name]["table_status"]["Comment"])) {
-					if ($database[$name]["table_status"]["Comment"] != $structure['comment']) {
-						$sql2 = "COMMENT = '".DBA::escape($structure['comment'])."'";
+					$structurecomment = defaults($structure, "comment", "");
+					if ($database[$name]["table_status"]["Comment"] != $structurecomment) {
+						$sql2 = "COMMENT = '".DBA::escape($structurecomment)."'";
 
 						if ($sql3 == "") {
 							$sql3 = "ALTER" . $ignore . " TABLE `".$temp_name."` ".$sql2;
@@ -526,9 +488,9 @@ class DBStructure
 			Config::set('system', 'maintenance_reason', '');
 
 			if ($errors) {
-				Config::set('system', 'dbupdate', DB_UPDATE_FAILED);
+				Config::set('system', 'dbupdate', self::UPDATE_FAILED);
 			} else {
-				Config::set('system', 'dbupdate', DB_UPDATE_SUCCESSFUL);
+				Config::set('system', 'dbupdate', self::UPDATE_SUCCESSFUL);
 			}
 		}
 
@@ -576,7 +538,7 @@ class DBStructure
 		$primary_keys = [];
 		foreach ($structure["fields"] AS $fieldname => $field) {
 			$sql_rows[] = "`".DBA::escape($fieldname)."` ".self::FieldCommand($field);
-			if (x($field,'primary') && $field['primary']!='') {
+			if (!empty($field['primary'])) {
 				$primary_keys[] = $fieldname;
 			}
 		}
@@ -821,43 +783,40 @@ class DBStructure
 	}
 
 	/**
-	 * Loads the database structure definition from the /config/dbstructure.json file
+	 * Loads the database structure definition from the config/dbstructure.config.php file.
+	 * On first pass, defines DB_UPDATE_VERSION constant.
 	 *
-	 * Expected format:
-	 * "table_name": {
-	 *   "comment": "meaningful table comment",
-	 *   "fields": {
-	 *     "field_name1": {"type": "int unsigned", "not null": "1", "extra": "auto_increment", "primary": "1", "comment": "meaningful field comment"},
-	 *     "field_name2": {"type": "varchar(50)", "not null": "1", "default": "", "comment": "meaningful field comment"},
-	 *   },
-	 *   "indexes": {
-	 *     "PRIMARY": ["field_name1"],
-	 *     "name": ["UNIQUE", "field_name2"]
-	 *   }
-	 * }
-	 *
+	 * @see config/dbstructure.config.php
+	 * @param boolean $with_addons_structure Whether to tack on addons additional tables
 	 * @return array
 	 * @throws Exception
 	 */
-	public static function definition() {
-		$a = \Friendica\BaseObject::getApp();
+	public static function definition($with_addons_structure = true)
+	{
+		if (!self::$definition) {
+			$a = \Friendica\BaseObject::getApp();
 
-		$filename = $a->get_basepath() . '/config/dbstructure.json';
+			$filename = $a->getBasePath() . '/config/dbstructure.config.php';
 
-		if (!is_readable($filename)) {
-			throw new Exception('Missing database structure config file config/dbstructure.json');
+			if (!is_readable($filename)) {
+				throw new Exception('Missing database structure config file config/dbstructure.config.php');
+			}
+
+			$definition = require $filename;
+
+			if (!$definition) {
+				throw new Exception('Corrupted database structure config file config/dbstructure.config.php');
+			}
+
+			self::$definition = $definition;
+		} else {
+			$definition = self::$definition;
 		}
 
-		$json = file_get_contents($filename);
-
-		$database = json_decode($json, true);
-
-		if (!$database) {
-			throw new Exception('Corrupted database structure config file config/dbstructure.json');
+		if ($with_addons_structure) {
+			Hook::callAll('dbstructure_definition', $definition);
 		}
 
-		Addon::callHooks('dbstructure_definition', $database);
-
-		return $database;
+		return $definition;
 	}
 }

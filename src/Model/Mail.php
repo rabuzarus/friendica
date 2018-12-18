@@ -6,9 +6,11 @@
 namespace Friendica\Model;
 
 use Friendica\Core\L10n;
+use Friendica\Core\Logger;
 use Friendica\Core\System;
 use Friendica\Core\Worker;
 use Friendica\Database\DBA;
+use Friendica\Model\Photo;
 use Friendica\Network\Probe;
 use Friendica\Util\DateTimeFormat;
 
@@ -46,7 +48,7 @@ class Mail
 			return -2;
 		}
 
-		$guid = System::createGUID(32);
+		$guid = System::createUUID();
 		$uri = 'urn:X-dfrn:' . System::baseUrl() . ':' . local_user() . ':' . $guid;
 
 		$convid = 0;
@@ -73,7 +75,7 @@ class Mail
 			$recip_handle = (($contact['addr']) ? $contact['addr'] : $contact['nick'] . '@' . $recip_host);
 			$sender_handle = $a->user['nickname'] . '@' . substr(System::baseUrl(), strpos(System::baseUrl(), '://') + 3);
 
-			$conv_guid = System::createGUID(32);
+			$conv_guid = System::createUUID();
 			$convuri = $recip_handle . ':' . $conv_guid;
 
 			$handles = $recip_handle . ';' . $sender_handle;
@@ -87,7 +89,7 @@ class Mail
 		}
 
 		if (!$convid) {
-			logger('send message: conversation not found.');
+			Logger::log('send message: conversation not found.');
 			return -4;
 		}
 
@@ -142,7 +144,7 @@ class Mail
 					}
 					$image_uri = substr($image, strrpos($image, '/') + 1);
 					$image_uri = substr($image_uri, 0, strpos($image_uri, '-'));
-					DBA::update('photo', ['allow-cid' => '<' . $recipient . '>'], ['resource-id' => $image_uri, 'album' => 'Wall Photos', 'uid' => local_user()]);
+					Photo::update(['allow-cid' => '<' . $recipient . '>'], ['resource-id' => $image_uri, 'album' => 'Wall Photos', 'uid' => local_user()]);
 				}
 			}
 		}
@@ -171,7 +173,7 @@ class Mail
 			$subject = L10n::t('[no subject]');
 		}
 
-		$guid = System::createGUID(32);
+		$guid = System::createUUID();
 		$uri = 'urn:X-dfrn:' . System::baseUrl() . ':' . local_user() . ':' . $guid;
 
 		$me = Probe::uri($replyto);
@@ -180,7 +182,7 @@ class Mail
 			return -2;
 		}
 
-		$conv_guid = System::createGUID(32);
+		$conv_guid = System::createUUID();
 
 		$recip_handle = $recipient['nickname'] . '@' . substr(System::baseUrl(), strpos(System::baseUrl(), '://') + 3);
 
@@ -200,7 +202,7 @@ class Mail
 		}
 
 		if (!$convid) {
-			logger('send message: conversation not found.');
+			Logger::log('send message: conversation not found.');
 			return -4;
 		}
 

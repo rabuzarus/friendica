@@ -5,18 +5,20 @@
 
 use Friendica\App;
 use Friendica\Core\Addon;
+use Friendica\Core\Renderer;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
 use Friendica\Protocol\Salmon;
+use Friendica\Util\Strings;
 
 function xrd_init(App $a)
 {
 	if ($a->argv[0] == 'xrd') {
 		if (empty($_GET['uri'])) {
-			killme();
+			System::httpExit(404);
 		}
 
-		$uri = urldecode(notags(trim($_GET['uri'])));
+		$uri = urldecode(Strings::escapeTags(trim($_GET['uri'])));
 		if (defaults($_SERVER, 'HTTP_ACCEPT', '') == 'application/jrd+json') {
 			$mode = 'json';
 		} else {
@@ -24,10 +26,10 @@ function xrd_init(App $a)
 		}
 	} else {
 		if (empty($_GET['resource'])) {
-			killme();
+			System::httpExit(404);
 		}
 
-		$uri = urldecode(notags(trim($_GET['resource'])));
+		$uri = urldecode(Strings::escapeTags(trim($_GET['resource'])));
 		if (defaults($_SERVER, 'HTTP_ACCEPT', '') == 'application/xrd+xml') {
 			$mode = 'xml';
 		} else {
@@ -48,16 +50,16 @@ function xrd_init(App $a)
 
 	$user = DBA::selectFirst('user', [], ['nickname' => $name]);
 	if (!DBA::isResult($user)) {
-		killme();
+		System::httpExit(404);
 	}
 
 	$profile_url = System::baseUrl().'/profile/'.$user['nickname'];
 
 	$alias = str_replace('/profile/', '/~', $profile_url);
 
-	$addr = 'acct:'.$user['nickname'].'@'.$a->get_hostname();
-	if ($a->get_path()) {
-		$addr .= '/'.$a->get_path();
+	$addr = 'acct:'.$user['nickname'].'@'.$a->getHostName();
+	if ($a->getURLPath()) {
+		$addr .= '/'.$a->getURLPath();
 	}
 
 	if ($mode == 'xml') {
@@ -80,6 +82,7 @@ function xrd_json($a, $uri, $alias, $profile_url, $r)
 			['rel' => NAMESPACE_DFRN, 'href' => $profile_url],
 			['rel' => NAMESPACE_FEED, 'type' => 'application/atom+xml', 'href' => System::baseUrl().'/dfrn_poll/'.$r['nickname']],
 			['rel' => 'http://webfinger.net/rel/profile-page', 'type' => 'text/html', 'href' => $profile_url],
+			['rel' => 'self', 'type' => 'application/activity+json', 'href' => $profile_url],
 			['rel' => 'http://microformats.org/profile/hcard', 'type' => 'text/html', 'href' => System::baseUrl().'/hcard/'.$r['nickname']],
 			['rel' => NAMESPACE_POCO, 'href' => System::baseUrl().'/poco/'.$r['nickname']],
 			['rel' => 'http://webfinger.net/rel/avatar', 'type' => 'image/jpeg', 'href' => System::baseUrl().'/photo/profile/'.$r['uid'].'.jpg'],
@@ -92,6 +95,7 @@ function xrd_json($a, $uri, $alias, $profile_url, $r)
 			['rel' => 'http://purl.org/openwebauth/v1', 'type' => 'application/x-dfrn+json', 'href' => System::baseUrl().'/owa']
 		]
 	];
+
 	echo json_encode($json);
 	killme();
 }
@@ -103,9 +107,9 @@ function xrd_xml($a, $uri, $alias, $profile_url, $r)
 	header('Access-Control-Allow-Origin: *');
 	header("Content-type: text/xml");
 
-	$tpl = get_markup_template('xrd_person.tpl');
+	$tpl = Renderer::getMarkupTemplate('xrd_person.tpl');
 
-	$o = replace_macros($tpl, [
+	$o = Renderer::replaceMacros($tpl, [
 		'$nick'        => $r['nickname'],
 		'$accturi'     => $uri,
 		'$alias'       => $alias,

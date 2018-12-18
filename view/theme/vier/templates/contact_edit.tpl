@@ -6,7 +6,7 @@
 
 
 	<div id="contact-edit-nav-wrapper" >
-		<form action="contacts/{{$contact_id}}" method="post" >
+		<form action="contact/{{$contact_id}}" method="post" >
 			<div id="contact-edit-links">
 				<div id="contact-edit-status-wrapper">
 					<span id="contact-edit-contact-status">{{$contact_status}}</span>
@@ -47,7 +47,7 @@
 					</ul>
 
 					<ul>
-						<!-- <li><a href="network/0?nets=all&cid={{$contact_id}}" id="contact-edit-view-recent">{{$lblrecent}}</a></li> -->
+						<!-- <li><a href="network/?cid={{$contact_id}}" id="contact-edit-view-recent">{{$lblrecent}}</a></li> -->
 						{{if $follow}}<li><div id="contact-edit-follow"><a href="{{$follow}}">{{$follow_text}}</a></div></li>{{/if}}
 					</ul>
 				</div> {{* End of contact-edit-status-wrapper *}}

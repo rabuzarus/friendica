@@ -8,22 +8,32 @@ namespace Friendica\Model;
 
 use Friendica\BaseObject;
 use Friendica\Content\Text\BBCode;
+use Friendica\Content\Text\HTML;
 use Friendica\Core\Addon;
 use Friendica\Core\Config;
 use Friendica\Core\Lock;
+use Friendica\Core\Logger;
+use Friendica\Core\L10n;
 use Friendica\Core\PConfig;
 use Friendica\Core\Protocol;
+use Friendica\Core\Renderer;
 use Friendica\Core\System;
 use Friendica\Core\Worker;
 use Friendica\Database\DBA;
 use Friendica\Model\Contact;
+use Friendica\Model\Event;
+use Friendica\Model\FileTag;
 use Friendica\Model\PermissionSet;
+use Friendica\Model\Term;
 use Friendica\Model\ItemURI;
 use Friendica\Object\Image;
 use Friendica\Protocol\Diaspora;
 use Friendica\Protocol\OStatus;
 use Friendica\Util\DateTimeFormat;
+use Friendica\Util\Map;
 use Friendica\Util\XML;
+use Friendica\Util\Security;
+use Friendica\Util\Strings;
 use Text_LanguageDetect;
 
 require_once 'boot.php';
@@ -80,7 +90,7 @@ class Item extends BaseObject
 	// All fields in the item table
 	const ITEM_FIELDLIST = ['id', 'uid', 'parent', 'uri', 'parent-uri', 'thr-parent', 'guid',
 			'contact-id', 'type', 'wall', 'gravity', 'extid', 'icid', 'iaid', 'psid',
-			'uri-hash', 'created', 'edited', 'commented', 'received', 'changed', 'verb',
+			'created', 'edited', 'commented', 'received', 'changed', 'verb',
 			'postopts', 'plink', 'resource-id', 'event-id', 'tag', 'attach', 'inform',
 			'file', 'allow_cid', 'allow_gid', 'deny_cid', 'deny_gid', 'post-type',
 			'private', 'pubmail', 'moderated', 'visible', 'starred', 'bookmark',
@@ -176,7 +186,7 @@ class Item extends BaseObject
 
 		// We can always comment on posts from these networks
 		if (array_key_exists('writable', $row) &&
-			in_array($row['internal-network'], [Protocol::DFRN, Protocol::DIASPORA, Protocol::OSTATUS])) {
+			in_array($row['internal-network'], [Protocol::ACTIVITYPUB, Protocol::DFRN, Protocol::DIASPORA, Protocol::OSTATUS])) {
 			$row['writable'] = true;
 		}
 
@@ -231,6 +241,10 @@ class Item extends BaseObject
 			}
 		}
 
+		if (array_key_exists('signed_text', $row) && array_key_exists('interaction', $row) && !is_null($row['interaction'])) {
+			$row['signed_text'] = $row['interaction'];
+		}
+
 		if (array_key_exists('ignored', $row) && array_key_exists('internal-user-ignored', $row) && !is_null($row['internal-user-ignored'])) {
 			$row['ignored'] = $row['internal-user-ignored'];
 		}
@@ -242,6 +256,7 @@ class Item extends BaseObject
 		unset($row['internal-iaid']);
 		unset($row['internal-icid']);
 		unset($row['internal-user-ignored']);
+		unset($row['interaction']);
 
 		return $row;
 	}
@@ -375,7 +390,7 @@ class Item extends BaseObject
 			$usermode = true;
 		}
 
-		$fields = self::fieldlist($selected, $usermode);
+		$fields = self::fieldlist($usermode);
 
 		$select_fields = self::constructSelectFields($fields, $selected);
 
@@ -482,7 +497,7 @@ class Item extends BaseObject
 			$usermode = true;
 		}
 
-		$fields = self::fieldlist($selected, $usermode);
+		$fields = self::fieldlist($usermode);
 
 		$fields['thread'] = ['mention', 'ignored', 'iid'];
 
@@ -518,13 +533,13 @@ class Item extends BaseObject
 	 *
 	 * @return array field list
 	 */
-	private static function fieldlist($selected, $usermode)
+	private static function fieldlist($usermode)
 	{
 		$fields = [];
 
 		$fields['item'] = ['id', 'uid', 'parent', 'uri', 'parent-uri', 'thr-parent', 'guid',
 			'contact-id', 'owner-id', 'author-id', 'type', 'wall', 'gravity', 'extid',
-			'created', 'edited', 'commented', 'received', 'changed', 'psid', 'uri-hash',
+			'created', 'edited', 'commented', 'received', 'changed', 'psid',
 			'resource-id', 'event-id', 'tag', 'attach', 'post-type', 'file',
 			'private', 'pubmail', 'moderated', 'visible', 'starred', 'bookmark',
 			'unseen', 'deleted', 'origin', 'forum_mode', 'mention', 'global',
@@ -566,6 +581,8 @@ class Item extends BaseObject
 			'ignore' => 'event-ignore', 'id' => 'event-id'];
 
 		$fields['sign'] = ['signed_text', 'signature', 'signer'];
+
+		$fields['diaspora-interaction'] = ['interaction'];
 
 		return $fields;
 	}
@@ -653,12 +670,16 @@ class Item extends BaseObject
 			$joins .= " LEFT JOIN `sign` ON `sign`.`iid` = `item`.`id`";
 		}
 
+		if (strpos($sql_commands, "`diaspora-interaction`.") !== false) {
+			$joins .= " LEFT JOIN `diaspora-interaction` ON `diaspora-interaction`.`uri-id` = `item`.`uri-id`";
+		}
+
 		if (strpos($sql_commands, "`item-activity`.") !== false) {
-			$joins .= " LEFT JOIN `item-activity` ON `item-activity`.`id` = `item`.`iaid`";
+			$joins .= " LEFT JOIN `item-activity` ON `item-activity`.`uri-id` = `item`.`uri-id`";
 		}
 
 		if (strpos($sql_commands, "`item-content`.") !== false) {
-			$joins .= " LEFT JOIN `item-content` ON `item-content`.`id` = `item`.`icid`";
+			$joins .= " LEFT JOIN `item-content` ON `item-content`.`uri-id` = `item`.`uri-id`";
 		}
 
 		if (strpos($sql_commands, "`item-delivery-data`.") !== false) {
@@ -703,6 +724,10 @@ class Item extends BaseObject
 
 		if (in_array('ignored', $selected)) {
 			$selected[] = 'internal-user-ignored';
+		}
+
+		if (in_array('signed_text', $selected)) {
+			$selected[] = 'interaction';
 		}
 
 		$selection = [];
@@ -751,19 +776,6 @@ class Item extends BaseObject
 	}
 
 	/**
-	 * @brief Generate a server unique item hash for linking between the item tables
-	 *
-	 * @param string $uri     Item URI
-	 * @param date   $created Item creation date
-	 *
-	 * @return string the item hash
-	 */
-	private static function itemHash($uri, $created)
-	{
-		return round(strtotime($created) / 100) . hash('ripemd128', $uri);
-	}
-
-	/**
 	 * @brief Update existing item entries
 	 *
 	 * @param array $fields The fields that are to be changed
@@ -788,7 +800,7 @@ class Item extends BaseObject
 		// We cannot simply expand the condition to check for origin entries
 		// The condition needn't to be a simple array but could be a complex condition.
 		// And we have to execute this query before the update to ensure to fetch the same data.
-		$items = DBA::select('item', ['id', 'origin', 'uri', 'created', 'uri-hash', 'iaid', 'icid', 'tag', 'file'], $condition);
+		$items = DBA::select('item', ['id', 'origin', 'uri', 'uri-id', 'iaid', 'icid', 'tag', 'file'], $condition);
 
 		$content_fields = [];
 		foreach (array_merge(self::CONTENT_FIELDLIST, self::MIXED_CONTENT_FIELDLIST) as $field) {
@@ -813,14 +825,14 @@ class Item extends BaseObject
 			$tags = $fields['tag'];
 			$fields['tag'] = null;
 		} else {
-			$tags = '';
+			$tags = null;
 		}
 
 		if (array_key_exists('file', $fields)) {
 			$files = $fields['file'];
 			$fields['file'] = null;
 		} else {
-			$files = '';
+			$files = null;
 		}
 
 		$delivery_data = ['postopts' => defaults($fields, 'postopts', ''),
@@ -843,34 +855,11 @@ class Item extends BaseObject
 		$rows = DBA::affectedRows();
 
 		while ($item = DBA::fetch($items)) {
-
-			// This part here can safely be removed when the legacy fields in the item had been removed
-			if (empty($item['uri-hash']) && !empty($item['uri']) && !empty($item['created'])) {
-
-				// Fetch the uri-hash from an existing item entry if there is one
-				$item_condition = ["`uri` = ? AND `uri-hash` != ''", $item['uri']];
-				$existing = DBA::selectfirst('item', ['uri-hash'], $item_condition);
-				if (DBA::isResult($existing)) {
-					$item['uri-hash'] = $existing['uri-hash'];
-				} else {
-					$item['uri-hash'] = self::itemHash($item['uri'], $item['created']);
-				}
-
-				DBA::update('item', ['uri-hash' => $item['uri-hash']], ['id' => $item['id']]);
-				DBA::update('item-activity', ['uri-hash' => $item['uri-hash']], ["`uri` = ? AND `uri-hash` = ''", $item['uri']]);
-				DBA::update('item-content', ['uri-plink-hash' => $item['uri-hash']], ["`uri` = ? AND `uri-plink-hash` = ''", $item['uri']]);
-			}
-
 			if (!empty($item['iaid']) || (!empty($content_fields['verb']) && (self::activityToIndex($content_fields['verb']) >= 0))) {
-				if (!empty($item['iaid'])) {
-					$update_condition = ['id' => $item['iaid']];
-				} else {
-					$update_condition = ['uri-hash' => $item['uri-hash']];
-				}
-				self::updateActivity($content_fields, $update_condition);
+				self::updateActivity($content_fields, ['uri-id' => $item['uri-id']]);
 
 				if (empty($item['iaid'])) {
-					$item_activity = DBA::selectFirst('item-activity', ['id'], ['uri-hash' => $item['uri-hash']]);
+					$item_activity = DBA::selectFirst('item-activity', ['id'], ['uri-id' => $item['uri-id']]);
 					if (DBA::isResult($item_activity)) {
 						$item_fields = ['iaid' => $item_activity['id'], 'icid' => null];
 						foreach (self::MIXED_CONTENT_FIELDLIST as $field) {
@@ -894,15 +883,10 @@ class Item extends BaseObject
 					}
 				}
 			} else {
-				if (!empty($item['icid'])) {
-					$update_condition = ['id' => $item['icid']];
-				} else {
-					$update_condition = ['uri-plink-hash' => $item['uri-hash']];
-				}
-				self::updateContent($content_fields, $update_condition);
+				self::updateContent($content_fields, ['uri-id' => $item['uri-id']]);
 
 				if (empty($item['icid'])) {
-					$item_content = DBA::selectFirst('item-content', [], ['uri-plink-hash' => $item['uri-hash']]);
+					$item_content = DBA::selectFirst('item-content', [], ['uri-id' => $item['uri-id']]);
 					if (DBA::isResult($item_content)) {
 						$item_fields = ['icid' => $item_content['id']];
 						// Clear all fields in the item table that have a content in the item-content table
@@ -920,14 +904,14 @@ class Item extends BaseObject
 				}
 			}
 
-			if (!empty($tags)) {
+			if (!is_null($tags)) {
 				Term::insertFromTagFieldByItemId($item['id'], $tags);
 				if (!empty($item['tag'])) {
 					DBA::update('item', ['tag' => ''], ['id' => $item['id']]);
 				}
 			}
 
-			if (!empty($files)) {
+			if (!is_null($files)) {
 				Term::insertFromFileFieldByItemId($item['id'], $files);
 				if (!empty($item['file'])) {
 					DBA::update('item', ['file' => ''], ['id' => $item['id']]);
@@ -985,7 +969,7 @@ class Item extends BaseObject
 			} elseif ($item['uid'] == $uid) {
 				self::deleteById($item['id'], PRIORITY_HIGH);
 			} else {
-				logger('Wrong ownership. Not deleting item ' . $item['id']);
+				Logger::log('Wrong ownership. Not deleting item ' . $item['id']);
 			}
 		}
 		DBA::close($items);
@@ -999,7 +983,7 @@ class Item extends BaseObject
 	 *
 	 * @return boolean success
 	 */
-	private static function deleteById($item_id, $priority = PRIORITY_HIGH)
+	public static function deleteById($item_id, $priority = PRIORITY_HIGH)
 	{
 		// locate item to be deleted
 		$fields = ['id', 'uri', 'uid', 'parent', 'parent-uri', 'origin',
@@ -1008,12 +992,12 @@ class Item extends BaseObject
 			'icid', 'iaid', 'psid'];
 		$item = self::selectFirst($fields, ['id' => $item_id]);
 		if (!DBA::isResult($item)) {
-			logger('Item with ID ' . $item_id . " hasn't been found.", LOGGER_DEBUG);
+			Logger::log('Item with ID ' . $item_id . " hasn't been found.", Logger::DEBUG);
 			return false;
 		}
 
 		if ($item['deleted']) {
-			logger('Item with ID ' . $item_id . ' has already been deleted.', LOGGER_DEBUG);
+			Logger::log('Item with ID ' . $item_id . ' has already been deleted.', Logger::DEBUG);
 			return false;
 		}
 
@@ -1026,18 +1010,20 @@ class Item extends BaseObject
 
 		$matches = false;
 		$cnt = preg_match_all('/<(.*?)>/', $item['file'], $matches, PREG_SET_ORDER);
+
 		if ($cnt) {
 			foreach ($matches as $mtch) {
-				file_tag_unsave_file($item['uid'], $item['id'], $mtch[1],true);
+				FileTag::unsaveFile($item['uid'], $item['id'], $mtch[1],true);
 			}
 		}
 
 		$matches = false;
 
 		$cnt = preg_match_all('/\[(.*?)\]/', $item['file'], $matches, PREG_SET_ORDER);
+
 		if ($cnt) {
 			foreach ($matches as $mtch) {
-				file_tag_unsave_file($item['uid'], $item['id'], $mtch[1],false);
+				FileTag::unsaveFile($item['uid'], $item['id'], $mtch[1],false);
 			}
 		}
 
@@ -1048,7 +1034,7 @@ class Item extends BaseObject
 		 * generate a resource-id and therefore aren't intimately linked to the item.
 		 */
 		if (strlen($item['resource-id'])) {
-			DBA::delete('photo', ['resource-id' => $item['resource-id'], 'uid' => $item['uid']]);
+			Photo::delete(['resource-id' => $item['resource-id'], 'uid' => $item['uid']]);
 		}
 
 		// If item is a link to an event, delete the event.
@@ -1081,9 +1067,8 @@ class Item extends BaseObject
 
 		DBA::delete('item-delivery-data', ['iid' => $item['id']]);
 
-		if (!empty($item['iaid']) && !self::exists(['iaid' => $item['iaid'], 'deleted' => false])) {
-			DBA::delete('item-activity', ['id' => $item['iaid']], ['cascade' => false]);
-		}
+		// We don't delete the item-activity here, since we need some of the data for ActivityPub
+
 		if (!empty($item['icid']) && !self::exists(['icid' => $item['icid'], 'deleted' => false])) {
 			DBA::delete('item-content', ['id' => $item['icid']], ['cascade' => false]);
 		}
@@ -1115,7 +1100,7 @@ class Item extends BaseObject
 			}
 		}
 
-		logger('Item with ID ' . $item_id . " has been deleted.", LOGGER_DEBUG);
+		Logger::log('Item with ID ' . $item_id . " has been deleted.", Logger::DEBUG);
 
 		return true;
 	}
@@ -1161,13 +1146,13 @@ class Item extends BaseObject
 	private static function guid($item, $notify)
 	{
 		if (!empty($item['guid'])) {
-			return notags(trim($item['guid']));
+			return Strings::escapeTags(trim($item['guid']));
 		}
 
 		if ($notify) {
 			// We have to avoid duplicates. So we create the GUID in form of a hash of the plink or uri.
 			// We add the hash of our own host because our host is the original creator of the post.
-			$prefix_host = get_app()->get_hostname();
+			$prefix_host = get_app()->getHostName();
 		} else {
 			$prefix_host = '';
 
@@ -1205,7 +1190,7 @@ class Item extends BaseObject
 		} elseif (!empty($item['uri'])) {
 			$guid = self::guidFromUri($item['uri'], $prefix_host);
 		} else {
-			$guid = System::createGUID(32, hash('crc32', $prefix_host));
+			$guid = System::createUUID(hash('crc32', $prefix_host));
 		}
 
 		return $guid;
@@ -1218,7 +1203,7 @@ class Item extends BaseObject
 		if (!empty($contact_id)) {
 			return $contact_id;
 		}
-		logger('Missing contact-id. Called by: '.System::callstack(), LOGGER_DEBUG);
+		Logger::log('Missing contact-id. Called by: '.System::callstack(), Logger::DEBUG);
 		/*
 		 * First we are looking for a suitable contact that matches with the author of the post
 		 * This is done only for comments
@@ -1239,7 +1224,7 @@ class Item extends BaseObject
 				$contact_id = $self["id"];
 			}
 		}
-		logger("Contact-id was missing for post ".$item['guid']." from user id ".$item['uid']." - now set to ".$contact_id, LOGGER_DEBUG);
+		Logger::log("Contact-id was missing for post ".$item['guid']." from user id ".$item['uid']." - now set to ".$contact_id, Logger::DEBUG);
 
 		return $contact_id;
 	}
@@ -1276,7 +1261,7 @@ class Item extends BaseObject
 		}
 
 		$item['guid'] = self::guid($item, $notify);
-		$item['uri'] = notags(trim(defaults($item, 'uri', self::newURI($item['uid'], $item['guid']))));
+		$item['uri'] = Strings::escapeTags(trim(defaults($item, 'uri', self::newURI($item['uid'], $item['guid']))));
 
 		// Store URI data
 		$item['uri-id'] = ItemURI::insert(['uri' => $item['uri'], 'guid' => $item['guid']]);
@@ -1290,17 +1275,16 @@ class Item extends BaseObject
 		 */
 
 		$dsprsig = null;
-		if (x($item, 'dsprsig')) {
+		if (isset($item['dsprsig'])) {
 			$encoded_signature = $item['dsprsig'];
 			$dsprsig = json_decode(base64_decode($item['dsprsig']));
 			unset($item['dsprsig']);
 		}
 
-		if (!empty($item['diaspora_signed_text'])) {
+		$diaspora_signed_text = '';
+		if (isset($item['diaspora_signed_text'])) {
 			$diaspora_signed_text = $item['diaspora_signed_text'];
 			unset($item['diaspora_signed_text']);
-		} else {
-			$diaspora_signed_text = '';
 		}
 
 		// Converting the plink
@@ -1325,7 +1309,7 @@ class Item extends BaseObject
 			$item['gravity'] = GRAVITY_COMMENT;
 		} else {
 			$item['gravity'] = GRAVITY_UNKNOWN;   // Should not happen
-			logger('Unknown gravity for verb: ' . $item['verb'], LOGGER_DEBUG);
+			Logger::log('Unknown gravity for verb: ' . $item['verb'], Logger::DEBUG);
 		}
 
 		$uid = intval($item['uid']);
@@ -1342,7 +1326,7 @@ class Item extends BaseObject
 			$expire_date = time() - ($expire_interval * 86400);
 			$created_date = strtotime($item['created']);
 			if ($created_date < $expire_date) {
-				logger('item-store: item created ('.date('c', $created_date).') before expiration time ('.date('c', $expire_date).'). ignored. ' . print_r($item,true), LOGGER_DEBUG);
+				Logger::log('item-store: item created ('.date('c', $created_date).') before expiration time ('.date('c', $expire_date).'). ignored. ' . print_r($item,true), Logger::DEBUG);
 				return 0;
 			}
 		}
@@ -1352,7 +1336,7 @@ class Item extends BaseObject
 		 * We have to check several networks since Friendica posts could be repeated
 		 * via OStatus (maybe Diasporsa as well)
 		 */
-		if (in_array($item['network'], [Protocol::DIASPORA, Protocol::DFRN, Protocol::OSTATUS, ""])) {
+		if (in_array($item['network'], [Protocol::ACTIVITYPUB, Protocol::DIASPORA, Protocol::DFRN, Protocol::OSTATUS, ""])) {
 			$condition = ["`uri` = ? AND `uid` = ? AND `network` IN (?, ?, ?)",
 				trim($item['uri']), $item['uid'],
 				Protocol::DIASPORA, Protocol::DFRN, Protocol::OSTATUS];
@@ -1360,18 +1344,11 @@ class Item extends BaseObject
 			if (DBA::isResult($existing)) {
 				// We only log the entries with a different user id than 0. Otherwise we would have too many false positives
 				if ($uid != 0) {
-					logger("Item with uri ".$item['uri']." already existed for user ".$uid." with id ".$existing["id"]." target network ".$existing["network"]." - new network: ".$item['network']);
+					Logger::log("Item with uri ".$item['uri']." already existed for user ".$uid." with id ".$existing["id"]." target network ".$existing["network"]." - new network: ".$item['network']);
 				}
 
 				return $existing["id"];
 			}
-		}
-
-		// Ensure to always have the same creation date.
-		$existing = self::selectfirst(['created', 'uri-hash'], ['uri' => $item['uri']]);
-		if (DBA::isResult($existing)) {
-			$item['created'] = $existing['created'];
-			$item['uri-hash'] = $existing['uri-hash'];
 		}
 
 		$item['wall']          = intval(defaults($item, 'wall', 0));
@@ -1382,15 +1359,15 @@ class Item extends BaseObject
 		$item['owner-name']    = trim(defaults($item, 'owner-name', ''));
 		$item['owner-link']    = trim(defaults($item, 'owner-link', ''));
 		$item['owner-avatar']  = trim(defaults($item, 'owner-avatar', ''));
-		$item['received']      = ((x($item, 'received') !== false) ? DateTimeFormat::utc($item['received']) : DateTimeFormat::utcNow());
-		$item['created']       = ((x($item, 'created') !== false) ? DateTimeFormat::utc($item['created']) : $item['received']);
-		$item['edited']        = ((x($item, 'edited') !== false) ? DateTimeFormat::utc($item['edited']) : $item['created']);
-		$item['changed']       = ((x($item, 'changed') !== false) ? DateTimeFormat::utc($item['changed']) : $item['created']);
-		$item['commented']     = ((x($item, 'commented') !== false) ? DateTimeFormat::utc($item['commented']) : $item['created']);
+		$item['received']      = (isset($item['received'])  ? DateTimeFormat::utc($item['received'])  : DateTimeFormat::utcNow());
+		$item['created']       = (isset($item['created'])   ? DateTimeFormat::utc($item['created'])   : $item['received']);
+		$item['edited']        = (isset($item['edited'])    ? DateTimeFormat::utc($item['edited'])    : $item['created']);
+		$item['changed']       = (isset($item['changed'])   ? DateTimeFormat::utc($item['changed'])   : $item['created']);
+		$item['commented']     = (isset($item['commented']) ? DateTimeFormat::utc($item['commented']) : $item['created']);
 		$item['title']         = trim(defaults($item, 'title', ''));
 		$item['location']      = trim(defaults($item, 'location', ''));
 		$item['coord']         = trim(defaults($item, 'coord', ''));
-		$item['visible']       = ((x($item, 'visible') !== false) ? intval($item['visible'])         : 1);
+		$item['visible']       = (isset($item['visible']) ? intval($item['visible']) : 1);
 		$item['deleted']       = 0;
 		$item['parent-uri']    = trim(defaults($item, 'parent-uri', $item['uri']));
 		$item['post-type']     = defaults($item, 'post-type', self::PT_ARTICLE);
@@ -1416,12 +1393,9 @@ class Item extends BaseObject
 		$item['inform']        = trim(defaults($item, 'inform', ''));
 		$item['file']          = trim(defaults($item, 'file', ''));
 
-		// Unique identifier to be linked against item-activities and item-content
-		$item['uri-hash']      = defaults($item, 'uri-hash', self::itemHash($item['uri'], $item['created']));
-
 		// When there is no content then we don't post it
 		if ($item['body'].$item['title'] == '') {
-			logger('No body, no title.');
+			Logger::log('No body, no title.');
 			return 0;
 		}
 
@@ -1448,7 +1422,7 @@ class Item extends BaseObject
 		$item['author-id'] = defaults($item, 'author-id', Contact::getIdForURL($item["author-link"], 0, false, $default));
 
 		if (Contact::isBlocked($item["author-id"])) {
-			logger('Contact '.$item["author-id"].' is blocked, item '.$item["uri"].' will not be stored');
+			Logger::log('Contact '.$item["author-id"].' is blocked, item '.$item["uri"].' will not be stored');
 			return 0;
 		}
 
@@ -1458,31 +1432,22 @@ class Item extends BaseObject
 		$item['owner-id'] = defaults($item, 'owner-id', Contact::getIdForURL($item["owner-link"], 0, false, $default));
 
 		if (Contact::isBlocked($item["owner-id"])) {
-			logger('Contact '.$item["owner-id"].' is blocked, item '.$item["uri"].' will not be stored');
+			Logger::log('Contact '.$item["owner-id"].' is blocked, item '.$item["uri"].' will not be stored');
 			return 0;
 		}
 
-		// These fields aren't stored anymore in the item table, they are fetched upon request
-		unset($item['author-link']);
-		unset($item['author-name']);
-		unset($item['author-avatar']);
-
-		unset($item['owner-link']);
-		unset($item['owner-name']);
-		unset($item['owner-avatar']);
-
 		if ($item['network'] == Protocol::PHANTOM) {
-			logger('Missing network. Called by: '.System::callstack(), LOGGER_DEBUG);
+			Logger::log('Missing network. Called by: '.System::callstack(), Logger::DEBUG);
 
 			$item['network'] = Protocol::DFRN;
-			logger("Set network to " . $item["network"] . " for " . $item["uri"], LOGGER_DEBUG);
+			Logger::log("Set network to " . $item["network"] . " for " . $item["uri"], Logger::DEBUG);
 		}
 
 		// Checking if there is already an item with the same guid
-		logger('Checking for an item for user '.$item['uid'].' on network '.$item['network'].' with the guid '.$item['guid'], LOGGER_DEBUG);
+		Logger::log('Checking for an item for user '.$item['uid'].' on network '.$item['network'].' with the guid '.$item['guid'], Logger::DEBUG);
 		$condition = ['guid' => $item['guid'], 'network' => $item['network'], 'uid' => $item['uid']];
 		if (self::exists($condition)) {
-			logger('found item with guid '.$item['guid'].' for user '.$item['uid'].' on network '.$item['network'], LOGGER_DEBUG);
+			Logger::log('found item with guid '.$item['guid'].' for user '.$item['uid'].' on network '.$item['network'], Logger::DEBUG);
 			return 0;
 		}
 
@@ -1563,15 +1528,15 @@ class Item extends BaseObject
 				}
 
 				// If its a post from myself then tag the thread as "mention"
-				logger("Checking if parent ".$parent_id." has to be tagged as mention for user ".$item['uid'], LOGGER_DEBUG);
+				Logger::log("Checking if parent ".$parent_id." has to be tagged as mention for user ".$item['uid'], Logger::DEBUG);
 				$user = DBA::selectFirst('user', ['nickname'], ['uid' => $item['uid']]);
 				if (DBA::isResult($user)) {
-					$self = normalise_link(System::baseUrl() . '/profile/' . $user['nickname']);
+					$self = Strings::normaliseLink(System::baseUrl() . '/profile/' . $user['nickname']);
 					$self_id = Contact::getIdForURL($self, 0, true);
-					logger("'myself' is ".$self_id." for parent ".$parent_id." checking against ".$item['author-id']." and ".$item['owner-id'], LOGGER_DEBUG);
+					Logger::log("'myself' is ".$self_id." for parent ".$parent_id." checking against ".$item['author-id']." and ".$item['owner-id'], Logger::DEBUG);
 					if (($item['author-id'] == $self_id) || ($item['owner-id'] == $self_id)) {
 						DBA::update('thread', ['mention' => true], ['iid' => $parent_id]);
-						logger("tagged thread ".$parent_id." as mention for user ".$self, LOGGER_DEBUG);
+						Logger::log("tagged thread ".$parent_id." as mention for user ".$self, Logger::DEBUG);
 					}
 				}
 			} else {
@@ -1580,12 +1545,12 @@ class Item extends BaseObject
 				 * we don't have or can't see the original post.
 				 */
 				if ($force_parent) {
-					logger('$force_parent=true, reply converted to top-level post.');
+					Logger::log('$force_parent=true, reply converted to top-level post.');
 					$parent_id = 0;
 					$item['parent-uri'] = $item['uri'];
 					$item['gravity'] = GRAVITY_PARENT;
 				} else {
-					logger('item parent '.$item['parent-uri'].' for '.$item['uid'].' was not found - ignoring item');
+					Logger::log('item parent '.$item['parent-uri'].' for '.$item['uid'].' was not found - ignoring item');
 					return 0;
 				}
 
@@ -1599,7 +1564,7 @@ class Item extends BaseObject
 		$condition = ["`uri` = ? AND `network` IN (?, ?) AND `uid` = ?",
 			$item['uri'], $item['network'], Protocol::DFRN, $item['uid']];
 		if (self::exists($condition)) {
-			logger('duplicated item with the same uri found. '.print_r($item,true));
+			Logger::log('duplicated item with the same uri found. '.print_r($item,true));
 			return 0;
 		}
 
@@ -1607,7 +1572,7 @@ class Item extends BaseObject
 		if (in_array($item['network'], [Protocol::DFRN, Protocol::DIASPORA])) {
 			$condition = ['guid' => $item['guid'], 'uid' => $item['uid']];
 			if (self::exists($condition)) {
-				logger('duplicated item with the same guid found. '.print_r($item,true));
+				Logger::log('duplicated item with the same guid found. '.print_r($item,true));
 				return 0;
 			}
 		} else {
@@ -1615,7 +1580,7 @@ class Item extends BaseObject
 			$condition = ["`body` = ? AND `network` = ? AND `created` = ? AND `contact-id` = ? AND `uid` = ?",
 					$item['body'], $item['network'], $item['created'], $item['contact-id'], $item['uid']];
 			if (self::exists($condition)) {
-				logger('duplicated item with the same body found. '.print_r($item,true));
+				Logger::log('duplicated item with the same body found. '.print_r($item,true));
 				return 0;
 			}
 		}
@@ -1645,7 +1610,7 @@ class Item extends BaseObject
 		$item["deleted"] = $parent_deleted;
 
 		// Fill the cache field
-		put_item_in_cache($item);
+		self::putInCache($item);
 
 		if ($notify) {
 			$item['edit'] = false;
@@ -1661,8 +1626,8 @@ class Item extends BaseObject
 		// It is mainly used in the "post_local" hook.
 		unset($item['api_source']);
 
-		if (x($item, 'cancel')) {
-			logger('post cancelled by addon.');
+		if (!empty($item['cancel'])) {
+			Logger::log('post cancelled by addon.');
 			return 0;
 		}
 
@@ -1673,12 +1638,12 @@ class Item extends BaseObject
 		 */
 		if ($item["uid"] == 0) {
 			if (self::exists(['uri' => trim($item['uri']), 'uid' => 0])) {
-				logger('Global item already stored. URI: '.$item['uri'].' on network '.$item['network'], LOGGER_DEBUG);
+				Logger::log('Global item already stored. URI: '.$item['uri'].' on network '.$item['network'], Logger::DEBUG);
 				return 0;
 			}
 		}
 
-		logger('' . print_r($item,true), LOGGER_DATA);
+		Logger::log('' . print_r($item,true), Logger::DATA);
 
 		if (array_key_exists('tag', $item)) {
 			$tags = $item['tag'];
@@ -1707,6 +1672,15 @@ class Item extends BaseObject
 
 		unset($item['postopts']);
 		unset($item['inform']);
+
+		// These fields aren't stored anymore in the item table, they are fetched upon request
+		unset($item['author-link']);
+		unset($item['author-name']);
+		unset($item['author-avatar']);
+
+		unset($item['owner-link']);
+		unset($item['owner-name']);
+		unset($item['owner-avatar']);
 
 		DBA::transaction();
 		$ret = DBA::insert('item', $item);
@@ -1737,14 +1711,14 @@ class Item extends BaseObject
 				$item = array_merge($item, $delivery_data);
 
 				file_put_contents($spool, json_encode($item));
-				logger("Item wasn't stored - Item was spooled into file ".$file, LOGGER_DEBUG);
+				Logger::log("Item wasn't stored - Item was spooled into file ".$file, Logger::DEBUG);
 			}
 			return 0;
 		}
 
 		if ($current_post == 0) {
 			// This is one of these error messages that never should occur.
-			logger("couldn't find created item - we better quit now.");
+			Logger::log("couldn't find created item - we better quit now.");
 			DBA::rollback();
 			return 0;
 		}
@@ -1755,7 +1729,7 @@ class Item extends BaseObject
 
 		if ($entries > 1) {
 			// There are duplicates. We delete our just created entry.
-			logger('Duplicated post occurred. uri = ' . $item['uri'] . ' uid = ' . $item['uid']);
+			Logger::log('Duplicated post occurred. uri = ' . $item['uri'] . ' uid = ' . $item['uid']);
 
 			// Yes, we could do a rollback here - but we are having many users with MyISAM.
 			DBA::delete('item', ['id' => $current_post]);
@@ -1763,12 +1737,12 @@ class Item extends BaseObject
 			return 0;
 		} elseif ($entries == 0) {
 			// This really should never happen since we quit earlier if there were problems.
-			logger("Something is terribly wrong. We haven't found our created entry.");
+			Logger::log("Something is terribly wrong. We haven't found our created entry.");
 			DBA::rollback();
 			return 0;
 		}
 
-		logger('created item '.$current_post);
+		Logger::log('created item '.$current_post);
 		self::updateContact($item);
 
 		if (!$parent_id || ($item['parent-uri'] === $item['uri'])) {
@@ -1796,17 +1770,20 @@ class Item extends BaseObject
 			 */
 			if (base64_encode(base64_decode(base64_decode($dsprsig->signature))) == base64_decode($dsprsig->signature)) {
 				$dsprsig->signature = base64_decode($dsprsig->signature);
-				logger("Repaired double encoded signature from handle ".$dsprsig->signer, LOGGER_DEBUG);
+				Logger::log("Repaired double encoded signature from handle ".$dsprsig->signer, Logger::DEBUG);
 			}
 
-			DBA::insert('sign', ['iid' => $current_post, 'signed_text' => $dsprsig->signed_text,
-						'signature' => $dsprsig->signature, 'signer' => $dsprsig->signer]);
+			if (!empty($dsprsig->signed_text) && empty($dsprsig->signature) && empty($dsprsig->signer)) {
+				DBA::insert('diaspora-interaction', ['uri-id' => $item['uri-id'], 'interaction' => $dsprsig->signed_text], true);
+			} else {
+				// The other fields are used by very old Friendica servers, so we currently store them differently
+				DBA::insert('sign', ['iid' => $current_post, 'signed_text' => $dsprsig->signed_text,
+					'signature' => $dsprsig->signature, 'signer' => $dsprsig->signer]);
+			}
 		}
 
 		if (!empty($diaspora_signed_text)) {
-			// Formerly we stored the signed text, the signature and the author in different fields.
-			// We now store the raw data so that we are more flexible.
-			DBA::insert('sign', ['iid' => $current_post, 'signed_text' => $diaspora_signed_text]);
+			DBA::insert('diaspora-interaction', ['uri-id' => $item['uri-id'], 'interaction' => $diaspora_signed_text], true);
 		}
 
 		$deleted = self::tagDeliver($item['uid'], $current_post);
@@ -1824,7 +1801,7 @@ class Item extends BaseObject
 					Addon::callHooks('post_remote_end', $posted_item);
 				}
 			} else {
-				logger('new item not found in DB, id ' . $current_post);
+				Logger::log('new item not found in DB, id ' . $current_post);
 			}
 		}
 
@@ -1861,9 +1838,17 @@ class Item extends BaseObject
 		check_user_notification($current_post);
 
 		if ($notify) {
-			Worker::add(['priority' => $priority, 'dont_fork' => true], "Notifier", $notify_type, $current_post);
-		} elseif (!empty($parent) && $parent['origin']) {
-			Worker::add(['priority' => PRIORITY_HIGH, 'dont_fork' => true], "Notifier", "comment-import", $current_post);
+			Worker::add(['priority' => $priority, 'dont_fork' => true], 'Notifier', $notify_type, $current_post);
+		} elseif ($item['visible'] && ((!empty($parent) && $parent['origin']) || $item['origin'])) {
+			if ($item['gravity'] == GRAVITY_ACTIVITY) {
+				$cmd = $item['origin'] ? 'activity-new' : 'activity-import';
+			} elseif ($item['gravity'] == GRAVITY_COMMENT) {
+				$cmd = $item['origin'] ? 'comment-new' : 'comment-import';
+			} else {
+				$cmd = 'wall-new';
+			}
+
+			Worker::add(['priority' => PRIORITY_HIGH, 'dont_fork' => true], 'Notifier', $cmd, $current_post);
 		}
 
 		return $current_post;
@@ -1911,8 +1896,7 @@ class Item extends BaseObject
 			return false;
 		}
 
-		$fields = ['uri' => $item['uri'], 'activity' => $activity_index,
-			'uri-hash' => $item['uri-hash'], 'uri-id' => $item['uri-id']];
+		$fields = ['activity' => $activity_index, 'uri-hash' => (string)$item['uri-id'], 'uri-id' => $item['uri-id']];
 
 		// We just remove everything that is content
 		foreach (array_merge(self::CONTENT_FIELDLIST, self::MIXED_CONTENT_FIELDLIST) as $field) {
@@ -1922,20 +1906,20 @@ class Item extends BaseObject
 		// To avoid timing problems, we are using locks.
 		$locked = Lock::acquire('item_insert_activity');
 		if (!$locked) {
-			logger("Couldn't acquire lock for URI " . $item['uri'] . " - proceeding anyway.");
+			Logger::log("Couldn't acquire lock for URI " . $item['uri'] . " - proceeding anyway.");
 		}
 
 		// Do we already have this content?
-		$item_activity = DBA::selectFirst('item-activity', ['id'], ['uri-hash' => $item['uri-hash']]);
+		$item_activity = DBA::selectFirst('item-activity', ['id'], ['uri-id' => $item['uri-id']]);
 		if (DBA::isResult($item_activity)) {
 			$item['iaid'] = $item_activity['id'];
-			logger('Fetched activity for URI ' . $item['uri'] . ' (' . $item['iaid'] . ')');
+			Logger::log('Fetched activity for URI ' . $item['uri'] . ' (' . $item['iaid'] . ')');
 		} elseif (DBA::insert('item-activity', $fields)) {
 			$item['iaid'] = DBA::lastInsertId();
-			logger('Inserted activity for URI ' . $item['uri'] . ' (' . $item['iaid'] . ')');
+			Logger::log('Inserted activity for URI ' . $item['uri'] . ' (' . $item['iaid'] . ')');
 		} else {
 			// This shouldn't happen.
-			logger('Could not insert activity for URI ' . $item['uri'] . ' - should not happen');
+			Logger::log('Could not insert activity for URI ' . $item['uri'] . ' - should not happen');
 			Lock::release('item_insert_activity');
 			return false;
 		}
@@ -1952,8 +1936,7 @@ class Item extends BaseObject
 	 */
 	private static function insertContent(&$item)
 	{
-		$fields = ['uri' => $item['uri'], 'uri-plink-hash' => $item['uri-hash'],
-			'uri-id' => $item['uri-id']];
+		$fields = ['uri-plink-hash' => (string)$item['uri-id'], 'uri-id' => $item['uri-id']];
 
 		foreach (array_merge(self::CONTENT_FIELDLIST, self::MIXED_CONTENT_FIELDLIST) as $field) {
 			if (isset($item[$field])) {
@@ -1965,20 +1948,20 @@ class Item extends BaseObject
 		// To avoid timing problems, we are using locks.
 		$locked = Lock::acquire('item_insert_content');
 		if (!$locked) {
-			logger("Couldn't acquire lock for URI " . $item['uri'] . " - proceeding anyway.");
+			Logger::log("Couldn't acquire lock for URI " . $item['uri'] . " - proceeding anyway.");
 		}
 
 		// Do we already have this content?
-		$item_content = DBA::selectFirst('item-content', ['id'], ['uri-plink-hash' => $item['uri-hash']]);
+		$item_content = DBA::selectFirst('item-content', ['id'], ['uri-id' => $item['uri-id']]);
 		if (DBA::isResult($item_content)) {
 			$item['icid'] = $item_content['id'];
-			logger('Fetched content for URI ' . $item['uri'] . ' (' . $item['icid'] . ')');
+			Logger::log('Fetched content for URI ' . $item['uri'] . ' (' . $item['icid'] . ')');
 		} elseif (DBA::insert('item-content', $fields)) {
 			$item['icid'] = DBA::lastInsertId();
-			logger('Inserted content for URI ' . $item['uri'] . ' (' . $item['icid'] . ')');
+			Logger::log('Inserted content for URI ' . $item['uri'] . ' (' . $item['icid'] . ')');
 		} else {
 			// This shouldn't happen.
-			logger('Could not insert content for URI ' . $item['uri'] . ' - should not happen');
+			Logger::log('Could not insert content for URI ' . $item['uri'] . ' - should not happen');
 		}
 		if ($locked) {
 			Lock::release('item_insert_content');
@@ -2004,7 +1987,7 @@ class Item extends BaseObject
 
 		$fields = ['activity' => $activity_index];
 
-		logger('Update activity for ' . json_encode($condition));
+		Logger::log('Update activity for ' . json_encode($condition));
 
 		DBA::update('item-activity', $fields, $condition, true);
 
@@ -2033,7 +2016,7 @@ class Item extends BaseObject
 			$fields = $condition;
 		}
 
-		logger('Update content for ' . json_encode($condition));
+		Logger::log('Update content for ' . json_encode($condition));
 
 		DBA::update('item-content', $fields, $condition, true);
 	}
@@ -2054,7 +2037,7 @@ class Item extends BaseObject
 
 		// Only distribute public items from native networks
 		$condition = ['id' => $itemid, 'uid' => 0,
-			'network' => [Protocol::DFRN, Protocol::DIASPORA, Protocol::OSTATUS, ""],
+			'network' => [Protocol::ACTIVITYPUB, Protocol::DFRN, Protocol::DIASPORA, Protocol::OSTATUS, ""],
 			'visible' => true, 'deleted' => false, 'moderated' => false, 'private' => false];
 		$item = self::selectFirst(self::ITEM_FIELDLIST, ['id' => $itemid]);
 		if (!DBA::isResult($item)) {
@@ -2072,13 +2055,45 @@ class Item extends BaseObject
 
 		$users = [];
 
-		$condition = ["`nurl` IN (SELECT `nurl` FROM `contact` WHERE `id` = ?) AND `uid` != 0 AND NOT `blocked` AND `rel` IN (?, ?)",
-			$parent['owner-id'], Contact::SHARING,  Contact::FRIEND];
+		/// @todo add a field "pcid" in the contact table that referrs to the public contact id.
+		$owner = DBA::selectFirst('contact', ['url', 'nurl', 'alias'], ['id' => $parent['owner-id']]);
+		if (!DBA::isResult($owner)) {
+			return;
+		}
 
+		$condition = ['nurl' => $owner['nurl'], 'rel' => [Contact::SHARING, Contact::FRIEND]];
 		$contacts = DBA::select('contact', ['uid'], $condition);
-
 		while ($contact = DBA::fetch($contacts)) {
+			if ($contact['uid'] == 0) {
+				continue;
+			}
+
 			$users[$contact['uid']] = $contact['uid'];
+		}
+		DBA::close($contacts);
+
+		$condition = ['alias' => $owner['url'], 'rel' => [Contact::SHARING, Contact::FRIEND]];
+		$contacts = DBA::select('contact', ['uid'], $condition);
+		while ($contact = DBA::fetch($contacts)) {
+			if ($contact['uid'] == 0) {
+				continue;
+			}
+
+			$users[$contact['uid']] = $contact['uid'];
+		}
+		DBA::close($contacts);
+
+		if (!empty($owner['alias'])) {
+			$condition = ['url' => $owner['alias'], 'rel' => [Contact::SHARING, Contact::FRIEND]];
+			$contacts = DBA::select('contact', ['uid'], $condition);
+			while ($contact = DBA::fetch($contacts)) {
+				if ($contact['uid'] == 0) {
+					continue;
+				}
+
+				$users[$contact['uid']] = $contact['uid'];
+			}
+			DBA::close($contacts);
 		}
 
 		$origin_uid = 0;
@@ -2140,9 +2155,9 @@ class Item extends BaseObject
 		$distributed = self::insert($item, false, $notify, true);
 
 		if (!$distributed) {
-			logger("Distributed public item " . $itemid . " for user " . $uid . " wasn't stored", LOGGER_DEBUG);
+			Logger::log("Distributed public item " . $itemid . " for user " . $uid . " wasn't stored", Logger::DEBUG);
 		} else {
-			logger("Distributed public item " . $itemid . " for user " . $uid . " with id " . $distributed, LOGGER_DEBUG);
+			Logger::log("Distributed public item " . $itemid . " for user " . $uid . " with id " . $distributed, Logger::DEBUG);
 		}
 	}
 
@@ -2176,7 +2191,7 @@ class Item extends BaseObject
 		}
 
 		// is it an entry from a connector? Only add an entry for natively connected networks
-		if (!in_array($item["network"], [Protocol::DFRN, Protocol::DIASPORA, Protocol::OSTATUS, ""])) {
+		if (!in_array($item["network"], [Protocol::ACTIVITYPUB, Protocol::DFRN, Protocol::DIASPORA, Protocol::OSTATUS, ""])) {
 			return;
 		}
 
@@ -2205,7 +2220,7 @@ class Item extends BaseObject
 
 			$public_shadow = self::insert($item, false, false, true);
 
-			logger("Stored public shadow for thread ".$itemid." under id ".$public_shadow, LOGGER_DEBUG);
+			Logger::log("Stored public shadow for thread ".$itemid." under id ".$public_shadow, Logger::DEBUG);
 		}
 	}
 
@@ -2262,7 +2277,7 @@ class Item extends BaseObject
 
 		$public_shadow = self::insert($item, false, false, true);
 
-		logger("Stored public shadow for comment ".$item['uri']." under id ".$public_shadow, LOGGER_DEBUG);
+		Logger::log("Stored public shadow for comment ".$item['uri']." under id ".$public_shadow, Logger::DEBUG);
 
 		// If this was a comment to a Diaspora post we don't get our comment back.
 		// This means that we have to distribute the comment by ourselves.
@@ -2327,16 +2342,10 @@ class Item extends BaseObject
 	public static function newURI($uid, $guid = "")
 	{
 		if ($guid == "") {
-			$guid = System::createGUID(32);
+			$guid = System::createUUID();
 		}
 
-		$hostname = self::getApp()->get_hostname();
-
-		$user = DBA::selectFirst('user', ['nickname'], ['uid' => $uid]);
-
-		$uri = "urn:X-dfrn:" . $hostname . ':' . $user['nickname'] . ':' . $guid;
-
-		return $uri;
+		return self::getApp()->getBaseURL() . '/objects/' . $guid;
 	}
 
 	/**
@@ -2390,7 +2399,7 @@ class Item extends BaseObject
 	public static function setHashtags(&$item)
 	{
 
-		$tags = get_tags($item["body"]);
+		$tags = BBCode::getTags($item["body"]);
 
 		// No hashtags?
 		if (!count($tags)) {
@@ -2439,15 +2448,15 @@ class Item extends BaseObject
 
 			$basetag = str_replace('_',' ',substr($tag,1));
 
-			$newtag = '#[url=' . System::baseUrl() . '/search?tag=' . rawurlencode($basetag) . ']' . $basetag . '[/url]';
+			$newtag = '#[url=' . System::baseUrl() . '/search?tag=' . $basetag . ']' . $basetag . '[/url]';
 
 			$item["body"] = str_replace($tag, $newtag, $item["body"]);
 
 			if (!stristr($item["tag"], "/search?tag=" . $basetag . "]" . $basetag . "[/url]")) {
 				if (strlen($item["tag"])) {
-					$item["tag"] = ','.$item["tag"];
+					$item["tag"] = ',' . $item["tag"];
 				}
-				$item["tag"] = $newtag.$item["tag"];
+				$item["tag"] = $newtag . $item["tag"];
 			}
 		}
 
@@ -2532,20 +2541,20 @@ class Item extends BaseObject
 			return;
 		}
 
-		$link = normalise_link(System::baseUrl() . '/profile/' . $user['nickname']);
+		$link = Strings::normaliseLink(System::baseUrl() . '/profile/' . $user['nickname']);
 
 		/*
 		 * Diaspora uses their own hardwired link URL in @-tags
 		 * instead of the one we supply with webfinger
 		 */
-		$dlink = normalise_link(System::baseUrl() . '/u/' . $user['nickname']);
+		$dlink = Strings::normaliseLink(System::baseUrl() . '/u/' . $user['nickname']);
 
 		$cnt = preg_match_all('/[\@\!]\[url\=(.*?)\](.*?)\[\/url\]/ism', $item['body'], $matches, PREG_SET_ORDER);
 		if ($cnt) {
 			foreach ($matches as $mtch) {
-				if (link_compare($link, $mtch[1]) || link_compare($dlink, $mtch[1])) {
+				if (Strings::compareLink($link, $mtch[1]) || Strings::compareLink($dlink, $mtch[1])) {
 					$mention = true;
-					logger('mention found: ' . $mtch[2]);
+					Logger::log('mention found: ' . $mtch[2]);
 				}
 			}
 		}
@@ -2555,7 +2564,7 @@ class Item extends BaseObject
 				  !$item['wall'] && !$item['origin'] && ($item['id'] == $item['parent'])) {
 				// mmh.. no mention.. community page or private group... no wall.. no origin.. top-post (not a comment)
 				// delete it!
-				logger("no-mention top-level post to community or private group. delete.");
+				Logger::log("no-mention top-level post to community or private group. delete.");
 				DBA::delete('item', ['id' => $item_id]);
 				return true;
 			}
@@ -2614,29 +2623,29 @@ class Item extends BaseObject
 
 		// Prevent the forwarding of posts that are forwarded
 		if (!empty($datarray["extid"]) && ($datarray["extid"] == Protocol::DFRN)) {
-			logger('Already forwarded', LOGGER_DEBUG);
+			Logger::log('Already forwarded', Logger::DEBUG);
 			return false;
 		}
 
 		// Prevent to forward already forwarded posts
-		if ($datarray["app"] == $a->get_hostname()) {
-			logger('Already forwarded (second test)', LOGGER_DEBUG);
+		if ($datarray["app"] == $a->getHostName()) {
+			Logger::log('Already forwarded (second test)', Logger::DEBUG);
 			return false;
 		}
 
 		// Only forward posts
 		if ($datarray["verb"] != ACTIVITY_POST) {
-			logger('No post', LOGGER_DEBUG);
+			Logger::log('No post', Logger::DEBUG);
 			return false;
 		}
 
 		if (($contact['network'] != Protocol::FEED) && $datarray['private']) {
-			logger('Not public', LOGGER_DEBUG);
+			Logger::log('Not public', Logger::DEBUG);
 			return false;
 		}
 
 		$datarray2 = $datarray;
-		logger('remote-self start - Contact '.$contact['url'].' - '.$contact['remote_self'].' Item '.print_r($datarray, true), LOGGER_DEBUG);
+		Logger::log('remote-self start - Contact '.$contact['url'].' - '.$contact['remote_self'].' Item '.print_r($datarray, true), Logger::DEBUG);
 		if ($contact['remote_self'] == 2) {
 			$self = DBA::selectFirst('contact', ['id', 'name', 'url', 'thumb'],
 					['uid' => $contact['uid'], 'self' => true]);
@@ -2660,7 +2669,7 @@ class Item extends BaseObject
 			}
 
 			if ($contact['network'] != Protocol::FEED) {
-				$datarray["guid"] = System::createGUID(32);
+				$datarray["guid"] = System::createUUID();
 				unset($datarray["plink"]);
 				$datarray["uri"] = self::newURI($contact['uid'], $datarray["guid"]);
 				$datarray["parent-uri"] = $datarray["uri"];
@@ -2676,7 +2685,7 @@ class Item extends BaseObject
 		if ($contact['network'] != Protocol::FEED) {
 			// Store the original post
 			$result = self::insert($datarray2, false, false);
-			logger('remote-self post original item - Contact '.$contact['url'].' return '.$result.' Item '.print_r($datarray2, true), LOGGER_DEBUG);
+			Logger::log('remote-self post original item - Contact '.$contact['url'].' return '.$result.' Item '.print_r($datarray2, true), Logger::DEBUG);
 		} else {
 			$datarray["app"] = "Feed";
 			$result = true;
@@ -2706,7 +2715,7 @@ class Item extends BaseObject
 			return $s;
 		}
 
-		logger('check for photos', LOGGER_DEBUG);
+		Logger::log('check for photos', Logger::DEBUG);
 		$site = substr(System::baseUrl(), strpos(System::baseUrl(), '://'));
 
 		$orig_body = $s;
@@ -2720,7 +2729,7 @@ class Item extends BaseObject
 			$img_st_close++; // make it point to AFTER the closing bracket
 			$image = substr($orig_body, $img_start + $img_st_close, $img_len);
 
-			logger('found photo ' . $image, LOGGER_DEBUG);
+			Logger::log('found photo ' . $image, Logger::DEBUG);
 
 			if (stristr($image, $site . '/photo/')) {
 				// Only embed locally hosted photos
@@ -2732,8 +2741,7 @@ class Item extends BaseObject
 				if ($x) {
 					$res = substr($i, $x + 1);
 					$i = substr($i, 0, $x);
-					$fields = ['data', 'type', 'allow_cid', 'allow_gid', 'deny_cid', 'deny_gid'];
-					$photo = DBA::selectFirst('photo', $fields, ['resource-id' => $i, 'scale' => $res, 'uid' => $uid]);
+					$photo = Photo::getPhotoForUser($uid, $i, $res);
 					if (DBA::isResult($photo)) {
 						/*
 						 * Check to see if we should replace this photo link with an embedded image
@@ -2757,27 +2765,23 @@ class Item extends BaseObject
 							}
 						}
 						if ($replace) {
-							$data = $photo['data'];
-							$type = $photo['type'];
-
+							$photo_img = Photo::getImageForPhoto($photo);
 							// If a custom width and height were specified, apply before embedding
 							if (preg_match("/\[img\=([0-9]*)x([0-9]*)\]/is", substr($orig_body, $img_start, $img_st_close), $match)) {
-								logger('scaling photo', LOGGER_DEBUG);
+								Logger::log('scaling photo', Logger::DEBUG);
 
 								$width = intval($match[1]);
 								$height = intval($match[2]);
 
-								$Image = new Image($data, $type);
-								if ($Image->isValid()) {
-									$Image->scaleDown(max($width, $height));
-									$data = $Image->asString();
-									$type = $Image->getType();
-								}
+								$photo_img->scaleDown(max($width, $height));
 							}
 
-							logger('replacing photo', LOGGER_DEBUG);
+							$data = $photo_img->asString();
+							$type = $photo_img->getType();
+
+							Logger::log('replacing photo', Logger::DEBUG);
 							$image = 'data:' . $type . ';base64,' . base64_encode($data);
-							logger('replaced: ' . $image, LOGGER_DATA);
+							Logger::log('replaced: ' . $image, Logger::DATA);
 						}
 					}
 				}
@@ -2826,7 +2830,7 @@ class Item extends BaseObject
 	}
 
 	// returns an array of contact-ids that are allowed to see this object
-	private static function enumeratePermissions($obj)
+	public static function enumeratePermissions($obj)
 	{
 		$allow_people = expand_acl($obj['allow_cid']);
 		$allow_groups = Group::expand(expand_acl($obj['allow_gid']));
@@ -2940,7 +2944,7 @@ class Item extends BaseObject
 			++$expired;
 		}
 		DBA::close($items);
-		logger('User ' . $uid . ": expired $expired items; expire items: $expire_items, expire notes: $expire_notes, expire starred: $expire_starred, expire photos: $expire_photos");
+		Logger::log('User ' . $uid . ": expired $expired items; expire items: $expire_items, expire notes: $expire_notes, expire starred: $expire_starred, expire photos: $expire_photos");
 	}
 
 	public static function firstPostDate($uid, $wall = false)
@@ -2996,18 +3000,18 @@ class Item extends BaseObject
 				$activity = ACTIVITY_ATTENDMAYBE;
 				break;
 			default:
-				logger('like: unknown verb ' . $verb . ' for item ' . $item_id);
+				Logger::log('like: unknown verb ' . $verb . ' for item ' . $item_id);
 				return false;
 		}
 
 		// Enable activity toggling instead of on/off
 		$event_verb_flag = $activity === ACTIVITY_ATTEND || $activity === ACTIVITY_ATTENDNO || $activity === ACTIVITY_ATTENDMAYBE;
 
-		logger('like: verb ' . $verb . ' item ' . $item_id);
+		Logger::log('like: verb ' . $verb . ' item ' . $item_id);
 
 		$item = self::selectFirst(self::ITEM_FIELDLIST, ['`id` = ? OR `uri` = ?', $item_id, $item_id]);
 		if (!DBA::isResult($item)) {
-			logger('like: unknown item ' . $item_id);
+			Logger::log('like: unknown item ' . $item_id);
 			return false;
 		}
 
@@ -3018,15 +3022,15 @@ class Item extends BaseObject
 			$uid = local_user();
 		}
 
-		if (!can_write_wall($uid)) {
-			logger('like: unable to write on wall ' . $uid);
+		if (!Security::canWriteToUserWall($uid)) {
+			Logger::log('like: unable to write on wall ' . $uid);
 			return false;
 		}
 
 		// Retrieves the local post owner
 		$owner_self_contact = DBA::selectFirst('contact', [], ['uid' => $uid, 'self' => true]);
 		if (!DBA::isResult($owner_self_contact)) {
-			logger('like: unknown owner ' . $uid);
+			Logger::log('like: unknown owner ' . $uid);
 			return false;
 		}
 
@@ -3035,7 +3039,7 @@ class Item extends BaseObject
 
 		$author_contact = DBA::selectFirst('contact', ['url'], ['id' => $author_id]);
 		if (!DBA::isResult($author_contact)) {
-			logger('like: unknown author ' . $author_id);
+			Logger::log('like: unknown author ' . $author_id);
 			return false;
 		}
 
@@ -3047,7 +3051,7 @@ class Item extends BaseObject
 			$item_contact_id = Contact::getIdForURL($author_contact['url'], $uid, true);
 			$item_contact = DBA::selectFirst('contact', [], ['id' => $item_contact_id]);
 			if (!DBA::isResult($item_contact)) {
-				logger('like: unknown item contact ' . $item_contact_id);
+				Logger::log('like: unknown item contact ' . $item_contact_id);
 				return false;
 			}
 		}
@@ -3086,10 +3090,10 @@ class Item extends BaseObject
 			return true;
 		}
 
-		$objtype = $item['resource-id'] ? ACTIVITY_OBJ_IMAGE : ACTIVITY_OBJ_NOTE ;
+		$objtype = $item['resource-id'] ? ACTIVITY_OBJ_IMAGE : ACTIVITY_OBJ_NOTE;
 
 		$new_item = [
-			'guid'          => System::createGUID(32),
+			'guid'          => System::createUUID(),
 			'uri'           => self::newURI($item['uid']),
 			'uid'           => $item['uid'],
 			'contact-id'    => $item_contact_id,
@@ -3100,7 +3104,7 @@ class Item extends BaseObject
 			'parent'        => $item['id'],
 			'parent-uri'    => $item['uri'],
 			'thr-parent'    => $item['uri'],
-			'owner-id'      => $item['owner-id'],
+			'owner-id'      => $author_id,
 			'author-id'     => $author_id,
 			'body'          => $activity,
 			'verb'          => $activity,
@@ -3113,6 +3117,11 @@ class Item extends BaseObject
 			'unseen'        => 1,
 		];
 
+		$signed = Diaspora::createLikeSignature($uid, $new_item);
+		if (!empty($signed)) {
+			$new_item['diaspora_signed_text'] = json_encode($signed);
+		}
+
 		$new_item_id = self::insert($new_item);
 
 		// If the parent item isn't visible then set it to visible
@@ -3120,14 +3129,9 @@ class Item extends BaseObject
 			self::update(['visible' => true], ['id' => $item['id']]);
 		}
 
-		// Save the author information for the like in case we need to relay to Diaspora
-		Diaspora::storeLikeSignature($item_contact, $new_item_id);
-
 		$new_item['id'] = $new_item_id;
 
 		Addon::callHooks('post_local_end', $new_item);
-
-		Worker::add(PRIORITY_HIGH, "Notifier", "like", $new_item_id);
 
 		return true;
 	}
@@ -3149,7 +3153,7 @@ class Item extends BaseObject
 		if (!$onlyshadow) {
 			$result = DBA::insert('thread', $item);
 
-			logger("Add thread for item ".$itemid." - ".print_r($result, true), LOGGER_DEBUG);
+			Logger::log("Add thread for item ".$itemid." - ".print_r($result, true), Logger::DEBUG);
 		}
 	}
 
@@ -3181,27 +3185,355 @@ class Item extends BaseObject
 
 		$result = DBA::update('thread', $fields, ['iid' => $itemid]);
 
-		logger("Update thread for item ".$itemid." - guid ".$item["guid"]." - ".(int)$result, LOGGER_DEBUG);
+		Logger::log("Update thread for item ".$itemid." - guid ".$item["guid"]." - ".(int)$result, Logger::DEBUG);
 	}
 
 	private static function deleteThread($itemid, $itemuri = "")
 	{
 		$item = DBA::selectFirst('thread', ['uid'], ['iid' => $itemid]);
 		if (!DBA::isResult($item)) {
-			logger('No thread found for id '.$itemid, LOGGER_DEBUG);
+			Logger::log('No thread found for id '.$itemid, Logger::DEBUG);
 			return;
 		}
 
 		$result = DBA::delete('thread', ['iid' => $itemid], ['cascade' => false]);
 
-		logger("deleteThread: Deleted thread for item ".$itemid." - ".print_r($result, true), LOGGER_DEBUG);
+		Logger::log("deleteThread: Deleted thread for item ".$itemid." - ".print_r($result, true), Logger::DEBUG);
 
 		if ($itemuri != "") {
 			$condition = ["`uri` = ? AND NOT `deleted` AND NOT (`uid` IN (?, 0))", $itemuri, $item["uid"]];
 			if (!self::exists($condition)) {
 				DBA::delete('item', ['uri' => $itemuri, 'uid' => 0]);
-				logger("deleteThread: Deleted shadow for item ".$itemuri, LOGGER_DEBUG);
+				Logger::log("deleteThread: Deleted shadow for item ".$itemuri, Logger::DEBUG);
 			}
 		}
+	}
+
+	public static function getPermissionsSQLByUserId($owner_id, $remote_verified = false, $groups = null, $remote_cid = null)
+	{
+		$local_user = local_user();
+		$remote_user = remote_user();
+
+		/*
+		 * Construct permissions
+		 *
+		 * default permissions - anonymous user
+		 */
+		$sql = " AND NOT `item`.`private`";
+
+		// Profile owner - everything is visible
+		if ($local_user && ($local_user == $owner_id)) {
+			$sql = '';
+		} elseif ($remote_user) {
+			/*
+			 * Authenticated visitor. Unless pre-verified,
+			 * check that the contact belongs to this $owner_id
+			 * and load the groups the visitor belongs to.
+			 * If pre-verified, the caller is expected to have already
+			 * done this and passed the groups into this function.
+			 */
+			$set = PermissionSet::get($owner_id, $remote_cid, $groups);
+
+			if (!empty($set)) {
+				$sql_set = " OR (`item`.`private` IN (1,2) AND `item`.`wall` AND `item`.`psid` IN (" . implode(',', $set) . "))";
+			} else {
+				$sql_set = '';
+			}
+
+			$sql = " AND (NOT `item`.`private`" . $sql_set . ")";
+		}
+
+		return $sql;
+	}
+
+	/**
+	 * get translated item type
+	 *
+	 * @param array $itme
+	 * @return string
+	 */
+	public static function postType($item)
+	{
+		if (!empty($item['event-id'])) {
+			return L10n::t('event');
+		} elseif (!empty($item['resource-id'])) {
+			return L10n::t('photo');
+		} elseif (!empty($item['verb']) && $item['verb'] !== ACTIVITY_POST) {
+			return L10n::t('activity');
+		} elseif ($item['id'] != $item['parent']) {
+			return L10n::t('comment');
+		}
+
+		return L10n::t('post');
+	}
+
+	/**
+	 * Sets the "rendered-html" field of the provided item
+	 *
+	 * Body is preserved to avoid side-effects as we modify it just-in-time for spoilers and private image links
+	 *
+	 * @param array $item
+	 * @param bool  $update
+	 *
+	 * @todo Remove reference, simply return "rendered-html" and "rendered-hash"
+	 */
+	public static function putInCache(&$item, $update = false)
+	{
+		$body = $item["body"];
+
+		$rendered_hash = defaults($item, 'rendered-hash', '');
+		$rendered_html = defaults($item, 'rendered-html', '');
+
+		if ($rendered_hash == ''
+			|| $rendered_html == ""
+			|| $rendered_hash != hash("md5", $item["body"])
+			|| Config::get("system", "ignore_cache")
+		) {
+			$a = self::getApp();
+			redir_private_images($a, $item);
+
+			$item["rendered-html"] = prepare_text($item["body"]);
+			$item["rendered-hash"] = hash("md5", $item["body"]);
+
+			$hook_data = ['item' => $item, 'rendered-html' => $item['rendered-html'], 'rendered-hash' => $item['rendered-hash']];
+			Addon::callHooks('put_item_in_cache', $hook_data);
+			$item['rendered-html'] = $hook_data['rendered-html'];
+			$item['rendered-hash'] = $hook_data['rendered-hash'];
+			unset($hook_data);
+
+			// Force an update if the generated values differ from the existing ones
+			if ($rendered_hash != $item["rendered-hash"]) {
+				$update = true;
+			}
+
+			// Only compare the HTML when we forcefully ignore the cache
+			if (Config::get("system", "ignore_cache") && ($rendered_html != $item["rendered-html"])) {
+				$update = true;
+			}
+
+			if ($update && !empty($item["id"])) {
+				self::update(
+					[
+						'rendered-html' => $item["rendered-html"],
+						'rendered-hash' => $item["rendered-hash"]
+					],
+					['id' => $item["id"]]
+				);
+			}
+		}
+
+		$item["body"] = $body;
+	}
+
+	/**
+	 * @brief Given an item array, convert the body element from bbcode to html and add smilie icons.
+	 * If attach is true, also add icons for item attachments.
+	 *
+	 * @param array   $item
+	 * @param boolean $attach
+	 * @param boolean $is_preview
+	 * @return string item body html
+	 * @hook prepare_body_init item array before any work
+	 * @hook prepare_body_content_filter ('item'=>item array, 'filter_reasons'=>string array) before first bbcode to html
+	 * @hook prepare_body ('item'=>item array, 'html'=>body string, 'is_preview'=>boolean, 'filter_reasons'=>string array) after first bbcode to html
+	 * @hook prepare_body_final ('item'=>item array, 'html'=>body string) after attach icons and blockquote special case handling (spoiler, author)
+	 */
+	public static function prepareBody(array &$item, $attach = false, $is_preview = false)
+	{
+		$a = self::getApp();
+		Addon::callHooks('prepare_body_init', $item);
+
+		// In order to provide theme developers more possibilities, event items
+		// are treated differently.
+		if ($item['object-type'] === ACTIVITY_OBJ_EVENT && isset($item['event-id'])) {
+			$ev = Event::getItemHTML($item);
+			return $ev;
+		}
+
+		$tags = Term::populateTagsFromItem($item);
+
+		$item['tags'] = $tags['tags'];
+		$item['hashtags'] = $tags['hashtags'];
+		$item['mentions'] = $tags['mentions'];
+
+		// Compile eventual content filter reasons
+		$filter_reasons = [];
+		if (!$is_preview && public_contact() != $item['author-id']) {
+			if (!empty($item['content-warning']) && (!local_user() || !PConfig::get(local_user(), 'system', 'disable_cw', false))) {
+				$filter_reasons[] = L10n::t('Content warning: %s', $item['content-warning']);
+			}
+
+			$hook_data = [
+				'item' => $item,
+				'filter_reasons' => $filter_reasons
+			];
+			Addon::callHooks('prepare_body_content_filter', $hook_data);
+			$filter_reasons = $hook_data['filter_reasons'];
+			unset($hook_data);
+		}
+
+		// Update the cached values if there is no "zrl=..." on the links.
+		$update = (!local_user() && !remote_user() && ($item["uid"] == 0));
+
+		// Or update it if the current viewer is the intented viewer.
+		if (($item["uid"] == local_user()) && ($item["uid"] != 0)) {
+			$update = true;
+		}
+
+		self::putInCache($item, $update);
+		$s = $item["rendered-html"];
+
+		$hook_data = [
+			'item' => $item,
+			'html' => $s,
+			'preview' => $is_preview,
+			'filter_reasons' => $filter_reasons
+		];
+		Addon::callHooks('prepare_body', $hook_data);
+		$s = $hook_data['html'];
+		unset($hook_data);
+
+		if (!$attach) {
+			// Replace the blockquotes with quotes that are used in mails.
+			$mailquote = '<blockquote type="cite" class="gmail_quote" style="margin:0 0 0 .8ex;border-left:1px #ccc solid;padding-left:1ex;">';
+			$s = str_replace(['<blockquote>', '<blockquote class="spoiler">', '<blockquote class="author">'], [$mailquote, $mailquote, $mailquote], $s);
+			return $s;
+		}
+
+		$as = '';
+		$vhead = false;
+		$matches = [];
+		preg_match_all('|\[attach\]href=\"(.*?)\" length=\"(.*?)\" type=\"(.*?)\"(?: title=\"(.*?)\")?|', $item['attach'], $matches, PREG_SET_ORDER);
+		foreach ($matches as $mtch) {
+			$mime = $mtch[3];
+
+			$the_url = Contact::magicLinkById($item['author-id'], $mtch[1]);
+
+			if (strpos($mime, 'video') !== false) {
+				if (!$vhead) {
+					$vhead = true;
+					$a->page['htmlhead'] .= Renderer::replaceMacros(Renderer::getMarkupTemplate('videos_head.tpl'), [
+						'$baseurl' => System::baseUrl(),
+					]);
+				}
+
+				$url_parts = explode('/', $the_url);
+				$id = end($url_parts);
+				$as .= Renderer::replaceMacros(Renderer::getMarkupTemplate('video_top.tpl'), [
+					'$video' => [
+						'id'     => $id,
+						'title'  => L10n::t('View Video'),
+						'src'    => $the_url,
+						'mime'   => $mime,
+					],
+				]);
+			}
+
+			$filetype = strtolower(substr($mime, 0, strpos($mime, '/')));
+			if ($filetype) {
+				$filesubtype = strtolower(substr($mime, strpos($mime, '/') + 1));
+				$filesubtype = str_replace('.', '-', $filesubtype);
+			} else {
+				$filetype = 'unkn';
+				$filesubtype = 'unkn';
+			}
+
+			$title = Strings::escapeHtml(trim(defaults($mtch, 4, $mtch[1])));
+			$title .= ' ' . $mtch[2] . ' ' . L10n::t('bytes');
+
+			$icon = '<div class="attachtype icon s22 type-' . $filetype . ' subtype-' . $filesubtype . '"></div>';
+			$as .= '<a href="' . strip_tags($the_url) . '" title="' . $title . '" class="attachlink" target="_blank" >' . $icon . '</a>';
+		}
+
+		if ($as != '') {
+			$s .= '<div class="body-attach">'.$as.'<div class="clear"></div></div>';
+		}
+
+		// Map.
+		if (strpos($s, '<div class="map">') !== false && !empty($item['coord'])) {
+			$x = Map::byCoordinates(trim($item['coord']));
+			if ($x) {
+				$s = preg_replace('/\<div class\=\"map\"\>/', '$0' . $x, $s);
+			}
+		}
+
+
+		// Look for spoiler.
+		$spoilersearch = '<blockquote class="spoiler">';
+
+		// Remove line breaks before the spoiler.
+		while ((strpos($s, "\n" . $spoilersearch) !== false)) {
+			$s = str_replace("\n" . $spoilersearch, $spoilersearch, $s);
+		}
+		while ((strpos($s, "<br />" . $spoilersearch) !== false)) {
+			$s = str_replace("<br />" . $spoilersearch, $spoilersearch, $s);
+		}
+
+		while ((strpos($s, $spoilersearch) !== false)) {
+			$pos = strpos($s, $spoilersearch);
+			$rnd = Strings::getRandomHex(8);
+			$spoilerreplace = '<br /> <span id="spoiler-wrap-' . $rnd . '" class="spoiler-wrap fakelink" onclick="openClose(\'spoiler-' . $rnd . '\');">' . L10n::t('Click to open/close') . '</span>'.
+						'<blockquote class="spoiler" id="spoiler-' . $rnd . '" style="display: none;">';
+			$s = substr($s, 0, $pos) . $spoilerreplace . substr($s, $pos + strlen($spoilersearch));
+		}
+
+		// Look for quote with author.
+		$authorsearch = '<blockquote class="author">';
+
+		while ((strpos($s, $authorsearch) !== false)) {
+			$pos = strpos($s, $authorsearch);
+			$rnd = Strings::getRandomHex(8);
+			$authorreplace = '<br /> <span id="author-wrap-' . $rnd . '" class="author-wrap fakelink" onclick="openClose(\'author-' . $rnd . '\');">' . L10n::t('Click to open/close') . '</span>'.
+						'<blockquote class="author" id="author-' . $rnd . '" style="display: block;">';
+			$s = substr($s, 0, $pos) . $authorreplace . substr($s, $pos + strlen($authorsearch));
+		}
+
+		// Replace friendica image url size with theme preference.
+		if (!empty($a->theme_info['item_image_size'])) {
+			$ps = $a->theme_info['item_image_size'];
+			$s = preg_replace('|(<img[^>]+src="[^"]+/photo/[0-9a-f]+)-[0-9]|', "$1-" . $ps, $s);
+		}
+
+		$s = HTML::applyContentFilter($s, $filter_reasons);
+
+		$hook_data = ['item' => $item, 'html' => $s];
+		Addon::callHooks('prepare_body_final', $hook_data);
+
+		return $hook_data['html'];
+	}
+
+	/**
+	 * get private link for item
+	 * @param array $item
+	 * @return boolean|array False if item has not plink, otherwise array('href'=>plink url, 'title'=>translated title)
+	 */
+	public static function getPlink($item)
+	{
+		$a = self::getApp();
+
+		if ($a->user['nickname'] != "") {
+			$ret = [
+				'href' => "display/" . $item['guid'],
+				'orig' => "display/" . $item['guid'],
+				'title' => L10n::t('View on separate page'),
+				'orig_title' => L10n::t('view on separate page'),
+			];
+
+			if (!empty($item['plink'])) {
+				$ret["href"] = $a->removeBaseURL($item['plink']);
+				$ret["title"] = L10n::t('link to source');
+			}
+
+		} elseif (!empty($item['plink']) && ($item['private'] != 1)) {
+			$ret = [
+				'href' => $item['plink'],
+				'orig' => $item['plink'],
+				'title' => L10n::t('link to source'),
+			];
+		} else {
+			$ret = [];
+		}
+
+		return $ret;
 	}
 }

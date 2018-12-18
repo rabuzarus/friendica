@@ -33,7 +33,7 @@ function starred_init(App $a) {
 	Item::update(['starred' => $starred], ['id' => $message_id]);
 
 	// See if we've been passed a return path to redirect to
-	$return_path = (x($_REQUEST,'return') ? $_REQUEST['return'] : '');
+	$return_path = defaults($_REQUEST, 'return', '');
 	if ($return_path) {
 		$rand = '_=' . time();
 		if (strpos($return_path, '?')) {
@@ -42,7 +42,7 @@ function starred_init(App $a) {
 			$rand = "?$rand";
 		}
 
-		goaway(System::baseUrl() . "/" . $return_path . $rand);
+		$a->internalRedirect($return_path . $rand);
 	}
 
 	// the json doesn't really matter, it will either be 0 or 1

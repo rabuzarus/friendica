@@ -6,6 +6,8 @@ namespace Friendica\Util;
 
 use Friendica\Core\Addon;
 use Friendica\Core\Config;
+use Friendica\Core\Logger;
+use Friendica\Util\Strings;
 use ASN_BASE;
 use ASNValue;
 
@@ -158,8 +160,8 @@ class Crypto
 
 		$r = ASN_BASE::parseASNString($x);
 
-		$m = base64url_decode($r[0]->asnData[0]->asnData);
-		$e = base64url_decode($r[0]->asnData[1]->asnData);
+		$m = Strings::base64UrlDecode($r[0]->asnData[0]->asnData);
+		$e = Strings::base64UrlDecode($r[0]->asnData[1]->asnData);
 	}
 
 	/**
@@ -197,8 +199,8 @@ class Crypto
 
 		$r = ASN_BASE::parseASNString($x);
 
-		$m = base64url_decode($r[0]->asnData[1]->asnData[0]->asnData[0]->asnData);
-		$e = base64url_decode($r[0]->asnData[1]->asnData[0]->asnData[1]->asnData);
+		$m = Strings::base64UrlDecode($r[0]->asnData[1]->asnData[0]->asnData[0]->asnData);
+		$e = Strings::base64UrlDecode($r[0]->asnData[1]->asnData[0]->asnData[1]->asnData);
 	}
 
 	/**
@@ -232,7 +234,7 @@ class Crypto
 		$result = openssl_pkey_new($openssl_options);
 
 		if (empty($result)) {
-			logger('new_keypair: failed');
+			Logger::log('new_keypair: failed');
 			return false;
 		}
 
@@ -347,25 +349,25 @@ class Crypto
 	private static function encapsulateOther($data, $pubkey, $alg)
 	{
 		if (!$pubkey) {
-			logger('no key. data: '.$data);
+			Logger::log('no key. data: '.$data);
 		}
 		$fn = 'encrypt' . strtoupper($alg);
 		if (method_exists(__CLASS__, $fn)) {
 			$result = ['encrypted' => true];
 			$key = random_bytes(256);
 			$iv  = random_bytes(256);
-			$result['data'] = base64url_encode(self::$fn($data, $key, $iv), true);
+			$result['data'] = Strings::base64UrlEncode(self::$fn($data, $key, $iv), true);
 
 			// log the offending call so we can track it down
 			if (!openssl_public_encrypt($key, $k, $pubkey)) {
 				$x = debug_backtrace();
-				logger('RSA failed. ' . print_r($x[0], true));
+				Logger::log('RSA failed. ' . print_r($x[0], true));
 			}
 
 			$result['alg'] = $alg;
-			$result['key'] = base64url_encode($k, true);
+			$result['key'] = Strings::base64UrlEncode($k, true);
 			openssl_public_encrypt($iv, $i, $pubkey);
-			$result['iv'] = base64url_encode($i, true);
+			$result['iv'] = Strings::base64UrlEncode($i, true);
 
 			return $result;
 		} else {
@@ -388,24 +390,24 @@ class Crypto
 	private static function encapsulateAes($data, $pubkey)
 	{
 		if (!$pubkey) {
-			logger('aes_encapsulate: no key. data: ' . $data);
+			Logger::log('aes_encapsulate: no key. data: ' . $data);
 		}
 
 		$key = random_bytes(32);
 		$iv  = random_bytes(16);
 		$result = ['encrypted' => true];
-		$result['data'] = base64url_encode(self::encryptAES256CBC($data, $key, $iv), true);
+		$result['data'] = Strings::base64UrlEncode(self::encryptAES256CBC($data, $key, $iv), true);
 
 		// log the offending call so we can track it down
 		if (!openssl_public_encrypt($key, $k, $pubkey)) {
 			$x = debug_backtrace();
-			logger('aes_encapsulate: RSA failed. ' . print_r($x[0], true));
+			Logger::log('aes_encapsulate: RSA failed. ' . print_r($x[0], true));
 		}
 
 		$result['alg'] = 'aes256cbc';
-		$result['key'] = base64url_encode($k, true);
+		$result['key'] = Strings::base64UrlEncode($k, true);
 		openssl_public_encrypt($iv, $i, $pubkey);
-		$result['iv'] = base64url_encode($i, true);
+		$result['iv'] = Strings::base64UrlEncode($i, true);
 
 		return $result;
 	}
@@ -447,10 +449,10 @@ class Crypto
 		$fn = 'decrypt' . strtoupper($alg);
 
 		if (method_exists(__CLASS__, $fn)) {
-			openssl_private_decrypt(base64url_decode($data['key']), $k, $prvkey);
-			openssl_private_decrypt(base64url_decode($data['iv']), $i, $prvkey);
+			openssl_private_decrypt(Strings::base64UrlDecode($data['key']), $k, $prvkey);
+			openssl_private_decrypt(Strings::base64UrlDecode($data['iv']), $i, $prvkey);
 
-			return self::$fn(base64url_decode($data['data']), $k, $i);
+			return self::$fn(Strings::base64UrlDecode($data['data']), $k, $i);
 		} else {
 			$x = ['data' => $data, 'prvkey' => $prvkey, 'alg' => $alg, 'result' => $data];
 			Addon::callHooks('other_unencapsulate', $x);
@@ -470,9 +472,30 @@ class Crypto
 	 */
 	private static function unencapsulateAes($data, $prvkey)
 	{
-		openssl_private_decrypt(base64url_decode($data['key']), $k, $prvkey);
-		openssl_private_decrypt(base64url_decode($data['iv']), $i, $prvkey);
+		openssl_private_decrypt(Strings::base64UrlDecode($data['key']), $k, $prvkey);
+		openssl_private_decrypt(Strings::base64UrlDecode($data['iv']), $i, $prvkey);
 
-		return self::decryptAES256CBC(base64url_decode($data['data']), $k, $i);
+		return self::decryptAES256CBC(Strings::base64UrlDecode($data['data']), $k, $i);
+	}
+
+
+	/**
+	 * Creates cryptographic secure random digits
+	 *
+	 * @param string $digits The count of digits
+	 * @return int The random Digits
+	 *
+	 * @throws \Exception In case 'random_int' isn't usable
+	 */
+	public static function randomDigits($digits)
+	{
+		$rn = '';
+
+		// generating cryptographically secure pseudo-random integers
+		for ($i = 0; $i < $digits; $i++) {
+			$rn .= random_int(0, 9);
+		}
+
+		return $rn;
 	}
 }

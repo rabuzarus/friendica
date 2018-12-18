@@ -7,11 +7,13 @@
 namespace Friendica\Content\Widget;
 
 use Friendica\Core\L10n;
+use Friendica\Core\Renderer;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
+use Friendica\Model\Item;
+use Friendica\Util\Security;
 
 require_once 'include/dba.php';
-require_once 'include/security.php';
 
 /**
  * TagCloud widget
@@ -48,8 +50,8 @@ class TagCloud
 				$tags[] = $tag;
 			}
 
-			$tpl = get_markup_template('tagblock_widget.tpl');
-			$o = replace_macros($tpl, [
+			$tpl = Renderer::getMarkupTemplate('tagblock_widget.tpl');
+			$o = Renderer::replaceMacros($tpl, [
 				'$title' => L10n::t('Tags'),
 				'$tags' => $tags
 			]);
@@ -73,7 +75,7 @@ class TagCloud
 	 */
 	private static function tagadelic($uid, $count = 0, $owner_id = 0, $flags = '', $type = TERM_HASHTAG)
 	{
-		$sql_options = item_permissions_sql($uid);
+		$sql_options = Item::getPermissionsSQLByUserId($uid);
 		$limit = $count ? sprintf('LIMIT %d', intval($count)) : '';
 
 		if ($flags) {

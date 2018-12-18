@@ -9,6 +9,7 @@ use Friendica\App;
 use Friendica\Core\Cache;
 use Friendica\Core\Config;
 use Friendica\Core\L10n;
+use Friendica\Core\Logger;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
 use Friendica\Model\Contact;
@@ -482,7 +483,7 @@ class Image
 				break;
 		}
 
-		//	logger('exif: ' . print_r($exif,true));
+		//	Logger::log('exif: ' . print_r($exif,true));
 		return $exif;
 	}
 
@@ -655,7 +656,7 @@ class Image
 
 		$stamp1 = microtime(true);
 		file_put_contents($path, $string);
-		$a->save_timestamp($stamp1, "file");
+		$a->saveTimestamp($stamp1, "file");
 	}
 
 	/**
@@ -720,17 +721,18 @@ class Image
 	 *
 	 * @param string  $filename Image filename
 	 * @param boolean $fromcurl Check Content-Type header from curl request
+	 * @param string $header passed headers to take into account
 	 *
 	 * @return object
 	 */
-	public static function guessType($filename, $fromcurl = false)
+	public static function guessType($filename, $fromcurl = false, $header = '')
 	{
-		logger('Image: guessType: '.$filename . ($fromcurl?' from curl headers':''), LOGGER_DEBUG);
+		Logger::log('Image: guessType: '.$filename . ($fromcurl?' from curl headers':''), Logger::DEBUG);
 		$type = null;
 		if ($fromcurl) {
 			$a = get_app();
 			$headers=[];
-			$h = explode("\n", $a->get_curl_headers());
+			$h = explode("\n", $header);
 			foreach ($h as $l) {
 				$data = array_map("trim", explode(":", trim($l), 2));
 				if (count($data) > 1) {
@@ -763,7 +765,7 @@ class Image
 				}
 			}
 		}
-		logger('Image: guessType: type='.$type, LOGGER_DEBUG);
+		Logger::log('Image: guessType: type='.$type, Logger::DEBUG);
 		return $type;
 	}
 
@@ -792,14 +794,14 @@ class Image
 
 			try {
 				if (function_exists("getimagesizefromstring")) {
-					$data = getimagesizefromstring($img_str);
+					$data = @getimagesizefromstring($img_str);
 				} else {
 					$tempfile = tempnam(get_temppath(), "cache");
 
 					$a = get_app();
 					$stamp1 = microtime(true);
 					file_put_contents($tempfile, $img_str);
-					$a->save_timestamp($stamp1, "file");
+					$a->saveTimestamp($stamp1, "file");
 
 					$data = getimagesize($tempfile);
 					unlink($tempfile);
@@ -889,7 +891,7 @@ class Image
 		);
 
 		if (!DBA::isResult($r)) {
-			logger("Can't detect user data for uid ".$uid, LOGGER_DEBUG);
+			Logger::log("Can't detect user data for uid ".$uid, Logger::DEBUG);
 			return([]);
 		}
 
@@ -900,20 +902,20 @@ class Image
 		/// $community_page   = (($r[0]['page-flags'] == Contact::PAGE_COMMUNITY) ? true : false);
 
 		if ((strlen($imagedata) == 0) && ($url == "")) {
-			logger("No image data and no url provided", LOGGER_DEBUG);
+			Logger::log("No image data and no url provided", Logger::DEBUG);
 			return([]);
 		} elseif (strlen($imagedata) == 0) {
-			logger("Uploading picture from ".$url, LOGGER_DEBUG);
+			Logger::log("Uploading picture from ".$url, Logger::DEBUG);
 
 			$stamp1 = microtime(true);
 			$imagedata = @file_get_contents($url);
-			$a->save_timestamp($stamp1, "file");
+			$a->saveTimestamp($stamp1, "file");
 		}
 
 		$maximagesize = Config::get('system', 'maximagesize');
 
 		if (($maximagesize) && (strlen($imagedata) > $maximagesize)) {
-			logger("Image exceeds size limit of ".$maximagesize, LOGGER_DEBUG);
+			Logger::log("Image exceeds size limit of ".$maximagesize, Logger::DEBUG);
 			return([]);
 		}
 
@@ -921,13 +923,13 @@ class Image
 
 		$stamp1 = microtime(true);
 		file_put_contents($tempfile, $imagedata);
-		$a->save_timestamp($stamp1, "file");
+		$a->saveTimestamp($stamp1, "file");
 
 		$data = getimagesize($tempfile);
 
 		if (!isset($data["mime"])) {
 			unlink($tempfile);
-			logger("File is no picture", LOGGER_DEBUG);
+			Logger::log("File is no picture", Logger::DEBUG);
 			return([]);
 		}
 
@@ -935,7 +937,7 @@ class Image
 
 		if (!$Image->isValid()) {
 			unlink($tempfile);
-			logger("Picture is no valid picture", LOGGER_DEBUG);
+			Logger::log("Picture is no valid picture", Logger::DEBUG);
 			return([]);
 		}
 
@@ -966,7 +968,7 @@ class Image
 		$r = Photo::store($Image, $uid, $visitor, $hash, $tempfile, L10n::t('Wall Photos'), 0, 0, $defperm);
 
 		if (!$r) {
-			logger("Picture couldn't be stored", LOGGER_DEBUG);
+			Logger::log("Picture couldn't be stored", Logger::DEBUG);
 			return([]);
 		}
 

@@ -8,8 +8,10 @@ use Friendica\Content\Feature;
 use Friendica\Core\Addon;
 use Friendica\Core\Config;
 use Friendica\Core\L10n;
+use Friendica\Core\Logger;
 use Friendica\Core\PConfig;
 use Friendica\Core\Protocol;
+use Friendica\Core\Renderer;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
 use Friendica\Model\Item;
@@ -19,6 +21,7 @@ use Friendica\Protocol\OStatus;
 use Friendica\Util\DateTimeFormat;
 use Friendica\Util\Network;
 use Friendica\Util\ParseUrl;
+use Friendica\Util\Strings;
 use Friendica\Util\Temporal;
 
 require_once 'include/text.php';
@@ -72,7 +75,8 @@ function add_page_info_data(array $data, $no_photos = false)
 		$text .= " title='".$data["title"]."'";
 	}
 
-	if (!empty($data["images"])) {
+	// Only embedd a picture link when it seems to be a valid picture ("width" is set)
+	if (!empty($data["images"]) && !empty($data["images"][0]["width"])) {
 		$preview = str_replace(["[", "]"], ["&#91;", "&#93;"], htmlentities($data["images"][0]["src"], ENT_QUOTES, 'UTF-8', false));
 		// if the preview picture is larger than 500 pixels then show it in a larger mode
 		// But only, if the picture isn't higher than large (To prevent huge posts)
@@ -93,7 +97,7 @@ function add_page_info_data(array $data, $no_photos = false)
 			/// @TODO make a positive list of allowed characters
 			$hashtag = str_replace([" ", "+", "/", ".", "#", "'", "’", "`", "(", ")", "„", "“"],
 						["", "", "", "", "", "", "", "", "", "", "", ""], $keyword);
-			$hashtags .= "#[url=" . System::baseUrl() . "/search?tag=" . rawurlencode($hashtag) . "]" . $hashtag . "[/url] ";
+			$hashtags .= "#[url=" . System::baseUrl() . "/search?tag=" . $hashtag . "]" . $hashtag . "[/url] ";
 		}
 	}
 
@@ -108,7 +112,7 @@ function query_page_info($url, $photo = "", $keywords = false, $keyword_blacklis
 		$data["images"][0]["src"] = $photo;
 	}
 
-	logger('fetch page info for ' . $url . ' ' . print_r($data, true), LOGGER_DEBUG);
+	Logger::log('fetch page info for ' . $url . ' ' . print_r($data, true), Logger::DEBUG);
 
 	if (!$keywords && isset($data["keywords"])) {
 		unset($data["keywords"]);
@@ -144,7 +148,7 @@ function add_page_keywords($url, $photo = "", $keywords = false, $keyword_blackl
 				$tags .= ", ";
 			}
 
-			$tags .= "#[url=" . System::baseUrl() . "/search?tag=" . rawurlencode($hashtag) . "]" . $hashtag . "[/url]";
+			$tags .= "#[url=" . System::baseUrl() . "/search?tag=" . $hashtag . "]" . $hashtag . "[/url]";
 		}
 	}
 
@@ -166,7 +170,7 @@ function add_page_info($url, $no_photos = false, $photo = "", $keywords = false,
 
 function add_page_info_to_body($body, $texturl = false, $no_photos = false)
 {
-	logger('add_page_info_to_body: fetch page info for body ' . $body, LOGGER_DEBUG);
+	Logger::log('add_page_info_to_body: fetch page info for body ' . $body, Logger::DEBUG);
 
 	$URLSearchString = "^\[\]";
 
@@ -250,7 +254,7 @@ function consume_feed($xml, array $importer, array $contact, &$hub, $datedir = 0
 			// Test - remove before flight
 			//$tempfile = tempnam(get_temppath(), "ostatus2");
 			//file_put_contents($tempfile, $xml);
-			logger("Consume OStatus messages ", LOGGER_DEBUG);
+			Logger::log("Consume OStatus messages ", Logger::DEBUG);
 			OStatus::import($xml, $importer, $contact, $hub);
 		}
 
@@ -259,7 +263,7 @@ function consume_feed($xml, array $importer, array $contact, &$hub, $datedir = 0
 
 	if ($contact['network'] === Protocol::FEED) {
 		if ($pass < 2) {
-			logger("Consume feeds", LOGGER_DEBUG);
+			Logger::log("Consume feeds", Logger::DEBUG);
 			Feed::import($xml, $importer, $contact, $hub);
 		}
 
@@ -267,10 +271,10 @@ function consume_feed($xml, array $importer, array $contact, &$hub, $datedir = 0
 	}
 
 	if ($contact['network'] === Protocol::DFRN) {
-		logger("Consume DFRN messages", LOGGER_DEBUG);
+		Logger::log("Consume DFRN messages", Logger::DEBUG);
 		$dfrn_importer = DFRN::getImporter($contact["id"], $importer["uid"]);
 		if (!empty($dfrn_importer)) {
-			logger("Now import the DFRN feed");
+			Logger::log("Now import the DFRN feed");
 			DFRN::import($xml, $dfrn_importer, true);
 			return;
 		}
@@ -305,19 +309,19 @@ function subscribe_to_hub($url, array $importer, array $contact, $hubmode = 'sub
 	$push_url = System::baseUrl() . '/pubsub/' . $user['nickname'] . '/' . $contact['id'];
 
 	// Use a single verify token, even if multiple hubs
-	$verify_token = ((strlen($contact['hub-verify'])) ? $contact['hub-verify'] : random_string());
+	$verify_token = ((strlen($contact['hub-verify'])) ? $contact['hub-verify'] : Strings::getRandomHex());
 
 	$params= 'hub.mode=' . $hubmode . '&hub.callback=' . urlencode($push_url) . '&hub.topic=' . urlencode($contact['poll']) . '&hub.verify=async&hub.verify_token=' . $verify_token;
 
-	logger('subscribe_to_hub: ' . $hubmode . ' ' . $contact['name'] . ' to hub ' . $url . ' endpoint: '  . $push_url . ' with verifier ' . $verify_token);
+	Logger::log('subscribe_to_hub: ' . $hubmode . ' ' . $contact['name'] . ' to hub ' . $url . ' endpoint: '  . $push_url . ' with verifier ' . $verify_token);
 
 	if (!strlen($contact['hub-verify']) || ($contact['hub-verify'] != $verify_token)) {
 		DBA::update('contact', ['hub-verify' => $verify_token], ['id' => $contact['id']]);
 	}
 
-	Network::post($url, $params);
+	$postResult = Network::post($url, $params);
 
-	logger('subscribe_to_hub: returns: ' . $a->get_curl_code(), LOGGER_DEBUG);
+	Logger::log('subscribe_to_hub: returns: ' . $postResult->getReturnCode(), Logger::DEBUG);
 
 	return;
 
@@ -342,18 +346,18 @@ function drop_items(array $items)
 	}
 }
 
-function drop_item($id)
+function drop_item($id, $return = '')
 {
 	$a = BaseObject::getApp();
 
 	// locate item to be deleted
 
-	$fields = ['id', 'uid', 'contact-id', 'deleted'];
+	$fields = ['id', 'uid', 'guid', 'contact-id', 'deleted', 'gravity', 'parent'];
 	$item = Item::selectFirstForUser(local_user(), $fields, ['id' => $id]);
 
 	if (!DBA::isResult($item)) {
 		notice(L10n::t('Item not found.') . EOL);
-		goaway(System::baseUrl() . '/' . $_SESSION['return_url']);
+		$a->internalRedirect('network');
 	}
 
 	if ($item['deleted']) {
@@ -388,7 +392,7 @@ function drop_item($id)
 				}
 			}
 
-			return replace_macros(get_markup_template('confirm.tpl'), [
+			return Renderer::replaceMacros(Renderer::getMarkupTemplate('confirm.tpl'), [
 				'$method' => 'get',
 				'$message' => L10n::t('Do you really want to delete this item?'),
 				'$extra_inputs' => $inputs,
@@ -400,17 +404,50 @@ function drop_item($id)
 		}
 		// Now check how the user responded to the confirmation query
 		if (!empty($_REQUEST['canceled'])) {
-			goaway(System::baseUrl() . '/' . $_SESSION['return_url']);
+			$a->internalRedirect('display/' . $item['guid']);
+		}
+
+		$is_comment = ($item['gravity'] == GRAVITY_COMMENT) ? true : false;
+		$parentitem = null;
+		if (!empty($item['parent'])){
+			$fields = ['guid'];
+			$parentitem = Item::selectFirstForUser(local_user(), $fields, ['id' => $item['parent']]);
 		}
 
 		// delete the item
 		Item::deleteForUser(['id' => $item['id']], local_user());
 
-		goaway(System::baseUrl() . '/' . $_SESSION['return_url']);
-		//NOTREACHED
+		$return_url = hex2bin($return);
+
+		// removes update_* from return_url to ignore Ajax refresh
+		$return_url = str_replace("update_", "", $return_url);
+
+		// Check if delete a comment
+		if ($is_comment) {
+			// Return to parent guid
+			if (!empty($parentitem)) {
+				$a->internalRedirect('display/' . $parentitem['guid']);
+				//NOTREACHED
+			}
+			// In case something goes wrong
+			else {
+				$a->internalRedirect('network');
+				//NOTREACHED
+			}
+		}
+		else {
+			// if unknown location or deleting top level post called from display
+			if (empty($return_url) || strpos($return_url, 'display') !== false) {
+				$a->internalRedirect('network');
+				//NOTREACHED
+			} else {
+				$a->internalRedirect($return_url);
+				//NOTREACHED
+			}
+		}
 	} else {
 		notice(L10n::t('Permission denied.') . EOL);
-		goaway(System::baseUrl() . '/' . $_SESSION['return_url']);
+		$a->internalRedirect('display/' . $item['guid']);
 		//NOTREACHED
 	}
 }
@@ -441,7 +478,7 @@ function list_post_dates($uid, $wall)
 		$dend = substr($dnow, 0, 8) . Temporal::getDaysInMonth(intval($dnow), intval(substr($dnow, 5)));
 		$start_month = DateTimeFormat::utc($dstart, 'Y-m-d');
 		$end_month = DateTimeFormat::utc($dend, 'Y-m-d');
-		$str = day_translate(DateTimeFormat::utc($dnow, 'F'));
+		$str = L10n::getDay(DateTimeFormat::utc($dnow, 'F'));
 
 		if (empty($ret[$dyear])) {
 			$ret[$dyear] = [];
@@ -479,7 +516,7 @@ function posted_date_widget($url, $uid, $wall)
 	$cutoff_year = intval(DateTimeFormat::localNow('Y')) - $visible_years;
 	$cutoff = ((array_key_exists($cutoff_year, $ret))? true : false);
 
-	$o = replace_macros(get_markup_template('posted_date_widget.tpl'),[
+	$o = Renderer::replaceMacros(Renderer::getMarkupTemplate('posted_date_widget.tpl'),[
 		'$title' => L10n::t('Archives'),
 		'$size' => $visible_years,
 		'$cutoff_year' => $cutoff_year,

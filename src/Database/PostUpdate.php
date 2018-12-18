@@ -5,6 +5,7 @@
 namespace Friendica\Database;
 
 use Friendica\Core\Config;
+use Friendica\Core\Logger;
 use Friendica\Core\Protocol;
 use Friendica\Model\Contact;
 use Friendica\Model\Item;
@@ -25,9 +26,6 @@ class PostUpdate
 	public static function update()
 	{
 		if (!self::update1194()) {
-			return false;
-		}
-		if (!self::update1198()) {
 			return false;
 		}
 		if (!self::update1206()) {
@@ -55,7 +53,7 @@ class PostUpdate
 			return true;
 		}
 
-		logger("Start", LOGGER_DEBUG);
+		Logger::log("Start", Logger::DEBUG);
 
 		$end_id = Config::get("system", "post_update_1194_end");
 		if (!$end_id) {
@@ -66,7 +64,7 @@ class PostUpdate
 			}
 		}
 
-		logger("End ID: ".$end_id, LOGGER_DEBUG);
+		Logger::log("End ID: ".$end_id, Logger::DEBUG);
 
 		$start_id = Config::get("system", "post_update_1194_start");
 
@@ -85,14 +83,14 @@ class PostUpdate
 			DBA::escape(Protocol::DFRN), DBA::escape(Protocol::DIASPORA), DBA::escape(Protocol::OSTATUS));
 		if (!$r) {
 			Config::set("system", "post_update_version", 1194);
-			logger("Update is done", LOGGER_DEBUG);
+			Logger::log("Update is done", Logger::DEBUG);
 			return true;
 		} else {
 			Config::set("system", "post_update_1194_start", $r[0]["id"]);
 			$start_id = Config::get("system", "post_update_1194_start");
 		}
 
-		logger("Start ID: ".$start_id, LOGGER_DEBUG);
+		Logger::log("Start ID: ".$start_id, Logger::DEBUG);
 
 		$r = q($query1.$query2.$query3."  ORDER BY `item`.`id` LIMIT 1000,1",
 			intval($start_id), intval($end_id),
@@ -102,95 +100,13 @@ class PostUpdate
 		} else {
 			$pos_id = $end_id;
 		}
-		logger("Progress: Start: ".$start_id." position: ".$pos_id." end: ".$end_id, LOGGER_DEBUG);
+		Logger::log("Progress: Start: ".$start_id." position: ".$pos_id." end: ".$end_id, Logger::DEBUG);
 
 		q("UPDATE `item` ".$query2." SET `item`.`global` = 1 ".$query3,
 			intval($start_id), intval($pos_id),
 			DBA::escape(Protocol::DFRN), DBA::escape(Protocol::DIASPORA), DBA::escape(Protocol::OSTATUS));
 
-		logger("Done", LOGGER_DEBUG);
-	}
-
-	/**
-	 * @brief set the author-id and owner-id in all item entries
-	 *
-	 * This job has to be started multiple times until all entries are set.
-	 * It isn't started in the update function since it would consume too much time and can be done in the background.
-	 *
-	 * @return bool "true" when the job is done
-	 */
-	private static function update1198()
-	{
-		// Was the script completed?
-		if (Config::get("system", "post_update_version") >= 1198) {
-			return true;
-		}
-
-		logger("Start", LOGGER_DEBUG);
-
-		// Check if the first step is done (Setting "author-id" and "owner-id" in the item table)
-		$fields = ['author-link', 'author-name', 'author-avatar', 'owner-link', 'owner-name', 'owner-avatar', 'network', 'uid'];
-		$r = DBA::select('item', $fields, ['author-id' => 0, 'owner-id' => 0], ['limit' => 1000]);
-		if (!$r) {
-			// Are there unfinished entries in the thread table?
-			$r = q("SELECT COUNT(*) AS `total` FROM `thread`
-				INNER JOIN `item` ON `item`.`id` =`thread`.`iid`
-				WHERE `thread`.`author-id` = 0 AND `thread`.`owner-id` = 0 AND
-					(`thread`.`uid` IN (SELECT `uid` from `user`) OR `thread`.`uid` = 0)");
-
-			if ($r && ($r[0]["total"] == 0)) {
-				Config::set("system", "post_update_version", 1198);
-				logger("Done", LOGGER_DEBUG);
-				return true;
-			}
-
-			// Update the thread table from the item table
-			$r = q("UPDATE `thread` INNER JOIN `item` ON `item`.`id`=`thread`.`iid`
-					SET `thread`.`author-id` = `item`.`author-id`,
-					`thread`.`owner-id` = `item`.`owner-id`
-				WHERE `thread`.`author-id` = 0 AND `thread`.`owner-id` = 0 AND
-					(`thread`.`uid` IN (SELECT `uid` from `user`) OR `thread`.`uid` = 0)");
-
-			logger("Updated threads", LOGGER_DEBUG);
-			if (DBA::isResult($r)) {
-				Config::set("system", "post_update_version", 1198);
-				logger("Done", LOGGER_DEBUG);
-				return true;
-			}
-			return false;
-		}
-
-		logger("Query done", LOGGER_DEBUG);
-
-		$item_arr = [];
-		foreach ($r as $item) {
-			$index = $item["author-link"]."-".$item["owner-link"]."-".$item["uid"];
-			$item_arr[$index] = ["author-link" => $item["author-link"],
-							"owner-link" => $item["owner-link"],
-							"uid" => $item["uid"]];
-		}
-
-		// Set the "author-id" and "owner-id" in the item table and add a new public contact entry if needed
-		foreach ($item_arr as $item) {
-			$default = ['url' => $item['author-link'], 'name' => $item['author-name'],
-				'photo' => $item['author-avatar'], 'network' => $item['network']];
-			$author_id = Contact::getIdForURL($item["author-link"], 0, false, $default);
-
-			$default = ['url' => $item['owner-link'], 'name' => $item['owner-name'],
-				'photo' => $item['owner-avatar'], 'network' => $item['network']];
-			$owner_id = Contact::getIdForURL($item["owner-link"], 0, false, $default);
-
-			if ($author_id == 0) {
-				$author_id = -1;
-			}
-			if ($owner_id == 0) {
-				$owner_id = -1;
-			}
-			DBA::update('item', ['author-id' => $author_id, 'owner-id' => $owner_id], ['uid' => $item['uid'], 'author-link' => $item['author-link'], 'owner-link' => $item['owner-link'], 'author-id' => 0, 'owner-id' => 0]);
-		}
-
-		logger("Updated items", LOGGER_DEBUG);
-		return false;
+		Logger::log("Done", Logger::DEBUG);
 	}
 
 	/**
@@ -207,7 +123,7 @@ class PostUpdate
 			return true;
 		}
 
-		logger("Start", LOGGER_DEBUG);
+		Logger::log("Start", Logger::DEBUG);
 		$r = q("SELECT `contact`.`id`, `contact`.`last-item`,
 			(SELECT MAX(`changed`) FROM `item` USE INDEX (`uid_wall_changed`) WHERE `wall` AND `uid` = `user`.`uid`) AS `lastitem_date`
 			FROM `user`
@@ -223,7 +139,7 @@ class PostUpdate
 		}
 
 		Config::set("system", "post_update_version", 1206);
-		logger("Done", LOGGER_DEBUG);
+		Logger::log("Done", Logger::DEBUG);
 		return true;
 	}
 
@@ -241,7 +157,7 @@ class PostUpdate
 
 		$id = Config::get("system", "post_update_version_1279_id", 0);
 
-		logger("Start from item " . $id, LOGGER_DEBUG);
+		Logger::log("Start from item " . $id, Logger::DEBUG);
 
 		$fields = array_merge(Item::MIXED_CONTENT_FIELDLIST, ['network', 'author-id', 'owner-id', 'tag', 'file',
 			'author-name', 'author-avatar', 'author-link', 'owner-name', 'owner-avatar', 'owner-link', 'id',
@@ -253,6 +169,12 @@ class PostUpdate
 		$condition = ["`id` > ?", $id];
 		$params = ['order' => ['id'], 'limit' => 10000];
 		$items = Item::select($fields, $condition, $params);
+
+		if (DBA::errorNo() != 0) {
+			Logger::log('Database error ' . DBA::errorNo() . ':' . DBA::errorMessage());
+			return false;
+		}
+
 		while ($item = Item::fetch($items)) {
 			$id = $item['id'];
 
@@ -304,7 +226,7 @@ class PostUpdate
 
 		Config::set("system", "post_update_version_1279_id", $id);
 
-		logger("Processed rows: " . $rows . " - last processed item:  " . $id, LOGGER_DEBUG);
+		Logger::log("Processed rows: " . $rows . " - last processed item:  " . $id, Logger::DEBUG);
 
 		if ($start_id == $id) {
 			// Set all deprecated fields to "null" if they contain an empty string
@@ -316,13 +238,13 @@ class PostUpdate
 			foreach ($nullfields as $field) {
 				$fields = [$field => null];
 				$condition = [$field => ''];
-				logger("Setting '" . $field . "' to null if empty.", LOGGER_DEBUG);
+				Logger::log("Setting '" . $field . "' to null if empty.", Logger::DEBUG);
 				// Important: This has to be a "DBA::update", not a "Item::update"
 				DBA::update('item', $fields, $condition);
 			}
 
 			Config::set("system", "post_update_version", 1279);
-			logger("Done", LOGGER_DEBUG);
+			Logger::log("Done", Logger::DEBUG);
 			return true;
 		}
 
@@ -385,7 +307,7 @@ class PostUpdate
 
 		$id = Config::get("system", "post_update_version_1281_id", 0);
 
-		logger("Start from item " . $id, LOGGER_DEBUG);
+		Logger::log("Start from item " . $id, Logger::DEBUG);
 
 		$fields = ['id', 'guid', 'uri', 'uri-id', 'parent-uri', 'parent-uri-id', 'thr-parent', 'thr-parent-id'];
 
@@ -394,6 +316,12 @@ class PostUpdate
 		$condition = ["`id` > ?", $id];
 		$params = ['order' => ['id'], 'limit' => 10000];
 		$items = DBA::select('item', $fields, $condition, $params);
+
+		if (DBA::errorNo() != 0) {
+			Logger::log('Database error ' . DBA::errorNo() . ':' . DBA::errorMessage());
+			return false;
+		}
+
 		while ($item = DBA::fetch($items)) {
 			$id = $item['id'];
 
@@ -431,17 +359,17 @@ class PostUpdate
 
 		Config::set("system", "post_update_version_1281_id", $id);
 
-		logger("Processed rows: " . $rows . " - last processed item:  " . $id, LOGGER_DEBUG);
+		Logger::log("Processed rows: " . $rows . " - last processed item:  " . $id, Logger::DEBUG);
 
 		if ($start_id == $id) {
-			logger("Updating item-uri in item-activity", LOGGER_DEBUG);
+			Logger::log("Updating item-uri in item-activity", Logger::DEBUG);
 			DBA::e("UPDATE `item-activity` INNER JOIN `item-uri` ON `item-uri`.`uri` = `item-activity`.`uri` SET `item-activity`.`uri-id` = `item-uri`.`id` WHERE `item-activity`.`uri-id` IS NULL");
 
-			logger("Updating item-uri in item-content", LOGGER_DEBUG);
+			Logger::log("Updating item-uri in item-content", Logger::DEBUG);
 			DBA::e("UPDATE `item-content` INNER JOIN `item-uri` ON `item-uri`.`uri` = `item-content`.`uri` SET `item-content`.`uri-id` = `item-uri`.`id` WHERE `item-content`.`uri-id` IS NULL");
 
 			Config::set("system", "post_update_version", 1281);
-			logger("Done", LOGGER_DEBUG);
+			Logger::log("Done", Logger::DEBUG);
 			return true;
 		}
 

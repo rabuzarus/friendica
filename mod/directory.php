@@ -5,19 +5,20 @@
 
 use Friendica\App;
 use Friendica\Content\Nav;
+use Friendica\Content\Pager;
 use Friendica\Content\Widget;
 use Friendica\Core\Addon;
 use Friendica\Core\Config;
 use Friendica\Core\L10n;
+use Friendica\Core\Renderer;
 use Friendica\Database\DBA;
 use Friendica\Model\Contact;
 use Friendica\Model\Profile;
 use Friendica\Util\Proxy as ProxyUtils;
+use Friendica\Util\Strings;
 
 function directory_init(App $a)
 {
-	$a->set_pager_itemspage(60);
-
 	if (local_user()) {
 		$a->page['aside'] .= Widget::findPeople();
 		$a->page['aside'] .= Widget::follow();
@@ -29,7 +30,7 @@ function directory_init(App $a)
 
 function directory_post(App $a)
 {
-	if (x($_POST, 'search')) {
+	if (!empty($_POST['search'])) {
 		$a->data['search'] = $_POST['search'];
 	}
 }
@@ -46,10 +47,10 @@ function directory_content(App $a)
 	$o = '';
 	Nav::setSelected('directory');
 
-	if (x($a->data, 'search')) {
-		$search = notags(trim($a->data['search']));
+	if (!empty($a->data['search'])) {
+		$search = Strings::escapeTags(trim($a->data['search']));
 	} else {
-		$search = ((x($_GET, 'search')) ? notags(trim(rawurldecode($_GET['search']))) : '');
+		$search = (!empty($_GET['search']) ? Strings::escapeTags(trim(rawurldecode($_GET['search']))) : '');
 	}
 
 	$gdirpath = '';
@@ -83,16 +84,18 @@ function directory_content(App $a)
 	$publish = (Config::get('system', 'publish_all') ? '' : " AND `publish` = 1 " );
 
 
+	$total = 0;
 	$cnt = DBA::fetchFirst("SELECT COUNT(*) AS `total` FROM `profile`
 				LEFT JOIN `user` ON `user`.`uid` = `profile`.`uid`
 				WHERE `is-default` $publish AND NOT `user`.`blocked` AND NOT `user`.`account_removed` $sql_extra");
 	if (DBA::isResult($cnt)) {
-		$a->set_pager_total($cnt['total']);
+		$total = $cnt['total'];
 	}
+	$pager = new Pager($a->query_string, 60);
 
 	$order = " ORDER BY `name` ASC ";
 
-	$limit = intval($a->pager['start'])."," . intval($a->pager['itemspage']);
+	$limit = $pager->getStart()."," . $pager->getItemsPerPage();
 
 	$r = DBA::p("SELECT `profile`.*, `profile`.`uid` AS `profile_uid`, `user`.`nickname`, `user`.`timezone` , `user`.`page-flags`,
 			`contact`.`addr`, `contact`.`url` AS profile_url FROM `profile`
@@ -135,28 +138,28 @@ function directory_content(App $a)
 			}
 //			if(strlen($rr['dob'])) {
 //				if(($years = age($rr['dob'],$rr['timezone'],'')) != 0)
-//					$details .= '<br />' . L10n::t('Age: ') . $years ;
+//					$details .= '<br />' . L10n::t('Age: ') . $years;
 //			}
 //			if(strlen($rr['gender']))
 //				$details .= '<br />' . L10n::t('Gender: ') . $rr['gender'];
 
 			$profile = $rr;
 
-			if ((x($profile, 'address')             == 1)
-				|| (x($profile, 'locality')     == 1)
-				|| (x($profile, 'region')       == 1)
-				|| (x($profile, 'postal-code')  == 1)
-				|| (x($profile, 'country-name') == 1)
+			if (!empty($profile['address'])
+				|| !empty($profile['locality'])
+				|| !empty($profile['region'])
+				|| !empty($profile['postal-code'])
+				|| !empty($profile['country-name'])
 			) {
 				$location = L10n::t('Location:');
 			} else {
 				$location = '';
 			}
 
-			$gender   = ((x($profile, 'gender')   == 1) ? L10n::t('Gender:')   : false);
-			$marital  = ((x($profile, 'marital')  == 1) ? L10n::t('Status:')   : false);
-			$homepage = ((x($profile, 'homepage') == 1) ? L10n::t('Homepage:') : false);
-			$about    = ((x($profile, 'about')    == 1) ? L10n::t('About:')    : false);
+			$gender   = (!empty($profile['gender']) ? L10n::t('Gender:')   : false);
+			$marital  = (!empty($profile['marital']) ? L10n::t('Status:')   : false);
+			$homepage = (!empty($profile['homepage']) ? L10n::t('Homepage:') : false);
+			$about    = (!empty($profile['about']) ? L10n::t('About:')    : false);
 
 			$location_e = $location;
 
@@ -200,9 +203,9 @@ function directory_content(App $a)
 		}
 		DBA::close($r);
 
-		$tpl = get_markup_template('directory_header.tpl');
+		$tpl = Renderer::getMarkupTemplate('directory_header.tpl');
 
-		$o .= replace_macros($tpl, [
+		$o .= Renderer::replaceMacros($tpl, [
 			'$search'    => $search,
 			'$globaldir' => L10n::t('Global Directory'),
 			'$gdirpath'  => $gdirpath,
@@ -212,7 +215,7 @@ function directory_content(App $a)
 			'$findterm'  => (strlen($search) ? $search : ""),
 			'$title'     => L10n::t('Site Directory'),
 			'$submit'    => L10n::t('Find'),
-			'$paginate'  => paginate($a),
+			'$paginate'  => $pager->renderFull($total),
 		]);
 	} else {
 		info(L10n::t("No entries \x28some entries may be hidden\x29.") . EOL);

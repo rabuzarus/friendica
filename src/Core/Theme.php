@@ -6,6 +6,7 @@
 
 namespace Friendica\Core;
 
+use Friendica\Core\Logger;
 use Friendica\Core\System;
 
 require_once 'boot.php';
@@ -50,7 +51,7 @@ class Theme
 		$a = get_app();
 		$stamp1 = microtime(true);
 		$theme_file = file_get_contents("view/theme/$theme/theme.php");
-		$a->save_timestamp($stamp1, "file");
+		$a->saveTimestamp($stamp1, "file");
 
 		$result = preg_match("|/\*.*\*/|msU", $theme_file, $matches);
 
@@ -106,7 +107,7 @@ class Theme
 	// install and uninstall theme
 	public static function uninstall($theme)
 	{
-		logger("Addons: uninstalling theme " . $theme);
+		Logger::log("Addons: uninstalling theme " . $theme);
 
 		include_once "view/theme/$theme/theme.php";
 		if (function_exists("{$theme}_uninstall")) {
@@ -123,7 +124,7 @@ class Theme
 			return false;
 		}
 
-		logger("Addons: installing theme $theme");
+		Logger::log("Addons: installing theme $theme");
 
 		include_once "view/theme/$theme/theme.php";
 
@@ -132,7 +133,7 @@ class Theme
 			$func();
 			return true;
 		} else {
-			logger("Addons: FAILED installing theme $theme");
+			Logger::log("Addons: FAILED installing theme $theme");
 			return false;
 		}
 	}

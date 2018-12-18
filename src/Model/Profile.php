@@ -8,12 +8,15 @@ use Friendica\App;
 use Friendica\Content\Feature;
 use Friendica\Content\ForumManager;
 use Friendica\Content\Text\BBCode;
+use Friendica\Content\Text\HTML;
 use Friendica\Core\Addon;
 use Friendica\Core\Cache;
 use Friendica\Core\Config;
 use Friendica\Core\L10n;
+use Friendica\Core\Logger;
 use Friendica\Core\PConfig;
 use Friendica\Core\Protocol;
+use Friendica\Core\Renderer;
 use Friendica\Core\System;
 use Friendica\Core\Worker;
 use Friendica\Database\DBA;
@@ -22,12 +25,26 @@ use Friendica\Protocol\Diaspora;
 use Friendica\Util\DateTimeFormat;
 use Friendica\Util\Network;
 use Friendica\Util\Proxy as ProxyUtils;
+use Friendica\Util\Strings;
 use Friendica\Util\Temporal;
 
 require_once 'include/dba.php';
 
 class Profile
 {
+	/**
+	 * @brief Returns default profile for a given user id
+	 *
+	 * @param integer User ID
+	 *
+	 * @return array Profile data
+	 */
+	public static function getByUID($uid)
+	{
+		$profile = DBA::selectFirst('profile', [], ['uid' => $uid, 'is-default' => true]);
+		return $profile;
+	}
+
 	/**
 	 * @brief Returns a formatted location string from the given profile array
 	 *
@@ -93,7 +110,7 @@ class Profile
 		$user = DBA::selectFirst('user', ['uid'], ['nickname' => $nickname, 'account_removed' => false]);
 
 		if (!DBA::isResult($user) && empty($profiledata)) {
-			logger('profile error: ' . $a->query_string, LOGGER_DEBUG);
+			Logger::log('profile error: ' . $a->query_string, Logger::DEBUG);
 			notice(L10n::t('Requested account is not available.') . EOL);
 			$a->error = 404;
 			return;
@@ -111,7 +128,7 @@ class Profile
 		$pdata = self::getByNickname($nickname, $user['uid'], $profile);
 
 		if (empty($pdata) && empty($profiledata)) {
-			logger('profile error: ' . $a->query_string, LOGGER_DEBUG);
+			Logger::log('profile error: ' . $a->query_string, Logger::DEBUG);
 			notice(L10n::t('Requested profile is not available.') . EOL);
 			$a->error = 404;
 			return;
@@ -149,7 +166,7 @@ class Profile
 		* load/reload current theme info
 		*/
 
-		$a->set_template_engine(); // reset the template engine to the default in case the user's theme doesn't specify one
+		Renderer::setActiveTemplateEngine(); // reset the template engine to the default in case the user's theme doesn't specify one
 
 		$theme_info_file = 'view/theme/' . $a->getCurrentTheme() . '/theme.php';
 		if (file_exists($theme_info_file)) {
@@ -157,8 +174,8 @@ class Profile
 		}
 
 		if (local_user() && local_user() == $a->profile['uid'] && $profiledata) {
-			$a->page['aside'] .= replace_macros(
-				get_markup_template('profile_edlink.tpl'),
+			$a->page['aside'] .= Renderer::replaceMacros(
+				Renderer::getMarkupTemplate('profile_edlink.tpl'),
 				[
 					'$editprofile' => L10n::t('Edit profile'),
 					'$profid' => $a->profile['id']
@@ -271,7 +288,7 @@ class Profile
 		$location = false;
 
 		// This function can also use contact information in $profile
-		$is_contact = x($profile, 'cid');
+		$is_contact = !empty($profile['cid']);
 
 		if (!is_array($profile) && !count($profile)) {
 			return $o;
@@ -280,7 +297,7 @@ class Profile
 		$profile['picdate'] = urlencode(defaults($profile, 'picdate', ''));
 
 		if (($profile['network'] != '') && ($profile['network'] != Protocol::DFRN)) {
-			$profile['network_name'] = format_network_name($profile['network'], $profile['url']);
+			$profile['network_name'] = Strings::formatNetworkName($profile['network'], $profile['url']);
 		} else {
 			$profile['network_name'] = '';
 		}
@@ -310,9 +327,9 @@ class Profile
 		// Is the local user already connected to that user?
 		if ($connect && local_user()) {
 			if (isset($profile['url'])) {
-				$profile_url = normalise_link($profile['url']);
+				$profile_url = Strings::normaliseLink($profile['url']);
 			} else {
-				$profile_url = normalise_link(System::baseUrl() . '/profile/' . $profile['nickname']);
+				$profile_url = Strings::normaliseLink(System::baseUrl() . '/profile/' . $profile['nickname']);
 			}
 
 			if (DBA::exists('contact', ['pending' => false, 'uid' => local_user(), 'nurl' => $profile_url])) {
@@ -340,7 +357,7 @@ class Profile
 
 		// See issue https://github.com/friendica/friendica/issues/3838
 		// Either we remove the message link for remote users or we enable creating messages from remote users
-		if (remote_user() || (self::getMyURL() && x($profile, 'unkmail') && ($profile['uid'] != local_user()))) {
+		if (remote_user() || (self::getMyURL() && !empty($profile['unkmail']) && ($profile['uid'] != local_user()))) {
 			$wallmessage = L10n::t('Message');
 
 			if (remote_user()) {
@@ -354,14 +371,14 @@ class Profile
 				$r = q(
 					"SELECT `url` FROM `contact` WHERE `uid` = %d AND `nurl` = '%s' AND `rel` = %d",
 					intval($profile['uid']),
-					DBA::escape(normalise_link(self::getMyURL())),
+					DBA::escape(Strings::normaliseLink(self::getMyURL())),
 					intval(Contact::FRIEND)
 				);
 			}
 			if ($r) {
 				$remote_url = $r[0]['url'];
 				$message_path = preg_replace('=(.*)/profile/(.*)=ism', '$1/message/new/', $remote_url);
-				$wallmessage_link = $message_path . base64_encode($profile['addr']);
+				$wallmessage_link = $message_path . base64_encode(defaults($profile, 'addr', ''));
 			} else if (!empty($profile['nickname'])) {
 				$wallmessage_link = 'wallmessage/' . $profile['nickname'];
 			}
@@ -407,23 +424,23 @@ class Profile
 		// Fetch the account type
 		$account_type = Contact::getAccountType($profile);
 
-		if (x($profile, 'address')
-			|| x($profile, 'location')
-			|| x($profile, 'locality')
-			|| x($profile, 'region')
-			|| x($profile, 'postal-code')
-			|| x($profile, 'country-name')
+		if (!empty($profile['address'])
+			|| !empty($profile['location'])
+			|| !empty($profile['locality'])
+			|| !empty($profile['region'])
+			|| !empty($profile['postal-code'])
+			|| !empty($profile['country-name'])
 		) {
 			$location = L10n::t('Location:');
 		}
 
-		$gender   = x($profile, 'gender')   ? L10n::t('Gender:')   : false;
-		$marital  = x($profile, 'marital')  ? L10n::t('Status:')   : false;
-		$homepage = x($profile, 'homepage') ? L10n::t('Homepage:') : false;
-		$about    = x($profile, 'about')    ? L10n::t('About:')    : false;
-		$xmpp     = x($profile, 'xmpp')     ? L10n::t('XMPP:')     : false;
+		$gender   = !empty($profile['gender'])   ? L10n::t('Gender:')   : false;
+		$marital  = !empty($profile['marital'])  ? L10n::t('Status:')   : false;
+		$homepage = !empty($profile['homepage']) ? L10n::t('Homepage:') : false;
+		$about    = !empty($profile['about'])    ? L10n::t('About:')    : false;
+		$xmpp     = !empty($profile['xmpp'])     ? L10n::t('XMPP:')     : false;
 
-		if ((x($profile, 'hidewall') || $block) && !local_user() && !remote_user()) {
+		if ((!empty($profile['hidewall']) || $block) && !local_user() && !remote_user()) {
 			$location = $gender = $marital = $homepage = $about = false;
 		}
 
@@ -431,7 +448,7 @@ class Profile
 		$firstname = $split_name['first'];
 		$lastname = $split_name['last'];
 
-		if (x($profile, 'guid')) {
+		if (!empty($profile['guid'])) {
 			$diaspora = [
 				'guid' => $profile['guid'],
 				'podloc' => System::baseUrl(),
@@ -452,7 +469,7 @@ class Profile
 		$updated = '';
 		$contacts = 0;
 		if (!$block) {
-			$contact_block = contact_block();
+			$contact_block = HTML::contactBlock();
 
 			if (is_array($a->profile) && !$a->profile['hide-friends']) {
 				$r = q(
@@ -492,7 +509,7 @@ class Profile
 
 		if (isset($p['address'])) {
 			$p['address'] = BBCode::convert($p['address']);
-		} else {
+		} elseif (isset($p['location'])) {
 			$p['address'] = BBCode::convert($p['location']);
 		}
 
@@ -502,8 +519,8 @@ class Profile
 
 		$p['url'] = Contact::magicLink(defaults($p, 'url', $profile_url));
 
-		$tpl = get_markup_template('profile_vcard.tpl');
-		$o .= replace_macros($tpl, [
+		$tpl = Renderer::getMarkupTemplate('profile_vcard.tpl');
+		$o .= Renderer::replaceMacros($tpl, [
 			'$profile' => $p,
 			'$xmpp' => $xmpp,
 			'$connect' => $connect,
@@ -555,16 +572,25 @@ class Profile
 		if (is_null($r)) {
 			$s = DBA::p(
 				"SELECT `event`.*, `event`.`id` AS `eid`, `contact`.* FROM `event`
-				INNER JOIN `contact` ON `contact`.`id` = `event`.`cid`
+				INNER JOIN `contact`
+					ON `contact`.`id` = `event`.`cid`
+					AND (`contact`.`rel` = ? OR `contact`.`rel` = ?)
+					AND NOT `contact`.`pending`
+					AND NOT `contact`.`hidden`
+					AND NOT `contact`.`blocked`
+					AND NOT `contact`.`archive`
+					AND NOT `contact`.`deleted`
 				WHERE `event`.`uid` = ? AND `type` = 'birthday' AND `start` < ? AND `finish` > ?
 				ORDER BY `start` ASC ",
+				Contact::SHARING,
+				Contact::FRIEND,
 				local_user(),
 				DateTimeFormat::utc('now + 6 days'),
 				DateTimeFormat::utcNow()
 			);
 			if (DBA::isResult($s)) {
 				$r = DBA::toArray($s);
-				Cache::set($cachekey, $r, CACHE_HOUR);
+				Cache::set($cachekey, $r, Cache::HOUR);
 			}
 		}
 
@@ -601,14 +627,14 @@ class Profile
 
 					$rr['link'] = Contact::magicLink($rr['url']);
 					$rr['title'] = $rr['name'];
-					$rr['date'] = day_translate(DateTimeFormat::convert($rr['start'], $a->timezone, 'UTC', $rr['adjust'] ? $bd_format : $bd_short)) . (($today) ? ' ' . L10n::t('[today]') : '');
+					$rr['date'] = L10n::getDay(DateTimeFormat::convert($rr['start'], $a->timezone, 'UTC', $rr['adjust'] ? $bd_format : $bd_short)) . (($today) ? ' ' . L10n::t('[today]') : '');
 					$rr['startime'] = null;
 					$rr['today'] = $today;
 				}
 			}
 		}
-		$tpl = get_markup_template('birthdays_reminder.tpl');
-		return replace_macros($tpl, [
+		$tpl = Renderer::getMarkupTemplate('birthdays_reminder.tpl');
+		return Renderer::replaceMacros($tpl, [
 			'$baseurl' => System::baseUrl(),
 			'$classtoday' => $classtoday,
 			'$count' => $total,
@@ -687,7 +713,7 @@ class Profile
 
 				$rr['title'] = $title;
 				$rr['description'] = $description;
-				$rr['date'] = day_translate(DateTimeFormat::convert($rr['start'], $rr['adjust'] ? $a->timezone : 'UTC', 'UTC', $bd_format)) . (($today) ? ' ' . L10n::t('[today]') : '');
+				$rr['date'] = L10n::getDay(DateTimeFormat::convert($rr['start'], $rr['adjust'] ? $a->timezone : 'UTC', 'UTC', $bd_format)) . (($today) ? ' ' . L10n::t('[today]') : '');
 				$rr['startime'] = $strt;
 				$rr['today'] = $today;
 
@@ -696,8 +722,8 @@ class Profile
 			DBA::close($s);
 			$classtoday = (($istoday) ? 'event-today' : '');
 		}
-		$tpl = get_markup_template('events_reminder.tpl');
-		return replace_macros($tpl, [
+		$tpl = Renderer::getMarkupTemplate('events_reminder.tpl');
+		return Renderer::replaceMacros($tpl, [
 			'$baseurl' => System::baseUrl(),
 			'$classtoday' => $classtoday,
 			'$count' => count($r),
@@ -712,13 +738,13 @@ class Profile
 		$o = '';
 		$uid = $a->profile['uid'];
 
-		$o .= replace_macros(
-			get_markup_template('section_title.tpl'),
+		$o .= Renderer::replaceMacros(
+			Renderer::getMarkupTemplate('section_title.tpl'),
 			['$title' => L10n::t('Profile')]
 		);
 
 		if ($a->profile['name']) {
-			$tpl = get_markup_template('profile_advanced.tpl');
+			$tpl = Renderer::getMarkupTemplate('profile_advanced.tpl');
 
 			$profile = [];
 
@@ -732,11 +758,11 @@ class Profile
 				$profile['gender'] = [L10n::t('Gender:'), L10n::t($a->profile['gender'])];
 			}
 
-			if (($a->profile['dob']) && ($a->profile['dob'] > '0001-01-01')) {
+			if (!empty($a->profile['dob']) && $a->profile['dob'] > DBA::NULL_DATE) {
 				$year_bd_format = L10n::t('j F, Y');
 				$short_bd_format = L10n::t('j F');
 
-				$val = day_translate(
+				$val = L10n::getDay(
 					intval($a->profile['dob']) ?
 						DateTimeFormat::utc($a->profile['dob'] . ' 00:00 +00:00', $year_bd_format)
 						: DateTimeFormat::utc('2001-' . substr($a->profile['dob'], 5) . ' 00:00 +00:00', $short_bd_format)
@@ -746,7 +772,7 @@ class Profile
 			}
 
 			if (!empty($a->profile['dob'])
-				&& $a->profile['dob'] > '0001-01-01'
+				&& $a->profile['dob'] > DBA::NULL_DATE
 				&& $age = Temporal::getAgeByTimezone($a->profile['dob'], $a->profile['timezone'], '')
 			) {
 				$profile['age'] = [L10n::t('Age:'), $age];
@@ -761,7 +787,7 @@ class Profile
 				$profile['marital']['with'] = $a->profile['with'];
 			}
 
-			if (strlen($a->profile['howlong']) && $a->profile['howlong'] >= NULL_DATE) {
+			if (strlen($a->profile['howlong']) && $a->profile['howlong'] >= DBA::NULL_DATETIME) {
 				$profile['howlong'] = Temporal::getRelativeDate($a->profile['howlong'], L10n::t('for %1$d %2$s'));
 			}
 
@@ -770,11 +796,11 @@ class Profile
 			}
 
 			if ($a->profile['homepage']) {
-				$profile['homepage'] = [L10n::t('Homepage:'), linkify($a->profile['homepage'])];
+				$profile['homepage'] = [L10n::t('Homepage:'), HTML::toLink($a->profile['homepage'])];
 			}
 
 			if ($a->profile['hometown']) {
-				$profile['hometown'] = [L10n::t('Hometown:'), linkify($a->profile['hometown'])];
+				$profile['hometown'] = [L10n::t('Hometown:'), HTML::toLink($a->profile['hometown'])];
 			}
 
 			if ($a->profile['pub_keywords']) {
@@ -846,7 +872,7 @@ class Profile
 				$profile['edit'] = [System::baseUrl() . '/profiles/' . $a->profile['id'], L10n::t('Edit profile'), '', L10n::t('Edit profile')];
 			}
 
-			return replace_macros($tpl, [
+			return Renderer::replaceMacros($tpl, [
 				'$title' => L10n::t('Profile'),
 				'$basic' => L10n::t('Basic'),
 				'$advanced' => L10n::t('Advanced'),
@@ -864,8 +890,8 @@ class Profile
 		}
 
 		$tab = false;
-		if (x($_GET, 'tab')) {
-			$tab = notags(trim($_GET['tab']));
+		if (!empty($_GET['tab'])) {
+			$tab = Strings::escapeTags(trim($_GET['tab']));
 		}
 
 		$url = System::baseUrl() . '/profile/' . $nickname;
@@ -963,9 +989,9 @@ class Profile
 		$arr = ['is_owner' => $is_owner, 'nickname' => $nickname, 'tab' => $tab, 'tabs' => $tabs];
 		Addon::callHooks('profile_tabs', $arr);
 
-		$tpl = get_markup_template('common_tabs.tpl');
+		$tpl = Renderer::getMarkupTemplate('common_tabs.tpl');
 
-		return replace_macros($tpl, ['$tabs' => $arr['tabs']]);
+		return Renderer::replaceMacros($tpl, ['$tabs' => $arr['tabs']]);
 	}
 
 	/**
@@ -975,7 +1001,7 @@ class Profile
 	 */
 	public static function getMyURL()
 	{
-		if (x($_SESSION, 'my_url')) {
+		if (!empty($_SESSION['my_url'])) {
 			return $_SESSION['my_url'];
 		}
 		return null;
@@ -997,56 +1023,59 @@ class Profile
 		$my_url = self::getMyURL();
 		$my_url = Network::isUrlValid($my_url);
 
-		if ($my_url) {
-			if (!local_user()) {
-				// Is it a DDoS attempt?
-				// The check fetches the cached value from gprobe to reduce the load for this system
-				$urlparts = parse_url($my_url);
+		if (empty($my_url) || local_user()) {
+			return;
+		}
 
-				$result = Cache::get('gprobe:' . $urlparts['host']);
-				if ((!is_null($result)) && (in_array($result['network'], [Protocol::FEED, Protocol::PHANTOM]))) {
-					logger('DDoS attempt detected for ' . $urlparts['host'] . ' by ' . $_SERVER['REMOTE_ADDR'] . '. server data: ' . print_r($_SERVER, true), LOGGER_DEBUG);
-					return;
-				}
+		$arr = ['zrl' => $my_url, 'url' => $a->cmd];
+		Addon::callHooks('zrl_init', $arr);
 
-				Worker::add(PRIORITY_LOW, 'GProbe', $my_url);
-				$arr = ['zrl' => $my_url, 'url' => $a->cmd];
-				Addon::callHooks('zrl_init', $arr);
+		// Try to find the public contact entry of the visitor.
+		$cid = Contact::getIdForURL($my_url);
+		if (!$cid) {
+			Logger::log('No contact record found for ' . $my_url, Logger::DEBUG);
+			return;
+		}
 
-				// Try to find the public contact entry of the visitor.
-				$cid = Contact::getIdForURL($my_url);
-				if (!$cid) {
-					logger('No contact record found for ' . $my_url, LOGGER_DEBUG);
-					return;
-				}
+		$contact = DBA::selectFirst('contact',['id', 'url'], ['id' => $cid]);
 
-				$contact = DBA::selectFirst('contact',['id', 'url'], ['id' => $cid]);
+		if (DBA::isResult($contact) && remote_user() && remote_user() == $contact['id']) {
+			Logger::log('The visitor ' . $my_url . ' is already authenticated', Logger::DEBUG);
+			return;
+		}
 
-				if (DBA::isResult($contact) && remote_user() && remote_user() == $contact['id']) {
-					// The visitor is already authenticated.
-					return;
-				}
+		// Avoid endless loops
+		$cachekey = 'zrlInit:' . $my_url;
+		if (Cache::get($cachekey)) {
+			Logger::log('URL ' . $my_url . ' already tried to authenticate.', Logger::DEBUG);
+			return;
+		} else {
+			Cache::set($cachekey, true, Cache::MINUTE);
+		}
 
-				logger('Not authenticated. Invoking reverse magic-auth for ' . $my_url, LOGGER_DEBUG);
+		Logger::log('Not authenticated. Invoking reverse magic-auth for ' . $my_url, Logger::DEBUG);
 
-				// Try to avoid recursion - but send them home to do a proper magic auth.
-				$query = str_replace(array('?zrl=', '&zid='), array('?rzrl=', '&rzrl='), $a->query_string);
-				// The other instance needs to know where to redirect.
-				$dest = urlencode(System::baseUrl() . '/' . $query);
+		Worker::add(PRIORITY_LOW, 'GProbe', $my_url);
 
-				// We need to extract the basebath from the profile url
-				// to redirect the visitors '/magic' module.
-				// Note: We should have the basepath of a contact also in the contact table.
-				$urlarr = explode('/profile/', $contact['url']);
-				$basepath = $urlarr[0];
+		// Try to avoid recursion - but send them home to do a proper magic auth.
+		$query = str_replace(array('?zrl=', '&zid='), array('?rzrl=', '&rzrl='), $a->query_string);
+		// The other instance needs to know where to redirect.
+		$dest = urlencode($a->getBaseURL() . '/' . $query);
 
-				if ($basepath != System::baseUrl() && !strstr($dest, '/magic') && !strstr($dest, '/rmagic')) {
-					$magic_path = $basepath . '/magic' . '?f=&owa=1&dest=' . $dest;
-					$serverret = Network::curl($magic_path);
-					if (!empty($serverret['success'])) {
-						goaway($magic_path);
-					}
-				}
+		// We need to extract the basebath from the profile url
+		// to redirect the visitors '/magic' module.
+		// Note: We should have the basepath of a contact also in the contact table.
+		$urlarr = explode('/profile/', $contact['url']);
+		$basepath = $urlarr[0];
+
+		if ($basepath != $a->getBaseURL() && !strstr($dest, '/magic') && !strstr($dest, '/rmagic')) {
+			$magic_path = $basepath . '/magic' . '?f=&owa=1&dest=' . $dest;
+
+			// We have to check if the remote server does understand /magic without invoking something
+			$serverret = Network::curl($basepath . '/magic');
+			if ($serverret->isSuccess()) {
+				Logger::log('Doing magic auth for visitor ' . $my_url . ' to ' . $magic_path, Logger::DEBUG);
+				System::externalRedirect($magic_path);
 			}
 		}
 	}
@@ -1076,7 +1105,7 @@ class Profile
 		// Try to find the public contact entry of the visitor.
 		$cid = Contact::getIdForURL($visitor_handle);
 		if(!$cid) {
-			logger('owt: unable to finger ' . $visitor_handle, LOGGER_DEBUG);
+			Logger::log('owt: unable to finger ' . $visitor_handle, Logger::DEBUG);
 			return;
 		}
 
@@ -1103,9 +1132,9 @@ class Profile
 
 		$a->contact = $arr['visitor'];
 
-		info(L10n::t('OpenWebAuth: %1$s welcomes %2$s', $a->get_hostname(), $visitor['name']));
+		info(L10n::t('OpenWebAuth: %1$s welcomes %2$s', $a->getHostName(), $visitor['name']));
 
-		logger('OpenWebAuth: auth success from ' . $visitor['addr'], LOGGER_DEBUG);
+		Logger::log('OpenWebAuth: auth success from ' . $visitor['addr'], Logger::DEBUG);
 	}
 
 	public static function zrl($s, $force = false)
@@ -1121,7 +1150,7 @@ class Profile
 		}
 		$achar = strpos($s, '?') ? '&' : '?';
 		$mine = self::getMyURL();
-		if ($mine && !link_compare($mine, $s)) {
+		if ($mine && !Strings::compareLink($mine, $s)) {
 			return $s . $achar . 'zrl=' . urlencode($mine);
 		}
 		return $s;
@@ -1144,7 +1173,7 @@ class Profile
 	 */
 	public static function getThemeUid()
 	{
-		$uid = ((!empty($_REQUEST['puid'])) ? intval($_REQUEST['puid']) : 0);
+		$uid = (!empty($_REQUEST['puid']) ? intval($_REQUEST['puid']) : 0);
 		if ((local_user()) && ((PConfig::get(local_user(), 'system', 'always_my_theme')) || (!$uid))) {
 			return local_user();
 		}

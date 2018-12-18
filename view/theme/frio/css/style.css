@@ -96,9 +96,6 @@ blockquote {
     max-height: 0px !important;
     overflow: hidden !important;
 }
-code {
-    white-space: pre-wrap;
-}
 
 /**
  * mobile aside
@@ -1065,9 +1062,6 @@ aside > #datebrowse-sidebar .posted-date-selector-months > ul > li:hover{
 }
 
 /* help page widget */
-aside > .help-content-wrapper code, .help-aside-wrapper code {
-    display: inline
-}
 aside > .help-aside-wrapper p strong:first-child {
     display: block;
     margin: 1em 0 0em;
@@ -1495,6 +1489,9 @@ section #jotOpen {
 .fbrowser.image .photo-album-image-wrapper {
     box-shadow: 2px 2px 5px 0px rgba(0, 0, 0, 0.2);
 }
+.fbrowser.image .photo-album-image-wrapper .caption {
+    pointer-events: none;
+}
 .fbrowser .profile-rotator-wrapper {
     min-height: 200px;
 }
@@ -1541,11 +1538,11 @@ aside .panel-body {
 }
 
 /* Thread hover effects */
-.wall-item-container .wall-item-content a,
-.wall-item-container a,
-.wall-item-container .fakelink,
-.toplevel_item .fakelink,
-.toplevel_item .wall-item-container .wall-item-responses a {
+.desktop-view .wall-item-container .wall-item-content a,
+.desktop-view .wall-item-container a,
+.desktop-view .wall-item-container .fakelink,
+.desktop-view .toplevel_item .fakelink,
+.desktop-view .toplevel_item .wall-item-container .wall-item-responses a {
     color: #555;
     -webkit-transition: all 0.25s ease-in-out;
     -moz-transition: all 0.25s ease-in-out;
@@ -1786,6 +1783,12 @@ code > .hl-main {
 }
 .oembed.video .embed_video > div:hover {
     background-color: rgba(0,0,0,0);
+}
+.oembed.video .embed_video.active {
+    margin: 1em 0;
+}
+.oembed.video .embed_video.active iframe {
+    width: 100% !important;
 }
 .wall-item-tags,
 .itemedited {

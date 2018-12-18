@@ -5,16 +5,20 @@
 
 use Friendica\App;
 use Friendica\Content\Nav;
+use Friendica\Content\Pager;
 use Friendica\Content\Smilies;
 use Friendica\Content\Text\BBCode;
 use Friendica\Core\ACL;
 use Friendica\Core\L10n;
+use Friendica\Core\Renderer;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
 use Friendica\Model\Contact;
 use Friendica\Model\Mail;
+use Friendica\Module\Login;
 use Friendica\Util\DateTimeFormat;
 use Friendica\Util\Proxy as ProxyUtils;
+use Friendica\Util\Strings;
 use Friendica\Util\Temporal;
 
 require_once 'include/conversation.php';
@@ -34,21 +38,15 @@ function message_init(App $a)
 		'accesskey' => 'm',
 	];
 
-	$tpl = get_markup_template('message_side.tpl');
-	$a->page['aside'] = replace_macros($tpl, [
+	$tpl = Renderer::getMarkupTemplate('message_side.tpl');
+	$a->page['aside'] = Renderer::replaceMacros($tpl, [
 		'$tabs' => $tabs,
 		'$new' => $new,
 	]);
 	$base = System::baseUrl();
 
-	$head_tpl = get_markup_template('message-head.tpl');
-	$a->page['htmlhead'] .= replace_macros($head_tpl, [
-		'$baseurl' => System::baseUrl(true),
-		'$base' => $base
-	]);
-
-	$end_tpl = get_markup_template('message-end.tpl');
-	$a->page['end'] .= replace_macros($end_tpl, [
+	$head_tpl = Renderer::getMarkupTemplate('message-head.tpl');
+	$a->page['htmlhead'] .= Renderer::replaceMacros($head_tpl, [
 		'$baseurl' => System::baseUrl(true),
 		'$base' => $base
 	]);
@@ -61,10 +59,10 @@ function message_post(App $a)
 		return;
 	}
 
-	$replyto   = x($_REQUEST, 'replyto')   ? notags(trim($_REQUEST['replyto']))   : '';
-	$subject   = x($_REQUEST, 'subject')   ? notags(trim($_REQUEST['subject']))   : '';
-	$body      = x($_REQUEST, 'body')      ? escape_tags(trim($_REQUEST['body'])) : '';
-	$recipient = x($_REQUEST, 'messageto') ? intval($_REQUEST['messageto'])       : 0;
+	$replyto   = !empty($_REQUEST['replyto'])   ? Strings::escapeTags(trim($_REQUEST['replyto'])) : '';
+	$subject   = !empty($_REQUEST['subject'])   ? Strings::escapeTags(trim($_REQUEST['subject'])) : '';
+	$body      = !empty($_REQUEST['body'])      ? Strings::escapeHtml(trim($_REQUEST['body']))    : '';
+	$recipient = !empty($_REQUEST['messageto']) ? intval($_REQUEST['messageto'])                  : 0;
 
 	$ret = Mail::send($recipient, $body, $subject, $replyto);
 	$norecip = false;
@@ -92,7 +90,7 @@ function message_post(App $a)
 		$a->argc = 2;
 		$a->argv[1] = 'new';
 	} else {
-		goaway($_SESSION['return_url']);
+		$a->internalRedirect($a->cmd . '/' . $ret);
 	}
 }
 
@@ -103,12 +101,12 @@ function message_content(App $a)
 
 	if (!local_user()) {
 		notice(L10n::t('Permission denied.') . EOL);
-		return;
+		return Login::form();
 	}
 
 	$myprofile = System::baseUrl() . '/profile/' . $a->user['nickname'];
 
-	$tpl = get_markup_template('mail_head.tpl');
+	$tpl = Renderer::getMarkupTemplate('mail_head.tpl');
 	if ($a->argc > 1 && $a->argv[1] == 'new') {
 		$button = [
 			'label' => L10n::t('Discard'),
@@ -123,7 +121,7 @@ function message_content(App $a)
 			'accesskey' => 'm',
 		];
 	}
-	$header = replace_macros($tpl, [
+	$header = Renderer::replaceMacros($tpl, [
 		'$messages' => L10n::t('Messages'),
 		'$button' => $button,
 	]);
@@ -147,7 +145,7 @@ function message_content(App $a)
 			}
 
 			//$a->page['aside'] = '';
-			return replace_macros(get_markup_template('confirm.tpl'), [
+			return Renderer::replaceMacros(Renderer::getMarkupTemplate('confirm.tpl'), [
 				'$method' => 'get',
 				'$message' => L10n::t('Do you really want to delete this message?'),
 				'$extra_inputs' => $inputs,
@@ -160,17 +158,28 @@ function message_content(App $a)
 
 		// Now check how the user responded to the confirmation query
 		if (!empty($_REQUEST['canceled'])) {
-			goaway($_SESSION['return_url']);
+			$a->internalRedirect('message');
 		}
 
 		$cmd = $a->argv[1];
 		if ($cmd === 'drop') {
+			$message = DBA::selectFirst('mail', ['convid'], ['id' => $a->argv[2], 'uid' => local_user()]);
+			if(!DBA::isResult($message)){
+				info(L10n::t('Conversation not found.') . EOL);
+				$a->internalRedirect('message');
+			}
+
 			if (DBA::delete('mail', ['id' => $a->argv[2], 'uid' => local_user()])) {
 				info(L10n::t('Message deleted.') . EOL);
 			}
 
-			//goaway(System::baseUrl(true) . '/message' );
-			goaway($_SESSION['return_url']);
+			$conversation = DBA::selectFirst('mail', ['id'], ['convid' => $message['convid'], 'uid' => local_user()]);
+			if(!DBA::isResult($conversation)){
+				info(L10n::t('Conversation removed.') . EOL);
+				$a->internalRedirect('message');
+			}
+
+			$a->internalRedirect('message/' . $conversation['id'] );
 		} else {
 			$r = q("SELECT `parent-uri`,`convid` FROM `mail` WHERE `id` = %d AND `uid` = %d LIMIT 1",
 				intval($a->argv[2]),
@@ -184,23 +193,15 @@ function message_content(App $a)
 					info(L10n::t('Conversation removed.') . EOL);
 				}
 			}
-			//goaway(System::baseUrl(true) . '/message' );
-			goaway($_SESSION['return_url']);
+			$a->internalRedirect('message');
 		}
 	}
 
 	if (($a->argc > 1) && ($a->argv[1] === 'new')) {
 		$o .= $header;
 
-		$tpl = get_markup_template('msg-header.tpl');
-		$a->page['htmlhead'] .= replace_macros($tpl, [
-			'$baseurl' => System::baseUrl(true),
-			'$nickname' => $a->user['nickname'],
-			'$linkurl' => L10n::t('Please enter a link URL:')
-		]);
-
-		$tpl = get_markup_template('msg-end.tpl');
-		$a->page['end'] .= replace_macros($tpl, [
+		$tpl = Renderer::getMarkupTemplate('msg-header.tpl');
+		$a->page['htmlhead'] .= Renderer::replaceMacros($tpl, [
 			'$baseurl' => System::baseUrl(true),
 			'$nickname' => $a->user['nickname'],
 			'$linkurl' => L10n::t('Please enter a link URL:')
@@ -218,7 +219,7 @@ function message_content(App $a)
 			if (!DBA::isResult($r)) {
 				$r = q("SELECT `name`, `url`, `id` FROM `contact` WHERE `uid` = %d AND `nurl` = '%s' LIMIT 1",
 					intval(local_user()),
-					DBA::escape(normalise_link(base64_decode($a->argv[2])))
+					DBA::escape(Strings::normaliseLink(base64_decode($a->argv[2])))
 				);
 			}
 
@@ -244,16 +245,16 @@ function message_content(App $a)
 		// the ugly select box
 		$select = ACL::getMessageContactSelectHTML('messageto', 'message-to-select', $preselect, 4, 10);
 
-		$tpl = get_markup_template('prv_message.tpl');
-		$o .= replace_macros($tpl, [
+		$tpl = Renderer::getMarkupTemplate('prv_message.tpl');
+		$o .= Renderer::replaceMacros($tpl, [
 			'$header' => L10n::t('Send Private Message'),
 			'$to' => L10n::t('To:'),
 			'$showinputs' => 'true',
 			'$prefill' => $prefill,
 			'$preid' => $preid,
 			'$subject' => L10n::t('Subject:'),
-			'$subjtxt' => x($_REQUEST, 'subject') ? strip_tags($_REQUEST['subject']) : '',
-			'$text' => x($_REQUEST, 'body') ? escape_tags(htmlspecialchars($_REQUEST['body'])) : '',
+			'$subjtxt' => !empty($_REQUEST['subject']) ? strip_tags($_REQUEST['subject']) : '',
+			'$text' => !empty($_REQUEST['body']) ? Strings::escapeHtml(htmlspecialchars($_REQUEST['body'])) : '',
 			'$readonly' => '',
 			'$yourmessage' => L10n::t('Your message:'),
 			'$select' => $select,
@@ -267,7 +268,7 @@ function message_content(App $a)
 	}
 
 
-	$_SESSION['return_url'] = $a->query_string;
+	$_SESSION['return_path'] = $a->query_string;
 
 	if ($a->argc == 1) {
 
@@ -275,16 +276,18 @@ function message_content(App $a)
 
 		$o .= $header;
 
+		$total = 0;
 		$r = q("SELECT count(*) AS `total`, ANY_VALUE(`created`) AS `created` FROM `mail`
 			WHERE `mail`.`uid` = %d GROUP BY `parent-uri` ORDER BY `created` DESC",
 			intval(local_user())
 		);
-
 		if (DBA::isResult($r)) {
-			$a->set_pager_total($r[0]['total']);
+			$total = $r[0]['total'];
 		}
 
-		$r = get_messages(local_user(), $a->pager['start'], $a->pager['itemspage']);
+		$pager = new Pager($a->query_string);
+
+		$r = get_messages(local_user(), $pager->getStart(), $pager->getItemsPerPage());
 
 		if (!DBA::isResult($r)) {
 			info(L10n::t('No messages.') . EOL);
@@ -293,7 +296,7 @@ function message_content(App $a)
 
 		$o .= render_messages($r, 'mail_list.tpl');
 
-		$o .= paginate($a);
+		$o .= $pager->renderFull($total);
 
 		return $o;
 	}
@@ -337,15 +340,8 @@ function message_content(App $a)
 			intval(local_user())
 		);
 
-		$tpl = get_markup_template('msg-header.tpl');
-		$a->page['htmlhead'] .= replace_macros($tpl, [
-			'$baseurl' => System::baseUrl(true),
-			'$nickname' => $a->user['nickname'],
-			'$linkurl' => L10n::t('Please enter a link URL:')
-		]);
-
-		$tpl = get_markup_template('msg-end.tpl');
-		$a->page['end'] .= replace_macros($tpl, [
+		$tpl = Renderer::getMarkupTemplate('msg-header.tpl');
+		$a->page['htmlhead'] .= Renderer::replaceMacros($tpl, [
 			'$baseurl' => System::baseUrl(true),
 			'$nickname' => $a->user['nickname'],
 			'$linkurl' => L10n::t('Please enter a link URL:')
@@ -404,8 +400,8 @@ function message_content(App $a)
 		$select = $message['name'] . '<input type="hidden" name="messageto" value="' . $contact_id . '" />';
 		$parent = '<input type="hidden" name="replyto" value="' . $message['parent-uri'] . '" />';
 
-		$tpl = get_markup_template('mail_display.tpl');
-		$o = replace_macros($tpl, [
+		$tpl = Renderer::getMarkupTemplate('mail_display.tpl');
+		$o = Renderer::replaceMacros($tpl, [
 			'$thread_id' => $a->argv[1],
 			'$thread_subject' => $message['title'],
 			'$thread_seen' => $seen,
@@ -459,7 +455,7 @@ function render_messages(array $msg, $t)
 {
 	$a = get_app();
 
-	$tpl = get_markup_template($t);
+	$tpl = Renderer::getMarkupTemplate($t);
 	$rslt = '';
 
 	$myprofile = System::baseUrl() . '/profile/' . $a->user['nickname'];
@@ -467,7 +463,7 @@ function render_messages(array $msg, $t)
 	foreach ($msg as $rr) {
 		if ($rr['unknown']) {
 			$participants = L10n::t("Unknown sender - %s", $rr['from-name']);
-		} elseif (link_compare($rr['from-url'], $myprofile)) {
+		} elseif (Strings::compareLink($rr['from-url'], $myprofile)) {
 			$participants = L10n::t("You and %s", $rr['name']);
 		} else {
 			$participants = L10n::t("%s and You", $rr['from-name']);
@@ -484,11 +480,11 @@ function render_messages(array $msg, $t)
 			$from_photo = (($rr['thumb']) ? $rr['thumb'] : $rr['from-photo']);
 		}
 
-		$rslt .= replace_macros($tpl, [
+		$rslt .= Renderer::replaceMacros($tpl, [
 			'$id' => $rr['id'],
 			'$from_name' => $participants,
 			'$from_url' => Contact::magicLink($rr['url']),
-			'$from_addr' => $contact['addr'],
+			'$from_addr' => defaults($contact, 'addr', ''),
 			'$sparkle' => ' sparkle',
 			'$from_photo' => ProxyUtils::proxifyUrl($from_photo, false, ProxyUtils::SIZE_THUMB),
 			'$subject' => $subject_e,

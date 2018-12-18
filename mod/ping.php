@@ -150,25 +150,21 @@ function ping_init(App $a)
 		}
 
 		if ($network_count) {
-			if (intval(Feature::isEnabled(local_user(), 'groups'))) {
-				// Find out how unseen network posts are spread across groups
-				$group_counts = Group::countUnseen();
-				if (DBA::isResult($group_counts)) {
-					foreach ($group_counts as $group_count) {
-						if ($group_count['count'] > 0) {
-							$groups_unseen[] = $group_count;
-						}
+			// Find out how unseen network posts are spread across groups
+			$group_counts = Group::countUnseen();
+			if (DBA::isResult($group_counts)) {
+				foreach ($group_counts as $group_count) {
+					if ($group_count['count'] > 0) {
+						$groups_unseen[] = $group_count;
 					}
 				}
 			}
 
-			if (intval(Feature::isEnabled(local_user(), 'forumlist_widget'))) {
-				$forum_counts = ForumManager::countUnseenItems();
-				if (DBA::isResult($forum_counts)) {
-					foreach ($forum_counts as $forum_count) {
-						if ($forum_count['count'] > 0) {
-							$forums_unseen[] = $forum_count;
-						}
+			$forum_counts = ForumManager::countUnseenItems();
+			if (DBA::isResult($forum_counts)) {
+				foreach ($forum_counts as $forum_count) {
+					if ($forum_count['count'] > 0) {
+						$forums_unseen[] = $forum_count;
 					}
 				}
 			}
@@ -192,7 +188,7 @@ function ping_init(App $a)
 		$intro_count = count($intros1) + count($intros2);
 		$intros = $intros1 + $intros2;
 
-		$myurl = System::baseUrl() . '/profile/' . $a->user['nickname'] ;
+		$myurl = System::baseUrl() . '/profile/' . $a->user['nickname'];
 		$mails = q(
 			"SELECT `id`, `from-name`, `from-url`, `from-photo`, `created` FROM `mail`
 			WHERE `uid` = %d AND `seen` = 0 AND `from-url` != '%s' ",
@@ -202,11 +198,7 @@ function ping_init(App $a)
 		$mail_count = count($mails);
 
 		if (intval(Config::get('config', 'register_policy')) === REGISTER_APPROVE && is_site_admin()) {
-			$regs = q(
-				"SELECT `contact`.`name`, `contact`.`url`, `contact`.`micro`, `register`.`created`
-				FROM `contact` RIGHT JOIN `register` ON `register`.`uid` = `contact`.`uid`
-				WHERE `contact`.`self` = 1"
-			);
+			$regs = Friendica\Model\Register::getPending();
 
 			if (DBA::isResult($regs)) {
 				$register_count = count($regs);
@@ -225,7 +217,7 @@ function ping_init(App $a)
 				DBA::escape(DateTimeFormat::utcNow())
 			);
 			if (DBA::isResult($ev)) {
-				Cache::set($cachekey, $ev, CACHE_HOUR);
+				Cache::set($cachekey, $ev, Cache::HOUR);
 			}
 		}
 
@@ -350,7 +342,7 @@ function ping_init(App $a)
 			$regularnotifications = (!empty($_GET['uid']) && !empty($_GET['_']));
 
 			foreach ($notifs as $notif) {
-				if ($a->is_friendica_app() || !$regularnotifications) {
+				if ($a->isFriendicaApp() || !$regularnotifications) {
 					$notif['message'] = str_replace("{0}", $notif['name'], $notif['message']);
 				}
 
@@ -381,12 +373,12 @@ function ping_init(App $a)
 	$sysmsgs = [];
 	$sysmsgs_info = [];
 
-	if (x($_SESSION, 'sysmsg')) {
+	if (!empty($_SESSION['sysmsg'])) {
 		$sysmsgs = $_SESSION['sysmsg'];
 		unset($_SESSION['sysmsg']);
 	}
 
-	if (x($_SESSION, 'sysmsg_info')) {
+	if (!empty($_SESSION['sysmsg_info'])) {
 		$sysmsgs_info = $_SESSION['sysmsg_info'];
 		unset($_SESSION['sysmsg_info']);
 	}
@@ -491,7 +483,7 @@ function ping_get_notifications($uid)
 
 			if ($notification["visible"]
 				&& !$notification["deleted"]
-				&& !(x($result, $notification["parent"]) && !empty($result[$notification["parent"]]))
+				&& empty($result[$notification["parent"]])
 			) {
 				// Should we condense the notifications or show them all?
 				if (PConfig::get(local_user(), 'system', 'detailed_notif')) {
@@ -510,16 +502,17 @@ function ping_get_notifications($uid)
  * @brief Backward-compatible XML formatting for ping.php output
  * @deprecated
  *
- * @param array $data          The initial ping data array
- * @param int   $sysnotify     Number of unseen system notifications
- * @param array $notifs        Complete list of notification
- * @param array $sysmsgs       List of system notice messages
- * @param array $sysmsgs_info  List of system info messages
- * @param int   $groups_unseen Number of unseen group items
- * @param int   $forums_unseen Number of unseen forum items
+ * @param array $data            The initial ping data array
+ * @param int   $sysnotify_count Number of unseen system notifications
+ * @param array $notifs          Complete list of notification
+ * @param array $sysmsgs         List of system notice messages
+ * @param array $sysmsgs_info    List of system info messages
+ * @param int   $groups_unseen   Number of unseen group items
+ * @param int   $forums_unseen   Number of unseen forum items
+ *
  * @return array XML-transform ready data array
  */
-function ping_format_xml_data($data, $sysnotify, $notifs, $sysmsgs, $sysmsgs_info, $groups_unseen, $forums_unseen)
+function ping_format_xml_data($data, $sysnotify_count, $notifs, $sysmsgs, $sysmsgs_info, $groups_unseen, $forums_unseen)
 {
 	$notifications = [];
 	foreach ($notifs as $key => $notif) {

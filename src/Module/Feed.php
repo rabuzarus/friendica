@@ -20,7 +20,7 @@ use Friendica\Protocol\OStatus;
  *
  * @brief Provides public Atom feeds
  *
- * @author Hypolite Petovan <mrpetovan@gmail.com>
+ * @author Hypolite Petovan <hypolite@mrpetovan.com>
  */
 class Feed extends BaseModule
 {
@@ -28,8 +28,8 @@ class Feed extends BaseModule
 	{
 		$a = self::getApp();
 
-		$last_update = x($_GET, 'last_update') ? $_GET['last_update'] : '';
-		$nocache     = x($_GET, 'nocache') && local_user();
+		$last_update = defaults($_GET, 'last_update', '');
+		$nocache     = !empty($_GET['nocache']) && local_user();
 
 		if ($a->argc < 2) {
 			System::httpExit(400);
@@ -54,7 +54,7 @@ class Feed extends BaseModule
 
 		$nickname = $a->argv[1];
 		header("Content-type: application/atom+xml");
-		echo OStatus::feed($nickname, $last_update, 10, $type, $nocache);
+		echo OStatus::feed($nickname, $last_update, 10, $type, $nocache, true);
 		killme();
 	}
 }

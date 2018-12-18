@@ -6,15 +6,16 @@ namespace Friendica\Module;
 
 use Friendica\BaseModule;
 use Friendica\Core\Addon;
+use Friendica\Core\Authentication;
 use Friendica\Core\L10n;
+use Friendica\Core\System;
 
 require_once 'boot.php';
-require_once 'include/security.php';
 
 /**
  * Logout module
  *
- * @author Hypolite Petovan mrpetovan@gmail.com
+ * @author Hypolite Petovan <hypolite@mrpetovan.com>
  */
 class Logout extends BaseModule
 {
@@ -24,8 +25,8 @@ class Logout extends BaseModule
 	public static function init()
 	{
 		Addon::callHooks("logging_out");
-		nuke_session();
+		Authentication::deleteSession();
 		info(L10n::t('Logged out.') . EOL);
-		goaway(self::getApp()->get_baseurl());
+		self::getApp()->internalRedirect();
 	}
 }

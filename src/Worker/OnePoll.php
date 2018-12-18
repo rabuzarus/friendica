@@ -7,15 +7,18 @@ namespace Friendica\Worker;
 use Friendica\BaseObject;
 use Friendica\Content\Text\BBCode;
 use Friendica\Core\Config;
+use Friendica\Core\Logger;
 use Friendica\Core\PConfig;
 use Friendica\Core\Protocol;
 use Friendica\Database\DBA;
 use Friendica\Model\Contact;
 use Friendica\Model\Item;
+use Friendica\Protocol\ActivityPub;
 use Friendica\Protocol\Email;
 use Friendica\Protocol\PortableContact;
 use Friendica\Util\DateTimeFormat;
 use Friendica\Util\Network;
+use Friendica\Util\Strings;
 use Friendica\Util\XML;
 
 require_once 'include/dba.php';
@@ -28,7 +31,7 @@ class OnePoll
 
 		require_once 'include/items.php';
 
-		logger('start');
+		Logger::log('start');
 
 		$manual_id  = 0;
 		$generation = 0;
@@ -41,7 +44,7 @@ class OnePoll
 		}
 
 		if (!$contact_id) {
-			logger('no contact');
+			Logger::log('no contact');
 			return;
 		}
 
@@ -49,11 +52,22 @@ class OnePoll
 
 		$contact = DBA::selectFirst('contact', [], ['id' => $contact_id]);
 		if (!DBA::isResult($contact)) {
-			logger('Contact not found or cannot be used.');
+			Logger::log('Contact not found or cannot be used.');
 			return;
 		}
 
 		$importer_uid = $contact['uid'];
+
+		// Possibly switch the remote contact to AP
+		if ($contact['network'] === Protocol::OSTATUS) {
+			ActivityPub\Receiver::switchContact($contact['id'], $importer_uid, $contact['url']);
+			$contact = DBA::selectFirst('contact', [], ['id' => $contact_id]);
+		}
+
+		// We currently don't do anything with AP here
+		if ($contact['network'] === Protocol::ACTIVITYPUB) {
+			return;
+		}
 
 		// load current friends if possible.
 		if (($contact['poco'] != "") && ($contact['success_update'] > $contact['failure_update'])) {
@@ -74,7 +88,7 @@ class OnePoll
 			$updated = DateTimeFormat::utcNow();
 
 			if ($last_updated) {
-				logger('Contact '.$contact['id'].' had last update on '.$last_updated, LOGGER_DEBUG);
+				Logger::log('Contact '.$contact['id'].' had last update on '.$last_updated, Logger::DEBUG);
 
 				// The last public item can be older than the last item we got
 				if ($last_updated < $contact['last-item']) {
@@ -87,7 +101,7 @@ class OnePoll
 			} else {
 				self::updateContact($contact, ['last-update' => $updated, 'failure_update' => $updated]);
 				Contact::markForArchival($contact);
-				logger('Contact '.$contact['id'].' is marked for archival', LOGGER_DEBUG);
+				Logger::log('Contact '.$contact['id'].' is marked for archival', Logger::DEBUG);
 			}
 
 			return;
@@ -109,7 +123,7 @@ class OnePoll
 			$hub_update = false;
 		}
 
-		$last_update = (($contact['last-update'] <= NULL_DATE)
+		$last_update = (($contact['last-update'] <= DBA::NULL_DATETIME)
 			? DateTimeFormat::utc('now - 7 days', DateTimeFormat::ATOM)
 			: DateTimeFormat::utc($contact['last-update'], DateTimeFormat::ATOM)
 		);
@@ -117,7 +131,7 @@ class OnePoll
 		// Update the contact entry
 		if (($contact['network'] === Protocol::OSTATUS) || ($contact['network'] === Protocol::DIASPORA) || ($contact['network'] === Protocol::DFRN)) {
 			if (!PortableContact::reachable($contact['url'])) {
-				logger("Skipping probably dead contact ".$contact['url']);
+				Logger::log("Skipping probably dead contact ".$contact['url']);
 
 				// set the last-update so we don't keep polling
 				DBA::update('contact', ['last-update' => DateTimeFormat::utcNow()], ['id' => $contact['id']]);
@@ -126,7 +140,7 @@ class OnePoll
 
 			if (!Contact::updateFromProbe($contact["id"])) {
 				Contact::markForArchival($contact);
-				logger('Contact is marked dead');
+				Logger::log('Contact is marked dead');
 
 				// set the last-update so we don't keep polling
 				DBA::update('contact', ['last-update' => DateTimeFormat::utcNow()], ['id' => $contact['id']]);
@@ -136,8 +150,12 @@ class OnePoll
 			}
 		}
 
+		if (!in_array($contact['network'], [Protocol::FEED, Protocol::MAIL]) && Config::get('system', 'disable_polling')) {
+			return;
+		}
+
 		if ($importer_uid == 0) {
-			logger('Ignore public contacts');
+			Logger::log('Ignore public contacts');
 
 			// set the last-update so we don't keep polling
 			DBA::update('contact', ['last-update' => DateTimeFormat::utcNow()], ['id' => $contact['id']]);
@@ -149,7 +167,7 @@ class OnePoll
 		);
 
 		if (!DBA::isResult($r)) {
-			logger('No self contact for user '.$importer_uid);
+			Logger::log('No self contact for user '.$importer_uid);
 
 			// set the last-update so we don't keep polling
 			DBA::update('contact', ['last-update' => DateTimeFormat::utcNow()], ['id' => $contact['id']]);
@@ -159,7 +177,7 @@ class OnePoll
 		$importer = $r[0];
 		$url = '';
 
-		logger("poll: ({$contact['network']}-{$contact['id']}) IMPORTER: {$importer['name']}, CONTACT: {$contact['name']}");
+		Logger::log("poll: ({$contact['network']}-{$contact['id']}) IMPORTER: {$importer['name']}, CONTACT: {$contact['name']}");
 
 		if ($contact['network'] === Protocol::DFRN) {
 			$idtosend = $orig_id = (($contact['dfrn-id']) ? $contact['dfrn-id'] : $contact['issued-id']);
@@ -183,25 +201,24 @@ class OnePoll
 			$url = $contact['poll'] . '?dfrn_id=' . $idtosend
 				. '&dfrn_version=' . DFRN_PROTOCOL_VERSION
 				. '&type=data&last_update=' . $last_update
-				. '&perm=' . $perm ;
+				. '&perm=' . $perm;
 
-			$ret = Network::curl($url);
+			$curlResult = Network::curl($url);
 
-			if (!empty($ret["errno"]) && ($ret['errno'] == CURLE_OPERATION_TIMEDOUT)) {
+			if (!$curlResult->isSuccess() && ($curlResult->getErrorNumber() == CURLE_OPERATION_TIMEDOUT)) {
 				// set the last-update so we don't keep polling
 				DBA::update('contact', ['last-update' => DateTimeFormat::utcNow()], ['id' => $contact['id']]);
 				Contact::markForArchival($contact);
 				return;
 			}
 
-			$handshake_xml = $ret['body'];
+			$handshake_xml = $curlResult->getBody();
+			$html_code = $curlResult->getReturnCode();
 
-			$html_code = $a->get_curl_code();
-
-			logger('handshake with url ' . $url . ' returns xml: ' . $handshake_xml, LOGGER_DATA);
+			Logger::log('handshake with url ' . $url . ' returns xml: ' . $handshake_xml, Logger::DATA);
 
 			if (!strlen($handshake_xml) || ($html_code >= 400) || !$html_code) {
-				logger("$url appears to be dead - marking for death ");
+				Logger::log("$url appears to be dead - marking for death ");
 
 				// dead connection - might be a transient event, or this might
 				// mean the software was uninstalled or the domain expired.
@@ -216,7 +233,7 @@ class OnePoll
 			}
 
 			if (!strstr($handshake_xml, '<')) {
-				logger('response from ' . $url . ' did not contain XML.');
+				Logger::log('response from ' . $url . ' did not contain XML.');
 
 				Contact::markForArchival($contact);
 
@@ -229,7 +246,7 @@ class OnePoll
 			$res = XML::parseString($handshake_xml);
 
 			if (intval($res->status) == 1) {
-				logger("$url replied status 1 - marking for death ");
+				Logger::log("$url replied status 1 - marking for death ");
 
 				// we may not be friends anymore. Will keep trying for one month.
 				// set the last-update so we don't keep polling
@@ -237,8 +254,8 @@ class OnePoll
 				self::updateContact($contact, $fields);
 
 				Contact::markForArchival($contact);
-			} elseif ($contact['term-date'] > NULL_DATE) {
-				logger("$url back from the dead - removing mark for death");
+			} elseif ($contact['term-date'] > DBA::NULL_DATETIME) {
+				Logger::log("$url back from the dead - removing mark for death");
 				Contact::unmarkForArchival($contact);
 			}
 
@@ -276,7 +293,7 @@ class OnePoll
 
 			if ($final_dfrn_id != $orig_id) {
 				// did not decode properly - cannot trust this site
-				logger('ID did not decode: ' . $contact['id'] . ' orig: ' . $orig_id . ' final: ' . $final_dfrn_id);
+				Logger::log('ID did not decode: ' . $contact['id'] . ' orig: ' . $orig_id . ' final: ' . $final_dfrn_id);
 
 				// set the last-update so we don't keep polling
 				DBA::update('contact', ['last-update' => DateTimeFormat::utcNow()], ['id' => $contact['id']]);
@@ -288,7 +305,7 @@ class OnePoll
 			$postvars['dfrn_version'] = DFRN_PROTOCOL_VERSION;
 			$postvars['perm'] = 'rw';
 
-			$xml = Network::post($contact['poll'], $postvars);
+			$xml = Network::post($contact['poll'], $postvars)->getBody();
 
 		} elseif (($contact['network'] === Protocol::OSTATUS)
 			|| ($contact['network'] === Protocol::DIASPORA)
@@ -319,22 +336,22 @@ class OnePoll
 			}
 
 			$cookiejar = tempnam(get_temppath(), 'cookiejar-onepoll-');
-			$ret = Network::curl($contact['poll'], false, $redirects, ['cookiejar' => $cookiejar]);
+			$curlResult = Network::curl($contact['poll'], false, $redirects, ['cookiejar' => $cookiejar]);
 			unlink($cookiejar);
 
-			if (!empty($ret["errno"]) && ($ret['errno'] == CURLE_OPERATION_TIMEDOUT)) {
+			if ($curlResult->isTimeout()) {
 				// set the last-update so we don't keep polling
 				DBA::update('contact', ['last-update' => DateTimeFormat::utcNow()], ['id' => $contact['id']]);
 				Contact::markForArchival($contact);
 				return;
 			}
 
-			$xml = $ret['body'];
+			$xml = $curlResult->getBody();
 
 		} elseif ($contact['network'] === Protocol::MAIL) {
-			logger("Mail: Fetching for ".$contact['addr'], LOGGER_DEBUG);
+			Logger::log("Mail: Fetching for ".$contact['addr'], Logger::DEBUG);
 
-			$mail_disabled = ((function_exists('imap_open') && (! Config::get('system', 'imap_disabled'))) ? 0 : 1);
+			$mail_disabled = ((function_exists('imap_open') && !Config::get('system', 'imap_disabled')) ? 0 : 1);
 			if ($mail_disabled) {
 				// set the last-update so we don't keep polling
 				DBA::update('contact', ['last-update' => DateTimeFormat::utcNow()], ['id' => $contact['id']]);
@@ -342,7 +359,7 @@ class OnePoll
 				return;
 			}
 
-			logger("Mail: Enabled", LOGGER_DEBUG);
+			Logger::log("Mail: Enabled", Logger::DEBUG);
 
 			$mbox = null;
 			$user = DBA::selectFirst('user', ['prvkey'], ['uid' => $importer_uid]);
@@ -355,13 +372,13 @@ class OnePoll
 				openssl_private_decrypt(hex2bin($mailconf['pass']), $password, $user['prvkey']);
 				$mbox = Email::connect($mailbox, $mailconf['user'], $password);
 				unset($password);
-				logger("Mail: Connect to " . $mailconf['user']);
+				Logger::log("Mail: Connect to " . $mailconf['user']);
 				if ($mbox) {
 					$fields = ['last_check' => DateTimeFormat::utcNow()];
 					DBA::update('mailacct', $fields, ['id' => $mailconf['id']]);
-					logger("Mail: Connected to " . $mailconf['user']);
+					Logger::log("Mail: Connected to " . $mailconf['user']);
 				} else {
-					logger("Mail: Connection error ".$mailconf['user']." ".print_r(imap_errors(), true));
+					Logger::log("Mail: Connection error ".$mailconf['user']." ".print_r(imap_errors(), true));
 				}
 			}
 
@@ -369,17 +386,17 @@ class OnePoll
 				$msgs = Email::poll($mbox, $contact['addr']);
 
 				if (count($msgs)) {
-					logger("Mail: Parsing ".count($msgs)." mails from ".$contact['addr']." for ".$mailconf['user'], LOGGER_DEBUG);
+					Logger::log("Mail: Parsing ".count($msgs)." mails from ".$contact['addr']." for ".$mailconf['user'], Logger::DEBUG);
 
 					$metas = Email::messageMeta($mbox, implode(',', $msgs));
 
 					if (count($metas) != count($msgs)) {
-						logger("for " . $mailconf['user'] . " there are ". count($msgs) . " messages but received " . count($metas) . " metas", LOGGER_DEBUG);
+						Logger::log("for " . $mailconf['user'] . " there are ". count($msgs) . " messages but received " . count($metas) . " metas", Logger::DEBUG);
 					} else {
 						$msgs = array_combine($msgs, $metas);
 
 						foreach ($msgs as $msg_uid => $meta) {
-							logger("Mail: Parsing mail ".$msg_uid, LOGGER_DATA);
+							Logger::log("Mail: Parsing mail ".$msg_uid, Logger::DATA);
 
 							$datarray = [];
 							$datarray['verb'] = ACTIVITY_POST;
@@ -394,7 +411,7 @@ class OnePoll
 							$condition = ['uid' => $importer_uid, 'uri' => $datarray['uri']];
 							$item = Item::selectFirst($fields, $condition);
 							if (DBA::isResult($item)) {
-								logger("Mail: Seen before ".$msg_uid." for ".$mailconf['user']." UID: ".$importer_uid." URI: ".$datarray['uri'],LOGGER_DEBUG);
+								Logger::log("Mail: Seen before ".$msg_uid." for ".$mailconf['user']." UID: ".$importer_uid." URI: ".$datarray['uri'],Logger::DEBUG);
 
 								// Only delete when mails aren't automatically moved or deleted
 								if (($mailconf['action'] != 1) && ($mailconf['action'] != 3))
@@ -405,18 +422,18 @@ class OnePoll
 
 								switch ($mailconf['action']) {
 									case 0:
-										logger("Mail: Seen before ".$msg_uid." for ".$mailconf['user'].". Doing nothing.", LOGGER_DEBUG);
+										Logger::log("Mail: Seen before ".$msg_uid." for ".$mailconf['user'].". Doing nothing.", Logger::DEBUG);
 										break;
 									case 1:
-										logger("Mail: Deleting ".$msg_uid." for ".$mailconf['user']);
+										Logger::log("Mail: Deleting ".$msg_uid." for ".$mailconf['user']);
 										imap_delete($mbox, $msg_uid, FT_UID);
 										break;
 									case 2:
-										logger("Mail: Mark as seen ".$msg_uid." for ".$mailconf['user']);
+										Logger::log("Mail: Mark as seen ".$msg_uid." for ".$mailconf['user']);
 										imap_setflag_full($mbox, $msg_uid, "\\Seen", ST_UID);
 										break;
 									case 3:
-										logger("Mail: Moving ".$msg_uid." to ".$mailconf['movetofolder']." for ".$mailconf['user']);
+										Logger::log("Mail: Moving ".$msg_uid." to ".$mailconf['movetofolder']." for ".$mailconf['user']);
 										imap_setflag_full($mbox, $msg_uid, "\\Seen", ST_UID);
 										if ($mailconf['movetofolder'] != "") {
 											imap_mail_move($mbox, $msg_uid, $mailconf['movetofolder'], FT_UID);
@@ -458,9 +475,9 @@ class OnePoll
 									$datarray['title'] .= $subpart->text;
 								}
 							}
-							$datarray['title'] = notags(trim($datarray['title']));
+							$datarray['title'] = Strings::escapeTags(trim($datarray['title']));
 
-							//$datarray['title'] = notags(trim($meta->subject));
+							//$datarray['title'] = Strings::escapeTags(trim($meta->subject));
 							$datarray['created'] = DateTimeFormat::utc($meta->date);
 
 							// Is it a reply?
@@ -487,13 +504,13 @@ class OnePoll
 
 							$r = Email::getMessage($mbox, $msg_uid, $reply);
 							if (!$r) {
-								logger("Mail: can't fetch msg ".$msg_uid." for ".$mailconf['user']);
+								Logger::log("Mail: can't fetch msg ".$msg_uid." for ".$mailconf['user']);
 								continue;
 							}
-							$datarray['body'] = escape_tags($r['body']);
+							$datarray['body'] = Strings::escapeHtml($r['body']);
 							$datarray['body'] = BBCode::limitBodySize($datarray['body']);
 
-							logger("Mail: Importing ".$msg_uid." for ".$mailconf['user']);
+							Logger::log("Mail: Importing ".$msg_uid." for ".$mailconf['user']);
 
 							/// @TODO Adding a gravatar for the original author would be cool
 
@@ -507,7 +524,7 @@ class OnePoll
 								}
 							}
 
-							$fromarr = imap_rfc822_parse_adrlist($fromdecoded, $a->get_hostname());
+							$fromarr = imap_rfc822_parse_adrlist($fromdecoded, $a->getHostName());
 
 							$frommail = $fromarr[0]->mailbox."@".$fromarr[0]->host;
 
@@ -530,7 +547,7 @@ class OnePoll
 							if ($datarray['parent-uri'] === $datarray['uri']) {
 								$datarray['private'] = 1;
 							}
-							if (($contact['network'] === Protocol::MAIL) && (!PConfig::get($importer_uid, 'system', 'allow_public_email_replies'))) {
+							if (($contact['network'] === Protocol::MAIL) && !PConfig::get($importer_uid, 'system', 'allow_public_email_replies')) {
 								$datarray['private'] = 1;
 								$datarray['allow_cid'] = '<' . $contact['id'] . '>';
 							}
@@ -539,18 +556,18 @@ class OnePoll
 
 							switch ($mailconf['action']) {
 								case 0:
-									logger("Mail: Seen before ".$msg_uid." for ".$mailconf['user'].". Doing nothing.", LOGGER_DEBUG);
+									Logger::log("Mail: Seen before ".$msg_uid." for ".$mailconf['user'].". Doing nothing.", Logger::DEBUG);
 									break;
 								case 1:
-									logger("Mail: Deleting ".$msg_uid." for ".$mailconf['user']);
+									Logger::log("Mail: Deleting ".$msg_uid." for ".$mailconf['user']);
 									imap_delete($mbox, $msg_uid, FT_UID);
 									break;
 								case 2:
-									logger("Mail: Mark as seen ".$msg_uid." for ".$mailconf['user']);
+									Logger::log("Mail: Mark as seen ".$msg_uid." for ".$mailconf['user']);
 									imap_setflag_full($mbox, $msg_uid, "\\Seen", ST_UID);
 									break;
 								case 3:
-									logger("Mail: Moving ".$msg_uid." to ".$mailconf['movetofolder']." for ".$mailconf['user']);
+									Logger::log("Mail: Moving ".$msg_uid." to ".$mailconf['movetofolder']." for ".$mailconf['user']);
 									imap_setflag_full($mbox, $msg_uid, "\\Seen", ST_UID);
 									if ($mailconf['movetofolder'] != "") {
 										imap_mail_move($mbox, $msg_uid, $mailconf['movetofolder'], FT_UID);
@@ -560,18 +577,18 @@ class OnePoll
 						}
 					}
 				} else {
-					logger("Mail: no mails for ".$mailconf['user']);
+					Logger::log("Mail: no mails for ".$mailconf['user']);
 				}
 
-				logger("Mail: closing connection for ".$mailconf['user']);
+				Logger::log("Mail: closing connection for ".$mailconf['user']);
 				imap_close($mbox);
 			}
 		}
 
 		if ($xml) {
-			logger('received xml : ' . $xml, LOGGER_DATA);
+			Logger::log('received xml : ' . $xml, Logger::DATA);
 			if (!strstr($xml, '<')) {
-				logger('post_handshake: response from ' . $url . ' did not contain XML.');
+				Logger::log('post_handshake: response from ' . $url . ' did not contain XML.');
 
 				$fields = ['last-update' => DateTimeFormat::utcNow(), 'failure_update' => DateTimeFormat::utcNow()];
 				self::updateContact($contact, $fields);
@@ -580,7 +597,7 @@ class OnePoll
 			}
 
 
-			logger("Consume feed of contact ".$contact['id']);
+			Logger::log("Consume feed of contact ".$contact['id']);
 
 			consume_feed($xml, $importer, $contact, $hub);
 
@@ -602,10 +619,10 @@ class OnePoll
 				$hub_update = true;
 			}
 
-			logger("Contact ".$contact['id']." returned hub: ".$hub." Network: ".$contact['network']." Relation: ".$contact['rel']." Update: ".$hub_update);
+			Logger::log("Contact ".$contact['id']." returned hub: ".$hub." Network: ".$contact['network']." Relation: ".$contact['rel']." Update: ".$hub_update);
 
 			if (strlen($hub) && $hub_update && (($contact['rel'] != Contact::FOLLOWER) || $contact['network'] == Protocol::FEED)) {
-				logger('hub ' . $hubmode . ' : ' . $hub . ' contact name : ' . $contact['name'] . ' local user : ' . $importer['name']);
+				Logger::log('hub ' . $hubmode . ' : ' . $hub . ' contact name : ' . $contact['name'] . ' local user : ' . $importer['name']);
 				$hubs = explode(',', $hub);
 
 				if (count($hubs)) {

@@ -19,17 +19,20 @@ class Cache extends \Friendica\BaseObject
 	const QUARTER_HOUR = 900;
 	const FIVE_MINUTES = 300;
 	const MINUTE       = 60;
+	const INFINITE     = 0;
 
 	/**
 	 * @var Cache\ICacheDriver
 	 */
-	private static $driver = null;
+	private static $driver       = null;
+	public  static $driver_class = null;
+	public  static $driver_name  = null;
 
 	public static function init()
 	{
-		$driver_name = Config::get('system', 'cache_driver', 'database');
-
-		self::$driver = CacheDriverFactory::create($driver_name);
+		self::$driver_name  = Config::get('system', 'cache_driver', 'database');
+		self::$driver       = CacheDriverFactory::create(self::$driver_name);
+		self::$driver_class = get_class(self::$driver);
 	}
 
 	/**
@@ -47,6 +50,24 @@ class Cache extends \Friendica\BaseObject
 	}
 
 	/**
+	 * @brief Returns all the cache keys sorted alphabetically
+	 *
+	 * @param string $prefix Prefix of the keys (optional)
+	 *
+	 * @return array Empty if the driver doesn't support this feature
+	 */
+	public static function getAllKeys($prefix = null)
+	{
+		$time = microtime(true);
+
+		$return = self::getDriver()->getAllKeys($prefix);
+
+		self::getApp()->saveTimestamp($time, 'cache');
+
+		return $return;
+	}
+
+	/**
 	 * @brief Fetch cached data according to the key
 	 *
 	 * @param string $key The key to the cached data
@@ -59,7 +80,7 @@ class Cache extends \Friendica\BaseObject
 
 		$return = self::getDriver()->get($key);
 
-		self::getApp()->save_timestamp($time, 'cache');
+		self::getApp()->saveTimestamp($time, 'cache');
 
 		return $return;
 	}
@@ -81,7 +102,7 @@ class Cache extends \Friendica\BaseObject
 
 		$return = self::getDriver()->set($key, $value, $duration);
 
-		self::getApp()->save_timestamp($time, 'cache_write');
+		self::getApp()->saveTimestamp($time, 'cache_write');
 
 		return $return;
 	}
@@ -99,7 +120,7 @@ class Cache extends \Friendica\BaseObject
 
 		$return = self::getDriver()->delete($key);
 
-		self::getApp()->save_timestamp($time, 'cache_write');
+		self::getApp()->saveTimestamp($time, 'cache_write');
 
 		return $return;
 	}
@@ -107,12 +128,12 @@ class Cache extends \Friendica\BaseObject
 	/**
 	 * @brief Remove outdated data from the cache
 	 *
-	 * @param integer $max_level The maximum cache level that is to be cleared
+	 * @param boolean $outdated just remove outdated values
 	 *
 	 * @return void
 	 */
-	public static function clear()
+	public static function clear($outdated = true)
 	{
-		return self::getDriver()->clear();
+		return self::getDriver()->clear($outdated);
 	}
 }

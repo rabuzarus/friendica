@@ -11,7 +11,7 @@ require_once 'include/dba.php';
  *
  * Default Config Adapter. Provides the best performance for pages loading few configuration variables.
  *
- * @author Hypolite Petovan <mrpetovan@gmail.com>
+ * @author Hypolite Petovan <hypolite@mrpetovan.com>
  */
 class JITConfigAdapter extends BaseObject implements IConfigAdapter
 {
@@ -65,13 +65,13 @@ class JITConfigAdapter extends BaseObject implements IConfigAdapter
 			$this->in_db[$cat][$k] = true;
 			return $value;
 		} elseif (isset($a->config[$cat][$k])) {
-			// Assign the value (mostly) from config/local.ini.php file to the cache
+			// Assign the value (mostly) from config/local.config.php file to the cache
 			$this->cache[$cat][$k] = $a->config[$cat][$k];
 			$this->in_db[$cat][$k] = false;
 
 			return $a->config[$cat][$k];
 		} elseif (isset($a->config[$k])) {
-			// Assign the value (mostly) from config/local.ini.php file to the cache
+			// Assign the value (mostly) from config/local.config.php file to the cache
 			$this->cache[$k] = $a->config[$k];
 			$this->in_db[$k] = false;
 

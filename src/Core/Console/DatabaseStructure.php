@@ -3,6 +3,7 @@
 namespace Friendica\Core\Console;
 
 use Friendica\Core;
+use Friendica\Core\Update;
 use Friendica\Database\DBA;
 use Friendica\Database\DBStructure;
 use RuntimeException;
@@ -11,9 +12,9 @@ require_once 'boot.php';
 require_once 'include/dba.php';
 
 /**
- * @brief Does database updates from the command line
+ * @brief Performs database updates from the command line
  *
- * @author Hypolite Petovan <mrpetovan@gmail.com>
+ * @author Hypolite Petovan <hypolite@mrpetovan.com>
  */
 class DatabaseStructure extends \Asika\SimpleConsole\Console
 {
@@ -22,9 +23,9 @@ class DatabaseStructure extends \Asika\SimpleConsole\Console
 	protected function getHelp()
 	{
 		$help = <<<HELP
-console dbstructure - Does database updates
+console dbstructure - Performs database updates
 Usage
-	bin/console dbstructure <command> [-h|--help|-?] [-v]
+	bin/console dbstructure <command> [-h|--help|-?] |-f|--force] [-v]
 
 Commands
 	dryrun   Show database update schema queries without running them
@@ -35,14 +36,13 @@ Commands
 Options
     -h|--help|-? Show help information
     -v           Show more debug information.
+    -f|--force   Force the command in case of "update" (Ignore failed updates/running updates)
 HELP;
 		return $help;
 	}
 
 	protected function doExecute()
 	{
-		$a = get_app();
-
 		if ($this->getOption('v')) {
 			$this->out('Class: ' . __CLASS__);
 			$this->out('Arguments: ' . var_export($this->args, true));
@@ -69,34 +69,8 @@ HELP;
 				$output = DBStructure::update(true, false);
 				break;
 			case "update":
-				$build = Core\Config::get('system', 'build');
-				if (empty($build)) {
-					Core\Config::set('system', 'build', DB_UPDATE_VERSION);
-					$build = DB_UPDATE_VERSION;
-				}
-
-				$stored = intval($build);
-				$current = intval(DB_UPDATE_VERSION);
-
-				// run the pre_update_nnnn functions in update.php
-				for ($x = $stored; $x < $current; $x ++) {
-					$r = run_update_function($x, 'pre_update');
-					if (!$r) {
-						break;
-					}
-				}
-
-				$output = DBStructure::update(true, true);
-
-				// run the update_nnnn functions in update.php
-				for ($x = $stored; $x < $current; $x ++) {
-					$r = run_update_function($x, 'update');
-					if (!$r) {
-						break;
-					}
-				}
-
-				Core\Config::set('system', 'build', DB_UPDATE_VERSION);
+				$force = $this->getOption(['f', 'force'], false);
+				$output = Update::run($force, true, false);
 				break;
 			case "dumpsql":
 				ob_start();

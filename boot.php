@@ -28,9 +28,9 @@ use Friendica\Core\L10n;
 use Friendica\Core\PConfig;
 use Friendica\Core\Protocol;
 use Friendica\Core\System;
+use Friendica\Core\Update;
 use Friendica\Core\Worker;
 use Friendica\Database\DBA;
-use Friendica\Database\DBStructure;
 use Friendica\Model\Contact;
 use Friendica\Model\Conversation;
 use Friendica\Util\DateTimeFormat;
@@ -39,17 +39,9 @@ require_once 'include/text.php';
 
 define('FRIENDICA_PLATFORM',     'Friendica');
 define('FRIENDICA_CODENAME',     'The Tazmans Flax-lily');
-define('FRIENDICA_VERSION',      '2018.08-dev');
+define('FRIENDICA_VERSION',      '2018.12-dev');
 define('DFRN_PROTOCOL_VERSION',  '2.23');
-define('DB_UPDATE_VERSION',      1283);
 define('NEW_UPDATE_ROUTINE_VERSION', 1170);
-
-/**
- * @brief Constants for the database update check
- */
-const DB_UPDATE_NOT_CHECKED = 0; // Database check wasn't executed before
-const DB_UPDATE_SUCCESSFUL = 1;  // Database check was successful
-const DB_UPDATE_FAILED = 2;      // Database check failed
 
 /**
  * @brief Constant with a HTML line break.
@@ -64,13 +56,13 @@ define('EOL',                    "<br />\r\n");
  * @brief Image storage quality.
  *
  * Lower numbers save space at cost of image detail.
- * For ease of upgrade, please do not change here. Set [system] jpegquality = n in config/local.ini.php,
+ * For ease of upgrade, please do not change here. Set system.jpegquality = n in config/local.config.php,
  * where n is between 1 and 100, and with very poor results below about 50
  */
 define('JPEG_QUALITY',            100);
 
 /**
- * [system] png_quality = n where is between 0 (uncompressed) to 9
+ * system.png_quality = n where is between 0 (uncompressed) to 9
  */
 define('PNG_QUALITY',             8);
 
@@ -81,10 +73,12 @@ define('PNG_QUALITY',             8);
  * this length (on the longest side, the other side will be scaled appropriately).
  * Modify this value using
  *
- * [system]
- * max_image_length = n;
+ * 'system' => [
+ *      'max_image_length' => 'n',
+ *      ...
+ * ],
  *
- * in config/local.ini.php
+ * in config/local.config.php
  *
  * If you don't want to set a maximum length, set to -1. The default value is
  * defined by 'MAX_IMAGE_LENGTH' below.
@@ -108,38 +102,6 @@ define('SSL_POLICY_SELFSIGN',     2);
 /* @}*/
 
 /**
- * @name Logger
- *
- * log levels
- * @{
- */
-define('LOGGER_WARNING',         0);
-define('LOGGER_INFO',            1);
-define('LOGGER_TRACE',           2);
-define('LOGGER_DEBUG',           3);
-define('LOGGER_DATA',            4);
-define('LOGGER_ALL',             5);
-/* @}*/
-
-/**
- * @name Cache
- * @deprecated since version 3.6
- * @see Cache
- *
- * Cache levels
- * @{
- */
-define('CACHE_MONTH',            Cache::MONTH);
-define('CACHE_WEEK',             Cache::WEEK);
-define('CACHE_DAY',              Cache::DAY);
-define('CACHE_HOUR',             Cache::HOUR);
-define('CACHE_HALF_HOUR',        Cache::HALF_HOUR);
-define('CACHE_QUARTER_HOUR',     Cache::QUARTER_HOUR);
-define('CACHE_FIVE_MINUTES',     Cache::FIVE_MINUTES);
-define('CACHE_MINUTE',           Cache::MINUTE);
-/* @}*/
-
-/**
  * @name Register
  *
  * Registration policies
@@ -151,18 +113,6 @@ define('REGISTER_OPEN',          2);
 /**
  * @}
 */
-
-/**
- * @name Update
- *
- * DB update return values
- * @{
- */
-define('UPDATE_SUCCESS', 0);
-define('UPDATE_FAILED',  1);
-/**
- * @}
- */
 
 /**
  * @name CP
@@ -211,11 +161,6 @@ $netgroup_ids = [
  * Maximum number of "people who like (or don't like) this"  that we will list by name
  */
 define('MAX_LIKERS',    75);
-
-/**
- * Communication timeout
- */
-define('ZCURL_TIMEOUT', (-1));
 
 /**
  * @name Notify
@@ -368,11 +313,6 @@ define('SR_SCOPE_ALL',  'all');
 define('SR_SCOPE_TAGS', 'tags');
 /* @}*/
 
-/**
- * Lowest possible date time value
- */
-define('NULL_DATE', '0001-01-01 00:00:00');
-
 // Normally this constant is defined - but not if "pcntl" isn't installed
 if (!defined("SIGTERM")) {
 	define("SIGTERM", 15);
@@ -399,41 +339,6 @@ function get_app()
 }
 
 /**
- * @brief Multi-purpose function to check variable state.
- *
- * Usage: x($var) or $x($array, 'key')
- *
- * returns false if variable/key is not set
- * if variable is set, returns 1 if has 'non-zero' value, otherwise returns 0.
- * e.g. x('') or x(0) returns 0;
- *
- * @param string|array $s variable to check
- * @param string       $k key inside the array to check
- *
- * @return bool|int
- */
-function x($s, $k = null)
-{
-	if ($k != null) {
-		if ((is_array($s)) && (array_key_exists($k, $s))) {
-			if ($s[$k]) {
-				return (int) 1;
-			}
-			return (int) 0;
-		}
-		return false;
-	} else {
-		if (isset($s)) {
-			if ($s) {
-				return (int) 1;
-			}
-			return (int) 0;
-		}
-		return false;
-	}
-}
-
-/**
  * Return the provided variable value if it exists and is truthy or the provided
  * default value instead.
  *
@@ -443,13 +348,12 @@ function x($s, $k = null)
  * - defaults($var, $default)
  * - defaults($array, 'key', $default)
  *
+ * @param array $args
  * @brief Returns a defaut value if the provided variable or array key is falsy
- * @see x()
  * @return mixed
  */
-function defaults() {
-	$args = func_get_args();
-
+function defaults(...$args)
+{
 	if (count($args) < 2) {
 		throw new BadFunctionCallException('defaults() requires at least 2 parameters');
 	}
@@ -460,273 +364,18 @@ function defaults() {
 		throw new BadFunctionCallException('defaults($arr, $key, $def) $key is null');
 	}
 
-	$default = array_pop($args);
+	// The default value always is the last argument
+	$return = array_pop($args);
 
-	if (call_user_func_array('x', $args)) {
-		if (count($args) === 1) {
-			$return = $args[0];
-		} else {
-			$return = $args[0][$args[1]];
-		}
-	} else {
-		$return = $default;
+	if (count($args) == 2 && is_array($args[0]) && !empty($args[0][$args[1]])) {
+		$return = $args[0][$args[1]];
+	}
+
+	if (count($args) == 1 && !empty($args[0])) {
+		$return = $args[0];
 	}
 
 	return $return;
-}
-
-/**
- * @brief Returns the baseurl.
- *
- * @see System::baseUrl()
- *
- * @return string
- * @TODO Function is deprecated and only used in some addons
- */
-function z_root()
-{
-	return System::baseUrl();
-}
-
-/**
- * @brief Return absolut URL for given $path.
- *
- * @param string $path given path
- *
- * @return string
- */
-function absurl($path)
-{
-	if (strpos($path, '/') === 0) {
-		return z_path() . $path;
-	}
-	return $path;
-}
-
-/**
- * @brief Function to check if request was an AJAX (xmlhttprequest) request.
- *
- * @return boolean
- */
-function is_ajax()
-{
-	return (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest');
-}
-
-/**
- * @brief Function to check if request was an AJAX (xmlhttprequest) request.
- *
- * @param boolean $via_worker boolean Is the check run via the worker?
- */
-function check_db($via_worker)
-{
-	$build = Config::get('system', 'build');
-
-	if (empty($build)) {
-		Config::set('system', 'build', DB_UPDATE_VERSION - 1);
-		$build = DB_UPDATE_VERSION - 1;
-	}
-
-	// We don't support upgrading from very old versions anymore
-	if ($build < NEW_UPDATE_ROUTINE_VERSION) {
-		die('You try to update from a version prior to database version 1170. The direct upgrade path is not supported. Please update to version 3.5.4 before updating to this version.');
-	}
-
-	if ($build < DB_UPDATE_VERSION) {
-		// When we cannot execute the database update via the worker, we will do it directly
-		if (!Worker::add(PRIORITY_CRITICAL, 'DBUpdate') && $via_worker) {
-			update_db();
-		}
-	}
-}
-
-/**
- * Sets the base url for use in cmdline programs which don't have
- * $_SERVER variables
- *
- * @param object $a App
- */
-function check_url(App $a)
-{
-	$url = Config::get('system', 'url');
-
-	// if the url isn't set or the stored url is radically different
-	// than the currently visited url, store the current value accordingly.
-	// "Radically different" ignores common variations such as http vs https
-	// and www.example.com vs example.com.
-	// We will only change the url to an ip address if there is no existing setting
-
-	if (empty($url) || (!link_compare($url, System::baseUrl())) && (!preg_match("/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/", $a->get_hostname()))) {
-		Config::set('system', 'url', System::baseUrl());
-	}
-
-	return;
-}
-
-/**
- * @brief Automatic database updates
- * @param object $a App
- */
-function update_db()
-{
-	$build = Config::get('system', 'build');
-
-	if (empty($build) || ($build > DB_UPDATE_VERSION)) {
-		$build = DB_UPDATE_VERSION - 1;
-		Config::set('system', 'build', $build);
-	}
-
-	if ($build != DB_UPDATE_VERSION) {
-		require_once 'update.php';
-
-		$stored = intval($build);
-		$current = intval(DB_UPDATE_VERSION);
-		if ($stored < $current) {
-			Config::load('database');
-
-			// Compare the current structure with the defined structure
-			$t = Config::get('database', 'dbupdate_' . DB_UPDATE_VERSION);
-			if (!is_null($t)) {
-				return;
-			}
-
-			// run the pre_update_nnnn functions in update.php
-			for ($x = $stored + 1; $x <= $current; $x++) {
-				$r = run_update_function($x, 'pre_update');
-				if (!$r) {
-					break;
-				}
-			}
-
-			Config::set('database', 'dbupdate_' . DB_UPDATE_VERSION, time());
-
-			// update the structure in one call
-			$retval = DBStructure::update(false, true);
-			if ($retval) {
-				DBStructure::updateFail(
-					DB_UPDATE_VERSION,
-					$retval
-				);
-				return;
-			} else {
-				Config::set('database', 'dbupdate_' . DB_UPDATE_VERSION, 'success');
-			}
-
-			// run the update_nnnn functions in update.php
-			for ($x = $stored + 1; $x <= $current; $x++) {
-				$r = run_update_function($x, 'update');
-				if (!$r) {
-					break;
-				}
-			}
-		}
-	}
-
-	return;
-}
-
-function run_update_function($x, $prefix)
-{
-	$funcname = $prefix . '_' . $x;
-
-	if (function_exists($funcname)) {
-		// There could be a lot of processes running or about to run.
-		// We want exactly one process to run the update command.
-		// So store the fact that we're taking responsibility
-		// after first checking to see if somebody else already has.
-		// If the update fails or times-out completely you may need to
-		// delete the config entry to try again.
-
-		$t = Config::get('database', $funcname);
-		if (!is_null($t)) {
-			return false;
-		}
-		Config::set('database', $funcname, time());
-
-		// call the specific update
-		$retval = $funcname();
-
-		if ($retval) {
-			//send the administrator an e-mail
-			DBStructure::updateFail(
-				$x,
-				L10n::t('Update %s failed. See error logs.', $x)
-			);
-			return false;
-		} else {
-			Config::set('database', $funcname, 'success');
-
-			if ($prefix == 'update') {
-				Config::set('system', 'build', $x);
-			}
-
-			return true;
-		}
-	} else {
-		Config::set('database', $funcname, 'success');
-
-		if ($prefix == 'update') {
-			Config::set('system', 'build', $x);
-		}
-
-		return true;
-	}
-}
-
-/**
- * @brief Synchronise addons:
- *
- * system.addon contains a comma-separated list of names
- * of addons which are used on this system.
- * Go through the database list of already installed addons, and if we have
- * an entry, but it isn't in the config list, call the uninstall procedure
- * and mark it uninstalled in the database (for now we'll remove it).
- * Then go through the config list and if we have a addon that isn't installed,
- * call the install procedure and add it to the database.
- *
- * @param object $a App
- */
-function check_addons(App $a)
-{
-	$r = q("SELECT * FROM `addon` WHERE `installed` = 1");
-	if (DBA::isResult($r)) {
-		$installed = $r;
-	} else {
-		$installed = [];
-	}
-
-	$addons = Config::get('system', 'addon');
-	$addons_arr = [];
-
-	if ($addons) {
-		$addons_arr = explode(',', str_replace(' ', '', $addons));
-	}
-
-	$a->addons = $addons_arr;
-
-	$installed_arr = [];
-
-	if (count($installed)) {
-		foreach ($installed as $i) {
-			if (!in_array($i['name'], $addons_arr)) {
-				Addon::uninstall($i['name']);
-			} else {
-				$installed_arr[] = $i['name'];
-			}
-		}
-	}
-
-	if (count($addons_arr)) {
-		foreach ($addons_arr as $p) {
-			if (!in_array($p, $installed_arr)) {
-				Addon::install($p);
-			}
-		}
-	}
-
-	Addon::loadHooks();
-
-	return;
 }
 
 /**
@@ -736,21 +385,6 @@ function check_addons(App $a)
 function killme()
 {
 	exit();
-}
-
-/**
- * @brief Redirect to another URL and terminate this process.
- */
-function goaway($path)
-{
-	if (strstr(normalise_link($path), 'http://')) {
-		$url = $path;
-	} else {
-		$url = System::baseUrl() . '/' . ltrim($path, '/');
-	}
-
-	header("Location: $url");
-	killme();
 }
 
 /**
@@ -775,15 +409,15 @@ function public_contact()
 {
 	static $public_contact_id = false;
 
-	if (!$public_contact_id && x($_SESSION, 'authenticated')) {
-		if (x($_SESSION, 'my_address')) {
+	if (!$public_contact_id && !empty($_SESSION['authenticated'])) {
+		if (!empty($_SESSION['my_address'])) {
 			// Local user
 			$public_contact_id = intval(Contact::getIdForURL($_SESSION['my_address'], 0, true));
-		} elseif (x($_SESSION, 'visitor_home')) {
+		} elseif (!empty($_SESSION['visitor_home'])) {
 			// Remote user
 			$public_contact_id = intval(Contact::getIdForURL($_SESSION['visitor_home'], 0, true));
 		}
-	} elseif (!x($_SESSION, 'authenticated')) {
+	} elseif (empty($_SESSION['authenticated'])) {
 		$public_contact_id = false;
 	}
 
@@ -808,7 +442,7 @@ function remote_user()
 		return false;
 	}
 
-	if (x($_SESSION, 'authenticated') && x($_SESSION, 'visitor_id')) {
+	if (!empty($_SESSION['authenticated']) && !empty($_SESSION['visitor_id'])) {
 		return intval($_SESSION['visitor_id']);
 	}
 	return false;
@@ -828,7 +462,7 @@ function notice($s)
 	}
 
 	$a = get_app();
-	if (!x($_SESSION, 'sysmsg')) {
+	if (empty($_SESSION['sysmsg'])) {
 		$_SESSION['sysmsg'] = [];
 	}
 	if ($a->interactive) {
@@ -851,7 +485,7 @@ function info($s)
 		return;
 	}
 
-	if (!x($_SESSION, 'sysmsg_info')) {
+	if (empty($_SESSION['sysmsg_info'])) {
 		$_SESSION['sysmsg_info'] = [];
 	}
 	if ($a->interactive) {
@@ -1004,16 +638,6 @@ function curPageURL()
 	return $pageURL;
 }
 
-function random_digits($digits)
-{
-	$rn = '';
-	for ($i = 0; $i < $digits; $i++) {
-		/// @TODO Avoid rand/mt_rand, when it comes to cryptography, they are generating predictable (seedable) numbers.
-		$rn .= rand(0, 9);
-	}
-	return $rn;
-}
-
 function get_server()
 {
 	$server = Config::get("system", "directory");
@@ -1031,27 +655,27 @@ function get_temppath()
 
 	$temppath = Config::get("system", "temppath");
 
-	if (($temppath != "") && App::directory_usable($temppath)) {
+	if (($temppath != "") && App::isDirectoryUsable($temppath)) {
 		// We have a temp path and it is usable
-		return App::realpath($temppath);
+		return App::getRealPath($temppath);
 	}
 
 	// We don't have a working preconfigured temp path, so we take the system path.
 	$temppath = sys_get_temp_dir();
 
 	// Check if it is usable
-	if (($temppath != "") && App::directory_usable($temppath)) {
+	if (($temppath != "") && App::isDirectoryUsable($temppath)) {
 		// Always store the real path, not the path through symlinks
-		$temppath = App::realpath($temppath);
+		$temppath = App::getRealPath($temppath);
 
 		// To avoid any interferences with other systems we create our own directory
-		$new_temppath = $temppath . "/" . $a->get_hostname();
+		$new_temppath = $temppath . "/" . $a->getHostName();
 		if (!is_dir($new_temppath)) {
 			/// @TODO There is a mkdir()+chmod() upwards, maybe generalize this (+ configurable) into a function/method?
 			mkdir($new_temppath);
 		}
 
-		if (App::directory_usable($new_temppath)) {
+		if (App::isDirectoryUsable($new_temppath)) {
 			// The new path is usable, we are happy
 			Config::set("system", "temppath", $new_temppath);
 			return $new_temppath;
@@ -1133,8 +757,8 @@ function get_itemcachepath()
 	}
 
 	$itemcache = Config::get('system', 'itemcache');
-	if (($itemcache != "") && App::directory_usable($itemcache)) {
-		return App::realpath($itemcache);
+	if (($itemcache != "") && App::isDirectoryUsable($itemcache)) {
+		return App::getRealPath($itemcache);
 	}
 
 	$temppath = get_temppath();
@@ -1145,7 +769,7 @@ function get_itemcachepath()
 			mkdir($itemcache);
 		}
 
-		if (App::directory_usable($itemcache)) {
+		if (App::isDirectoryUsable($itemcache)) {
 			Config::set("system", "itemcache", $itemcache);
 			return $itemcache;
 		}
@@ -1161,7 +785,7 @@ function get_itemcachepath()
 function get_spoolpath()
 {
 	$spoolpath = Config::get('system', 'spoolpath');
-	if (($spoolpath != "") && App::directory_usable($spoolpath)) {
+	if (($spoolpath != "") && App::isDirectoryUsable($spoolpath)) {
 		// We have a spool path and it is usable
 		return $spoolpath;
 	}
@@ -1176,7 +800,7 @@ function get_spoolpath()
 			mkdir($spoolpath);
 		}
 
-		if (App::directory_usable($spoolpath)) {
+		if (App::isDirectoryUsable($spoolpath)) {
 			// The new path is usable, we are happy
 			Config::set("system", "spoolpath", $spoolpath);
 			return $spoolpath;
@@ -1229,86 +853,4 @@ function validate_include(&$file)
 
 	// Simply return flag
 	return $valid;
-}
-
-function current_load()
-{
-	if (!function_exists('sys_getloadavg')) {
-		return false;
-	}
-
-	$load_arr = sys_getloadavg();
-
-	if (!is_array($load_arr)) {
-		return false;
-	}
-
-	return max($load_arr[0], $load_arr[1]);
-}
-
-/**
- * @brief get c-style args
- *
- * @return int
- */
-function argc()
-{
-	return get_app()->argc;
-}
-
-/**
- * @brief Returns the value of a argv key
- *
- * @param int $x argv key
- * @return string Value of the argv key
- */
-function argv($x)
-{
-	if (array_key_exists($x, get_app()->argv)) {
-		return get_app()->argv[$x];
-	}
-
-	return '';
-}
-
-/**
- * @brief Get the data which is needed for infinite scroll
- *
- * For invinite scroll we need the page number of the actual page
- * and the the URI where the content of the next page comes from.
- * This data is needed for the js part in main.js.
- * Note: infinite scroll does only work for the network page (module)
- *
- * @param string $module The name of the module (e.g. "network")
- * @return array Of infinite scroll data
- * 	'pageno' => $pageno The number of the actual page
- * 	'reload_uri' => $reload_uri The URI of the content we have to load
- */
-function infinite_scroll_data($module)
-{
-	if (PConfig::get(local_user(), 'system', 'infinite_scroll')
-		&& $module == 'network'
-		&& defaults($_GET, 'mode', '') != 'minimal'
-	) {
-		// get the page number
-		$pageno = defaults($_GET, 'page', 1);
-
-		$reload_uri = "";
-
-		// try to get the uri from which we load the content
-		foreach ($_GET as $param => $value) {
-			if (($param != "page") && ($param != "q")) {
-				$reload_uri .= "&" . $param . "=" . urlencode($value);
-			}
-		}
-
-		$a = get_app();
-		if ($a->page_offset != "" && !strstr($reload_uri, "&offset=")) {
-			$reload_uri .= "&offset=" . urlencode($a->page_offset);
-		}
-
-		$arr = ["pageno" => $pageno, "reload_uri" => $reload_uri];
-
-		return $arr;
-	}
 }

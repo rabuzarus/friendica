@@ -3,14 +3,16 @@
 namespace Friendica\Core\Cache;
 
 use Friendica\Core\Cache;
+use Friendica\Core\Logger;
 
 use Exception;
+use Friendica\Network\HTTPException\InternalServerErrorException;
 use Memcached;
 
 /**
  * Memcached Cache Driver
  *
- * @author Hypolite Petovan <mrpetovan@gmail.com>
+ * @author Hypolite Petovan <hypolite@mrpetovan.com>
  */
 class MemcachedCacheDriver extends AbstractCacheDriver implements IMemoryCacheDriver
 {
@@ -53,6 +55,24 @@ class MemcachedCacheDriver extends AbstractCacheDriver implements IMemoryCacheDr
 		}
 	}
 
+	/**
+	 * (@inheritdoc)
+	 */
+	public function getAllKeys($prefix = null)
+	{
+		$keys = $this->getOriginalKeys($this->memcached->getAllKeys());
+
+		if ($this->memcached->getResultCode() == Memcached::RES_SUCCESS) {
+			return $this->filterArrayKeysByPrefix($keys, $prefix);
+		} else {
+			Logger::log('Memcached \'getAllKeys\' failed with ' . $this->memcached->getResultMessage(), Logger::ALL);
+			return [];
+		}
+	}
+
+	/**
+	 * (@inheritdoc)
+	 */
 	public function get($key)
 	{
 		$return = null;
@@ -63,11 +83,16 @@ class MemcachedCacheDriver extends AbstractCacheDriver implements IMemoryCacheDr
 
 		if ($this->memcached->getResultCode() === Memcached::RES_SUCCESS) {
 			$return = $value;
+		} else {
+			Logger::log('Memcached \'get\' failed with ' . $this->memcached->getResultMessage(), Logger::ALL);
 		}
 
 		return $return;
 	}
 
+	/**
+	 * (@inheritdoc)
+	 */
 	public function set($key, $value, $ttl = Cache::FIVE_MINUTES)
 	{
 		$cachekey = $this->getCacheKey($key);
@@ -85,15 +110,20 @@ class MemcachedCacheDriver extends AbstractCacheDriver implements IMemoryCacheDr
 				$value
 			);
 		}
-
 	}
 
+	/**
+	 * (@inheritdoc)
+	 */
 	public function delete($key)
 	{
 		$cachekey = $this->getCacheKey($key);
 		return $this->memcached->delete($cachekey);
 	}
 
+	/**
+	 * (@inheritdoc)
+	 */
 	public function clear($outdated = true)
 	{
 		if ($outdated) {
@@ -104,12 +134,7 @@ class MemcachedCacheDriver extends AbstractCacheDriver implements IMemoryCacheDr
 	}
 
 	/**
-	 * @brief Sets a value if it's not already stored
-	 *
-	 * @param string $key      The cache key
-	 * @param mixed  $value    The old value we know from the cache
-	 * @param int    $ttl      The cache lifespan, must be one of the Cache constants
-	 * @return bool
+	 * (@inheritdoc)
 	 */
 	public function add($key, $value, $ttl = Cache::FIVE_MINUTES)
 	{

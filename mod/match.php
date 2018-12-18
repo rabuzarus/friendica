@@ -4,14 +4,17 @@
  */
 
 use Friendica\App;
+use Friendica\Content\Pager;
 use Friendica\Content\Widget;
 use Friendica\Core\Config;
 use Friendica\Core\L10n;
+use Friendica\Core\Renderer;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
 use Friendica\Model\Contact;
 use Friendica\Util\Network;
 use Friendica\Util\Proxy as ProxyUtils;
+use Friendica\Util\Strings;
 
 require_once 'include/text.php';
 
@@ -35,7 +38,7 @@ function match_content(App $a)
 	$a->page['aside'] .= Widget::findPeople();
 	$a->page['aside'] .= Widget::follow();
 
-	$_SESSION['return_url'] = System::baseUrl() . '/' . $a->cmd;
+	$_SESSION['return_path'] = $a->cmd;
 
 	$r = q(
 		"SELECT `pub_keywords`, `prv_keywords` FROM `profile` WHERE `is-default` = 1 AND `uid` = %d LIMIT 1",
@@ -53,29 +56,28 @@ function match_content(App $a)
 	$tags = trim($r[0]['pub_keywords'] . ' ' . $r[0]['prv_keywords']);
 
 	if ($tags) {
+		$pager = new Pager($a->query_string);
+
 		$params['s'] = $tags;
-		if ($a->pager['page'] != 1) {
-			$params['p'] = $a->pager['page'];
+		if ($pager->getPage() != 1) {
+			$params['p'] = $pager->getPage();
 		}
 
 		if (strlen(Config::get('system', 'directory'))) {
-			$x = Network::post(get_server().'/msearch', $params);
+			$x = Network::post(get_server().'/msearch', $params)->getBody();
 		} else {
-			$x = Network::post(System::baseUrl() . '/msearch', $params);
+			$x = Network::post(System::baseUrl() . '/msearch', $params)->getBody();
 		}
 
 		$j = json_decode($x);
 
-		if ($j->total) {
-			$a->set_pager_total($j->total);
-			$a->set_pager_itemspage($j->items_page);
-		}
-
 		if (count($j->results)) {
+			$pager->setItemsPerPage($j->items_page);
+
 			$id = 0;
 
 			foreach ($j->results as $jj) {
-				$match_nurl = normalise_link($jj->url);
+				$match_nurl = Strings::normaliseLink($jj->url);
 				$match = q(
 					"SELECT `nurl` FROM `contact` WHERE `uid` = '%d' AND nurl='%s' LIMIT 1",
 					intval(local_user()),
@@ -112,15 +114,13 @@ function match_content(App $a)
 				}
 			}
 
-			$tpl = get_markup_template('viewcontact_template.tpl');
+			$tpl = Renderer::getMarkupTemplate('viewcontact_template.tpl');
 
-			$o .= replace_macros(
-				$tpl,
-				[
-				'$title' => L10n::t('Profile Match'),
+			$o .= Renderer::replaceMacros($tpl, [
+				'$title'    => L10n::t('Profile Match'),
 				'$contacts' => $entries,
-				'$paginate' => paginate($a)]
-			);
+				'$paginate' => $pager->renderFull($j->total)
+			]);
 		} else {
 			info(L10n::t('No matches') . EOL);
 		}

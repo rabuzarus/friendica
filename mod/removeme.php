@@ -6,9 +6,11 @@
 use Friendica\App;
 use Friendica\Core\Config;
 use Friendica\Core\L10n;
+use Friendica\Core\Renderer;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
 use Friendica\Model\User;
+use Friendica\Util\Strings;
 
 require_once 'include/enotify.php';
 
@@ -18,15 +20,15 @@ function removeme_post(App $a)
 		return;
 	}
 
-	if (x($_SESSION, 'submanage') && intval($_SESSION['submanage'])) {
+	if (!empty($_SESSION['submanage'])) {
 		return;
 	}
 
-	if ((!x($_POST, 'qxz_password')) || (!strlen(trim($_POST['qxz_password'])))) {
+	if (empty($_POST['qxz_password'])) {
 		return;
 	}
 
-	if ((!x($_POST, 'verify')) || (!strlen(trim($_POST['verify'])))) {
+	if (empty($_POST['verify'])) {
 		return;
 	}
 
@@ -55,8 +57,12 @@ function removeme_post(App $a)
 		]);
 	}
 
-	if (User::authenticate($a->user, trim($_POST['qxz_password']))) {
+	if (User::getIdFromPasswordAuthentication($a->user, trim($_POST['qxz_password']))) {
 		User::remove($a->user['uid']);
+
+		unset($_SESSION['authenticated']);
+		unset($_SESSION['uid']);
+		$a->internalRedirect();
 		// NOTREACHED
 	}
 }
@@ -64,19 +70,19 @@ function removeme_post(App $a)
 function removeme_content(App $a)
 {
 	if (!local_user()) {
-		goaway(System::baseUrl());
+		$a->internalRedirect();
 	}
 
-	$hash = random_string();
+	$hash = Strings::getRandomHex();
 
 	require_once("mod/settings.php");
 	settings_init($a);
 
 	$_SESSION['remove_account_verify'] = $hash;
 
-	$tpl = get_markup_template('removeme.tpl');
-	$o = replace_macros($tpl, [
-		'$basedir' => System::baseUrl(),
+	$tpl = Renderer::getMarkupTemplate('removeme.tpl');
+	$o = Renderer::replaceMacros($tpl, [
+		'$basedir' => $a->getBaseURL(),
 		'$hash' => $hash,
 		'$title' => L10n::t('Remove My Account'),
 		'$desc' => L10n::t('This will completely remove your account. Once this has been done it is not recoverable.'),

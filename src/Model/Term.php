@@ -33,6 +33,17 @@ class Term
 		return $tag_text;
 	}
 
+	public static function tagArrayFromItemId($itemid, $type = [TERM_HASHTAG, TERM_MENTION])
+	{
+		$condition = ['otype' => TERM_OBJ_POST, 'oid' => $itemid, 'type' => $type];
+		$tags = DBA::select('term', ['type', 'term', 'url'], $condition);
+		if (!DBA::isResult($tags)) {
+			return [];
+		}
+
+		return DBA::toArray($tags);
+	}
+
 	public static function fileTextFromItemId($itemid)
 	{
 		$file_text = '';
@@ -65,7 +76,7 @@ class Term
 		$message['tag'] = $tags;
 
 		// Clean up all tags
-		DBA::delete('term', ['otype' => TERM_OBJ_POST, 'oid' => $itemid, 'type' => [TERM_HASHTAG, TERM_MENTION]]);
+		self::deleteByItemId($itemid);
 
 		if ($message['deleted']) {
 			return;
@@ -75,7 +86,7 @@ class Term
 
 		$tags_string = '';
 		foreach ($taglist as $tag) {
-			if ((substr(trim($tag), 0, 1) == '#') || (substr(trim($tag), 0, 1) == '@')) {
+			if ((substr(trim($tag), 0, 1) == '#') || (substr(trim($tag), 0, 1) == '@') || (substr(trim($tag), 0, 1) == '!')) {
 				$tags_string .= ' ' . trim($tag);
 			} else {
 				$tags_string .= ' #' . trim($tag);
@@ -96,9 +107,21 @@ class Term
 			}
 		}
 
-		$pattern = '/\W([\#@])\[url\=(.*?)\](.*?)\[\/url\]/ism';
+		$pattern = '/\W([\#@!])\[url\=(.*?)\](.*?)\[\/url\]/ism';
 		if (preg_match_all($pattern, $data, $matches, PREG_SET_ORDER)) {
 			foreach ($matches as $match) {
+
+				if (($match[1] == '@') || ($match[1] == '!')) {
+					$contact = Contact::getDetailsByURL($match[2], 0);
+					if (!empty($contact['addr'])) {
+						$match[3] = $contact['addr'];
+					}
+
+					if (!empty($contact['url'])) {
+						$match[2] = $contact['url'];
+					}
+				}
+
 				$tags[$match[1] . trim($match[3], ',.:;[]/\"?!')] = $match[2];
 			}
 		}
@@ -117,12 +140,24 @@ class Term
 
 				$type = TERM_HASHTAG;
 				$term = substr($tag, 1);
-			} elseif (substr(trim($tag), 0, 1) == '@') {
+				$link = '';
+			} elseif ((substr(trim($tag), 0, 1) == '@') || (substr(trim($tag), 0, 1) == '!')) {
 				$type = TERM_MENTION;
-				$term = substr($tag, 1);
+
+				$contact = Contact::getDetailsByURL($link, 0);
+				if (!empty($contact['name'])) {
+					$term = $contact['name'];
+				} else {
+					$term = substr($tag, 1);
+				}
 			} else { // This shouldn't happen
 				$type = TERM_HASHTAG;
 				$term = $tag;
+				$link = '';
+			}
+
+			if (DBA::exists('term', ['uid' => $message['uid'], 'otype' => TERM_OBJ_POST, 'oid' => $itemid, 'term' => $term])) {
+				continue;
 			}
 
 			if ($message['uid'] == 0) {
@@ -146,7 +181,7 @@ class Term
 			]);
 
 			// Search for mentions
-			if ((substr($tag, 0, 1) == '@') && (strpos($link, $profile_base_friendica) || strpos($link, $profile_base_diaspora))) {
+			if (((substr($tag, 0, 1) == '@') || (substr($tag, 0, 1) == '!')) && (strpos($link, $profile_base_friendica) || strpos($link, $profile_base_diaspora))) {
 				$users = q("SELECT `uid` FROM `contact` WHERE self AND (`url` = '%s' OR `nurl` = '%s')", $link, $link);
 				foreach ($users AS $user) {
 					if ($user['uid'] == $message['uid']) {
@@ -229,32 +264,48 @@ class Term
 		);
 
 		while ($tag = DBA::fetch($taglist)) {
-			if ($tag["url"] == "") {
-				$tag["url"] = $searchpath . $tag["term"];
+			if ($tag['url'] == '') {
+				$tag['url'] = $searchpath . rawurlencode($tag['term']);
 			}
 
-			$orig_tag = $tag["url"];
+			$orig_tag = $tag['url'];
 
 			$author = ['uid' => 0, 'id' => $item['author-id'],
 				'network' => $item['author-network'], 'url' => $item['author-link']];
-			$tag["url"] = Contact::magicLinkByContact($author, $tag['url']);
+			$tag['url'] = Contact::magicLinkByContact($author, $tag['url']);
 
-			if ($tag["type"] == TERM_HASHTAG) {
-				if ($orig_tag != $tag["url"]) {
-					$item['body'] = str_replace($orig_tag, $tag["url"], $item['body']);
+			if ($tag['type'] == TERM_HASHTAG) {
+				if ($orig_tag != $tag['url']) {
+					$item['body'] = str_replace($orig_tag, $tag['url'], $item['body']);
 				}
 
-				$return['hashtags'][] = "#<a href=\"" . $tag["url"] . "\" target=\"_blank\">" . $tag["term"] . "</a>";
-				$prefix = "#";
-			} elseif ($tag["type"] == TERM_MENTION) {
-				$return['mentions'][] = "@<a href=\"" . $tag["url"] . "\" target=\"_blank\">" . $tag["term"] . "</a>";
-				$prefix = "@";
+				$return['hashtags'][] = '#<a href="' . $tag['url'] . '" target="_blank">' . $tag['term'] . '</a>';
+				$prefix = '#';
+			} elseif ($tag['type'] == TERM_MENTION) {
+				$return['mentions'][] = '@<a href="' . $tag['url'] . '" target="_blank">' . $tag['term'] . '</a>';
+				$prefix = '@';
 			}
 
-			$return['tags'][] = $prefix . "<a href=\"" . $tag["url"] . "\" target=\"_blank\">" . $tag["term"] . "</a>";
+			$return['tags'][] = $prefix . '<a href="' . $tag['url'] . '" target="_blank">' . $tag['term'] . '</a>';
 		}
 		DBA::close($taglist);
 
 		return $return;
+	}
+
+	/**
+	 * Delete all tags from an item
+	 * @param int itemid - choose from which item the tags will be removed
+	 * @param array type - items type. default is [TERM_HASHTAG, TERM_MENTION]
+	 */
+	public static function deleteByItemId($itemid, $type = [TERM_HASHTAG, TERM_MENTION])
+	{
+		if (empty($itemid)) {
+			return;
+		}
+
+		// Clean up all tags
+		DBA::delete('term', ['otype' => TERM_OBJ_POST, 'oid' => $itemid, 'type' => $type]);
+
 	}
 }

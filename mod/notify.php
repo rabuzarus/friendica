@@ -7,6 +7,7 @@ use Friendica\App;
 use Friendica\Content\Text\BBCode;
 use Friendica\Core\L10n;
 use Friendica\Core\NotificationsManager;
+use Friendica\Core\Renderer;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
 use Friendica\Model\Item;
@@ -27,7 +28,7 @@ function notify_init(App $a)
 			$nm->setSeen($note);
 
 			// The friendica client has problems with the GUID. this is some workaround
-			if ($a->is_friendica_app()) {
+			if ($a->isFriendicaApp()) {
 				require_once("include/items.php");
 				$urldata = parse_url($note['link']);
 				$guid = basename($urldata["path"]);
@@ -37,10 +38,10 @@ function notify_init(App $a)
 				}
 			}
 
-			goaway($note['link']);
+			System::externalRedirect($note['link']);
 		}
 
-		goaway(System::baseUrl(true));
+		$a->internalRedirect();
 	}
 
 	if ($a->argc > 2 && $a->argv[1] === 'mark' && $a->argv[2] === 'all') {
@@ -59,14 +60,14 @@ function notify_content(App $a)
 
 	$nm = new NotificationsManager();
 
-	$notif_tpl = get_markup_template('notifications.tpl');
+	$notif_tpl = Renderer::getMarkupTemplate('notifications.tpl');
 
-	$not_tpl = get_markup_template('notify.tpl');
+	$not_tpl = Renderer::getMarkupTemplate('notify.tpl');
 
 	$r = $nm->getAll(['seen'=>0]);
 	if (DBA::isResult($r) > 0) {
 		foreach ($r as $it) {
-			$notif_content .= replace_macros($not_tpl, [
+			$notif_content .= Renderer::replaceMacros($not_tpl, [
 				'$item_link' => System::baseUrl(true).'/notify/view/'. $it['id'],
 				'$item_image' => $it['photo'],
 				'$item_text' => strip_tags(BBCode::convert($it['msg'])),
@@ -77,7 +78,7 @@ function notify_content(App $a)
 		$notif_content .= L10n::t('No more system notifications.');
 	}
 
-	$o = replace_macros($notif_tpl, [
+	$o = Renderer::replaceMacros($notif_tpl, [
 		'$notif_header' => L10n::t('System Notifications'),
 		'$tabs' => false, // $tabs,
 		'$notif_content' => $notif_content,

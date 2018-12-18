@@ -11,11 +11,15 @@ use Friendica\Core\Config;
 use Friendica\Core\L10n;
 use Friendica\Core\PConfig;
 use Friendica\Core\Protocol;
+use Friendica\Core\Renderer;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
 use Friendica\Model\Contact;
+use Friendica\Model\FileTag;
 use Friendica\Model\GContact;
 use Friendica\Model\Profile;
+use Friendica\Util\Strings;
+use Friendica\Util\XML;
 
 require_once 'boot.php';
 require_once 'include/dba.php';
@@ -29,7 +33,7 @@ class Widget
 	 */
 	public static function follow($value = "")
 	{
-		return replace_macros(get_markup_template('follow.tpl'), array(
+		return Renderer::replaceMacros(Renderer::getMarkupTemplate('follow.tpl'), array(
 			'$connect' => L10n::t('Add New Contact'),
 			'$desc' => L10n::t('Enter address or web location'),
 			'$hint' => L10n::t('Example: bob@example.com, http://example.com/barbara'),
@@ -72,7 +76,7 @@ class Widget
 		$aside = [];
 		$aside['$nv'] = $nv;
 
-		return replace_macros(get_markup_template('peoplefind.tpl'), $aside);
+		return Renderer::replaceMacros(Renderer::getMarkupTemplate('peoplefind.tpl'), $aside);
 	}
 
 	/**
@@ -142,10 +146,7 @@ class Widget
 
 		$nets = array();
 		while ($rr = DBA::fetch($r)) {
-			/// @TODO If 'network' is not there, this triggers an E_NOTICE
-			if ($rr['network']) {
-				$nets[] = array('ref' => $rr['network'], 'name' => ContactSelector::networkToName($rr['network']), 'selected' => (($selected == $rr['network']) ? 'selected' : '' ));
-			}
+			$nets[] = array('ref' => $rr['network'], 'name' => ContactSelector::networkToName($rr['network']), 'selected' => (($selected == $rr['network']) ? 'selected' : '' ));
 		}
 		DBA::close($r);
 
@@ -153,11 +154,11 @@ class Widget
 			return '';
 		}
 
-		return replace_macros(get_markup_template('nets.tpl'), array(
-			'$title' => L10n::t('Networks'),
+		return Renderer::replaceMacros(Renderer::getMarkupTemplate('nets.tpl'), array(
+			'$title' => L10n::t('Protocols'),
 			'$desc' => '',
 			'$sel_all' => (($selected == '') ? 'selected' : ''),
-			'$all' => L10n::t('All Networks'),
+			'$all' => L10n::t('All Protocols'),
 			'$nets' => $nets,
 			'$base' => $baseurl,
 		));
@@ -175,10 +176,6 @@ class Widget
 			return '';
 		}
 
-		if (!Feature::isEnabled(local_user(), 'filing')) {
-			return '';
-		}
-
 		$saved = PConfig::get(local_user(), 'system', 'filetags');
 		if (!strlen($saved)) {
 			return;
@@ -188,13 +185,14 @@ class Widget
 		$terms = array();
 		$cnt = preg_match_all('/\[(.*?)\]/', $saved, $matches, PREG_SET_ORDER);
 		if ($cnt) {
-			foreach ($matches as $mtch) {
-				$unescaped = xmlify(file_tag_decode($mtch[1]));
+			foreach ($matches as $mtch)
+			{
+				$unescaped = XML::escape(FileTag::decode($mtch[1]));
 				$terms[] = array('name' => $unescaped, 'selected' => (($selected == $unescaped) ? 'selected' : ''));
 			}
 		}
 
-		return replace_macros(get_markup_template('fileas_widget.tpl'), array(
+		return Renderer::replaceMacros(Renderer::getMarkupTemplate('fileas_widget.tpl'), array(
 			'$title' => L10n::t('Saved Folders'),
 			'$desc' => '',
 			'$sel_all' => (($selected == '') ? 'selected' : ''),
@@ -229,12 +227,12 @@ class Widget
 
 		if ($cnt) {
 			foreach ($matches as $mtch) {
-				$unescaped = xmlify(file_tag_decode($mtch[1]));
+				$unescaped = XML::escape(FileTag::decode($mtch[1]));
 				$terms[] = array('name' => $unescaped, 'selected' => (($selected == $unescaped) ? 'selected' : ''));
 			}
 		}
 
-		return replace_macros(get_markup_template('categories_widget.tpl'), array(
+		return Renderer::replaceMacros(Renderer::getMarkupTemplate('categories_widget.tpl'), array(
 			'$title' => L10n::t('Categories'),
 			'$desc' => '',
 			'$sel_all' => (($selected == '') ? 'selected' : ''),
@@ -269,11 +267,11 @@ class Widget
 		if (!$cid) {
 			if (Profile::getMyURL()) {
 				$contact = DBA::selectFirst('contact', ['id'],
-						['nurl' => normalise_link(Profile::getMyURL()), 'uid' => $profile_uid]);
+						['nurl' => Strings::normaliseLink(Profile::getMyURL()), 'uid' => $profile_uid]);
 				if (DBA::isResult($contact)) {
 					$cid = $contact['id'];
 				} else {
-					$gcontact = DBA::selectFirst('gcontact', ['id'], ['nurl' => normalise_link(Profile::getMyURL())]);
+					$gcontact = DBA::selectFirst('gcontact', ['id'], ['nurl' => Strings::normaliseLink(Profile::getMyURL())]);
 					if (DBA::isResult($gcontact)) {
 						$zcid = $gcontact['id'];
 					}
@@ -301,7 +299,7 @@ class Widget
 			$r = GContact::commonFriendsZcid($profile_uid, $zcid, 0, 5, true);
 		}
 
-		return replace_macros(get_markup_template('remote_friends_common.tpl'), array(
+		return Renderer::replaceMacros(Renderer::getMarkupTemplate('remote_friends_common.tpl'), array(
 			'$desc' => L10n::tt("%d contact in common", "%d contacts in common", $t),
 			'$base' => System::baseUrl(),
 			'$uid' => $profile_uid,

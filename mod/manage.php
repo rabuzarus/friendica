@@ -3,8 +3,10 @@
  * @file mod/manage.php
  */
 use Friendica\App;
+use Friendica\Core\Authentication;
 use Friendica\Core\Addon;
 use Friendica\Core\L10n;
+use Friendica\Core\Renderer;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
 
@@ -19,7 +21,7 @@ function manage_post(App $a) {
 	$uid = local_user();
 	$orig_record = $a->user;
 
-	if((x($_SESSION,'submanage')) && intval($_SESSION['submanage'])) {
+	if(!empty($_SESSION['submanage'])) {
 		$r = q("select * from user where uid = %d limit 1",
 			intval($_SESSION['submanage'])
 		);
@@ -35,7 +37,7 @@ function manage_post(App $a) {
 
 	$submanage = $r;
 
-	$identity = (x($_POST['identity']) ? intval($_POST['identity']) : 0);
+	$identity = (!empty($_POST['identity']) ? intval($_POST['identity']) : 0);
 	if (!$identity) {
 		return;
 	}
@@ -98,19 +100,18 @@ function manage_post(App $a) {
 	unset($_SESSION['theme']);
 	unset($_SESSION['mobile-theme']);
 	unset($_SESSION['page_flags']);
-	unset($_SESSION['return_url']);
-	if (x($_SESSION, 'submanage')) {
+	unset($_SESSION['return_path']);
+	if (!empty($_SESSION['submanage'])) {
 		unset($_SESSION['submanage']);
 	}
-	if (x($_SESSION, 'sysmsg')) {
+	if (!empty($_SESSION['sysmsg'])) {
 		unset($_SESSION['sysmsg']);
 	}
-	if (x($_SESSION, 'sysmsg_info')) {
+	if (!empty($_SESSION['sysmsg_info'])) {
 		unset($_SESSION['sysmsg_info']);
 	}
 
-	require_once('include/security.php');
-	authenticate_success($r[0], true, true);
+	Authentication::setAuthenticatedSessionForUser($r[0], true, true);
 
 	if ($limited_id) {
 		$_SESSION['submanage'] = $original_id;
@@ -119,7 +120,7 @@ function manage_post(App $a) {
 	$ret = [];
 	Addon::callHooks('home_init',$ret);
 
-	goaway( System::baseUrl() . "/profile/" . $a->user['nickname'] );
+	$a->internalRedirect('profile/' . $a->user['nickname'] );
 	// NOTREACHED
 }
 
@@ -176,7 +177,7 @@ function manage_content(App $a) {
 		$identities[$key]['notifications'] = $notifications;
 	}
 
-	$o = replace_macros(get_markup_template('manage.tpl'), [
+	$o = Renderer::replaceMacros(Renderer::getMarkupTemplate('manage.tpl'), [
 		'$title' => L10n::t('Manage Identities and/or Pages'),
 		'$desc' => L10n::t('Toggle between different identities or community/group pages which share your account details or which you have been granted "manage" permissions'),
 		'$choose' => L10n::t('Select an identity to manage: '),

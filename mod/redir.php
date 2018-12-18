@@ -2,11 +2,14 @@
 
 use Friendica\App;
 use Friendica\Core\L10n;
+use Friendica\Core\Logger;
 use Friendica\Core\Protocol;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
 use Friendica\Model\Contact;
 use Friendica\Model\Profile;
+use Friendica\Util\Strings;
+use Friendica\Util\Network;
 
 function redir_init(App $a) {
 
@@ -27,21 +30,20 @@ function redir_init(App $a) {
 		$contact = DBA::selectFirst('contact', $fields, ['id' => $cid, 'uid' => [0, local_user()]]);
 		if (!DBA::isResult($contact)) {
 			notice(L10n::t('Contact not found.'));
-			goaway(System::baseUrl());
+			$a->internalRedirect();
 		}
 
 		$contact_url = $contact['url'];
 
-		if ($contact['network'] !== Protocol::DFRN // Authentication isn't supported for non DFRN contacts.
-			|| (!local_user() && !remote_user()) // Visitors (not logged in or not remotes) can't authenticate.
+		if ((!local_user() && !remote_user()) // Visitors (not logged in or not remotes) can't authenticate.
 			|| (!empty($a->contact['id']) && $a->contact['id'] == $cid)) // Local user is already authenticated.
 		{
-			goaway($url != '' ? $url : $contact_url);
+			$a->redirect(defaults($url, $contact_url));
 		}
 
 		if ($contact['uid'] == 0 && local_user()) {
 			// Let's have a look if there is an established connection
-			// between the puplic contact we have found and the local user.
+			// between the public contact we have found and the local user.
 			$contact = DBA::selectFirst('contact', $fields, ['nurl' => $contact['nurl'], 'uid' => local_user()]);
 
 			if (DBA::isResult($contact)) {
@@ -50,14 +52,14 @@ function redir_init(App $a) {
 
 			if (!empty($a->contact['id']) && $a->contact['id'] == $cid) {
 				// Local user is already authenticated.
-				$target_url = $url != '' ? $url : $contact_url;
-				logger($contact['name'] . " is already authenticated. Redirecting to " . $target_url, LOGGER_DEBUG);
-				goaway($target_url);
+				$target_url = defaults($url, $contact_url);
+				Logger::log($contact['name'] . " is already authenticated. Redirecting to " . $target_url, Logger::DEBUG);
+				$a->redirect($target_url);
 			}
 		}
 
 		if (remote_user()) {
-			$host = substr(System::baseUrl() . ($a->urlpath ? '/' . $a->urlpath : ''), strpos(System::baseUrl(), '://') + 3);
+			$host = substr($a->getBaseURL() . ($a->getURLPath() ? '/' . $a->getURLPath() : ''), strpos($a->getBaseURL(), '://') + 3);
 			$remotehost = substr($contact['addr'], strpos($contact['addr'], '@') + 1);
 
 			// On a local instance we have to check if the local user has already authenticated
@@ -65,18 +67,26 @@ function redir_init(App $a) {
 			// for authentification everytime he/she is visiting a profile page of the local
 			// contact.
 			if ($host == $remotehost
-				&& x($_SESSION, 'remote')
+				&& !empty($_SESSION['remote'])
 				&& is_array($_SESSION['remote']))
 			{
 				foreach ($_SESSION['remote'] as $v) {
 					if ($v['uid'] == $_SESSION['visitor_visiting'] && $v['cid'] == $_SESSION['visitor_id']) {
 						// Remote user is already authenticated.
-						$target_url = $url != '' ? $url : $contact_url;
-						logger($contact['name'] . " is already authenticated. Redirecting to " . $target_url, LOGGER_DEBUG);
-						goaway($target_url);
+						$target_url = defaults($url, $contact_url);
+						Logger::log($contact['name'] . " is already authenticated. Redirecting to " . $target_url, Logger::DEBUG);
+						$a->redirect($target_url);
 					}
 				}
 			}
+		}
+
+		// When the remote page does support OWA, then we enforce the use of it
+		$basepath = Contact::getBasepath($contact_url);
+		$serverret = Network::curl($basepath . '/magic');
+		if ($serverret->isSuccess()) {
+			$contact['issued-id'] = '';
+			$contact['dfrn-id'] = '';
 		}
 
 		// Doing remote auth with dfrn.
@@ -92,21 +102,21 @@ function redir_init(App $a) {
 				$dfrn_id = '0:' . $orig_id;
 			}
 
-			$sec = random_string();
+			$sec = Strings::getRandomHex();
 
 			$fields = ['uid' => local_user(), 'cid' => $cid, 'dfrn_id' => $dfrn_id,
 				'sec' => $sec, 'expire' => time() + 45];
 			DBA::insert('profile_check', $fields);
 
-			logger('mod_redir: ' . $contact['name'] . ' ' . $sec, LOGGER_DEBUG);
+			Logger::log('mod_redir: ' . $contact['name'] . ' ' . $sec, Logger::DEBUG);
 
 			$dest = (!empty($url) ? '&destination_url=' . $url : '');
 
-			goaway($contact['poll'] . '?dfrn_id=' . $dfrn_id
+			System::externalRedirect($contact['poll'] . '?dfrn_id=' . $dfrn_id
 				. '&dfrn_version=' . DFRN_PROTOCOL_VERSION . '&type=profile&sec=' . $sec . $dest . $quiet);
 		}
 
-		$url = $url != '' ? $url : $contact_url;
+		$url = defaults($url, $contact_url);
 	}
 
 	// If we don't have a connected contact, redirect with
@@ -114,16 +124,16 @@ function redir_init(App $a) {
 	if (!empty($url)) {
 		$my_profile = Profile::getMyURL();
 
-		if (!empty($my_profile) && !link_compare($my_profile, $url)) {
+		if (!empty($my_profile) && !Strings::compareLink($my_profile, $url)) {
 			$separator = strpos($url, '?') ? '&' : '?';
 
 			$url .= $separator . 'zrl=' . urlencode($my_profile);
 		}
 
-		logger('redirecting to ' . $url, LOGGER_DEBUG);
-		goaway($url);
+		Logger::log('redirecting to ' . $url, Logger::DEBUG);
+		$a->redirect($url);
 	}
 
 	notice(L10n::t('Contact not found.'));
-	goaway(System::baseUrl());
+	$a->internalRedirect();
 }

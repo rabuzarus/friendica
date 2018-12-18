@@ -10,22 +10,24 @@
 
 use Friendica\App;
 use Friendica\Core\L10n;
+use Friendica\Core\Logger;
 use Friendica\Core\System;
 use Friendica\Core\Config;
 use Friendica\Database\DBA;
 use Friendica\Model\Contact;
 use Friendica\Model\Photo;
 use Friendica\Object\Image;
+use Friendica\Util\Strings;
 
 function wall_upload_post(App $a, $desktopmode = true)
 {
-	logger("wall upload: starting new upload", LOGGER_DEBUG);
+	Logger::log("wall upload: starting new upload", Logger::DEBUG);
 
-	$r_json = (x($_GET, 'response') && $_GET['response'] == 'json');
-	$album = (x($_GET, 'album') ? notags(trim($_GET['album'])) : '');
+	$r_json = (!empty($_GET['response']) && $_GET['response'] == 'json');
+	$album = (!empty($_GET['album']) ? Strings::escapeTags(trim($_GET['album'])) : '');
 
 	if ($a->argc > 1) {
-		if (!x($_FILES, 'media')) {
+		if (empty($_FILES['media'])) {
 			$nick = $a->argv[1];
 			$r = q("SELECT `user`.*, `contact`.`id` FROM `user`
 				INNER JOIN `contact` on `user`.`uid` = `contact`.`uid`
@@ -108,7 +110,7 @@ function wall_upload_post(App $a, $desktopmode = true)
 		killme();
 	}
 
-	if (!x($_FILES, 'userfile') && !x($_FILES, 'media')) {
+	if (empty($_FILES['userfile']) && empty($_FILES['media'])) {
 		if ($r_json) {
 			echo json_encode(['error' => L10n::t('Invalid request.')]);
 		}
@@ -119,13 +121,13 @@ function wall_upload_post(App $a, $desktopmode = true)
 	$filename = '';
 	$filesize = 0;
 	$filetype = '';
-	if (x($_FILES, 'userfile')) {
+	if (!empty($_FILES['userfile'])) {
 		$src      = $_FILES['userfile']['tmp_name'];
 		$filename = basename($_FILES['userfile']['name']);
 		$filesize = intval($_FILES['userfile']['size']);
 		$filetype = $_FILES['userfile']['type'];
 
-	} elseif (x($_FILES, 'media')) {
+	} elseif (!empty($_FILES['media'])) {
 		if (!empty($_FILES['media']['tmp_name'])) {
 			if (is_array($_FILES['media']['tmp_name'])) {
 				$src = $_FILES['media']['tmp_name'][0];
@@ -186,13 +188,13 @@ function wall_upload_post(App $a, $desktopmode = true)
 		$filetype = $imagedata['mime'];
 	}
 
-	logger("File upload src: " . $src . " - filename: " . $filename .
-		" - size: " . $filesize . " - type: " . $filetype, LOGGER_DEBUG);
+	Logger::log("File upload src: " . $src . " - filename: " . $filename .
+		" - size: " . $filesize . " - type: " . $filetype, Logger::DEBUG);
 
 	$maximagesize = Config::get('system', 'maximagesize');
 
 	if (($maximagesize) && ($filesize > $maximagesize)) {
-		$msg = L10n::t('Image exceeds size limit of %s', formatBytes($maximagesize));
+		$msg = L10n::t('Image exceeds size limit of %s', Strings::formatBytes($maximagesize));
 		if ($r_json) {
 			echo json_encode(['error' => $msg]);
 		} else {
@@ -225,7 +227,7 @@ function wall_upload_post(App $a, $desktopmode = true)
 	}
 	if ($max_length > 0) {
 		$Image->scaleDown($max_length);
-		logger("File upload: Scaling picture to new size " . $max_length, LOGGER_DEBUG);
+		Logger::log("File upload: Scaling picture to new size " . $max_length, Logger::DEBUG);
 	}
 
 	$width = $Image->getWidth();
@@ -300,11 +302,11 @@ function wall_upload_post(App $a, $desktopmode = true)
 			echo json_encode(['picture' => $picture]);
 			killme();
 		}
-		logger("upload done", LOGGER_DEBUG);
+		Logger::log("upload done", Logger::DEBUG);
 		return $picture;
 	}
 
-	logger("upload done", LOGGER_DEBUG);
+	Logger::log("upload done", Logger::DEBUG);
 
 	if ($r_json) {
 		echo json_encode(['ok' => true]);

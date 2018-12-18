@@ -7,7 +7,9 @@ namespace Friendica\Content;
 
 use Friendica\Core\Protocol;
 use Friendica\Content\Feature;
+use Friendica\Content\Text\HTML;
 use Friendica\Core\L10n;
+use Friendica\Core\Renderer;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
 use Friendica\Model\Contact;
@@ -91,10 +93,6 @@ class ForumManager
 	 */
 	public static function widget($uid, $cid = 0)
 	{
-		if (! intval(Feature::isEnabled(local_user(), 'forumlist_widget'))) {
-			return;
-		}
-
 		$o = '';
 
 		//sort by last updated item
@@ -122,9 +120,9 @@ class ForumManager
 				$entries[] = $entry;
 			}
 
-			$tpl = get_markup_template('widget_forumlist.tpl');
+			$tpl = Renderer::getMarkupTemplate('widget_forumlist.tpl');
 
-			$o .= replace_macros(
+			$o .= Renderer::replaceMacros(
 				$tpl,
 				[
 					'$title'	=> L10n::t('Forums'),
@@ -168,7 +166,7 @@ class ForumManager
 		$total_shown = 0;
 		$forumlist = '';
 		foreach ($contacts as $contact) {
-			$forumlist .= micropro($contact, false, 'forumlist-profile-advanced');
+			$forumlist .= HTML::micropro($contact, false, 'forumlist-profile-advanced');
 			$total_shown ++;
 			if ($total_shown == $show_total) {
 				break;

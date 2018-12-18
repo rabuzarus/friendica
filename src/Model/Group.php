@@ -4,9 +4,13 @@
  */
 namespace Friendica\Model;
 
+use Friendica\BaseModule;
 use Friendica\BaseObject;
 use Friendica\Core\L10n;
+use Friendica\Core\Logger;
+use Friendica\Core\Renderer;
 use Friendica\Database\DBA;
+use Friendica\Util\Security;
 
 require_once 'boot.php';
 require_once 'include/dba.php';
@@ -29,7 +33,7 @@ class Group extends BaseObject
 	public static function create($uid, $name)
 	{
 		$return = false;
-		if (x($uid) && x($name)) {
+		if (!empty($uid) && !empty($name)) {
 			$gid = self::getIdByName($uid, $name); // check for dupes
 			if ($gid !== false) {
 				// This could be a problem.
@@ -198,7 +202,7 @@ class Group extends BaseObject
 	 */
 	public static function removeByName($uid, $name) {
 		$return = false;
-		if (x($uid) && x($name)) {
+		if (!empty($uid) && !empty($name)) {
 			$gid = self::getIdByName($uid, $name);
 
 			$return = self::remove($gid);
@@ -323,13 +327,13 @@ class Group extends BaseObject
 				'selected' => $gid == $group['id'] ? 'true' : ''
 			];
 		}
-		logger('groups: ' . print_r($display_groups, true));
+		Logger::log('groups: ' . print_r($display_groups, true));
 
 		if ($label == '') {
 			$label = L10n::t('Default privacy group for new contacts');
 		}
 
-		$o = replace_macros(get_markup_template('group_selection.tpl'), [
+		$o = Renderer::replaceMacros(Renderer::getMarkupTemplate('group_selection.tpl'), [
 			'$label' => $label,
 			'$groups' => $display_groups
 		]);
@@ -349,7 +353,7 @@ class Group extends BaseObject
 	 * @param int $cid
 	 * @return string
 	 */
-	public static function sidebarWidget($every = 'contacts', $each = 'group', $editmode = 'standard', $group_id = '', $cid = 0)
+	public static function sidebarWidget($every = 'contact', $each = 'group', $editmode = 'standard', $group_id = '', $cid = 0)
 	{
 		$o = '';
 
@@ -396,20 +400,25 @@ class Group extends BaseObject
 			];
 		}
 
-		$tpl = get_markup_template('group_side.tpl');
-		$o = replace_macros($tpl, [
+		// Don't show the groups when there is only one
+		if (count($display_groups) <= 2) {
+			return '';
+		}
+
+		$tpl = Renderer::getMarkupTemplate('group_side.tpl');
+		$o = Renderer::replaceMacros($tpl, [
 			'$add' => L10n::t('add'),
 			'$title' => L10n::t('Groups'),
 			'$groups' => $display_groups,
 			'newgroup' => $editmode == 'extended' || $editmode == 'full' ? 1 : '',
 			'grouppage' => 'group/',
 			'$edittext' => L10n::t('Edit group'),
-			'$ungrouped' => $every === 'contacts' ? L10n::t('Contacts not in any group') : '',
+			'$ungrouped' => $every === 'contact' ? L10n::t('Contacts not in any group') : '',
 			'$ungrouped_selected' => (($group_id === 'none') ? 'group-selected' : ''),
 			'$createtext' => L10n::t('Create a new group'),
 			'$creategroup' => L10n::t('Group Name: '),
 			'$editgroupstext' => L10n::t('Edit groups'),
-			'$form_security_token' => get_form_security_token('group_edit'),
+			'$form_security_token' => BaseModule::getFormSecurityToken('group_edit'),
 		]);
 
 

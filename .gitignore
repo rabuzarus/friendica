@@ -11,6 +11,8 @@ home.html
 robots.txt
 
 #ignore local config
+/config/local.config.php
+/config/addon.config.php
 /config/local.ini.php
 /config/addon.ini.php
 
@@ -69,3 +71,6 @@ venv/
 
 #ignore .htaccess
 .htaccess
+
+#ignore filesystem storage default path
+/storage

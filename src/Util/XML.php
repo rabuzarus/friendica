@@ -4,6 +4,7 @@
  */
 namespace Friendica\Util;
 
+use Friendica\Core\Logger;
 use DOMXPath;
 use SimpleXMLElement;
 
@@ -35,7 +36,7 @@ class XML
 					$root = new SimpleXMLElement("<".$key."/>");
 					self::fromArray($value, $root, $remove_header, $namespaces, false);
 				} else {
-					$root = new SimpleXMLElement("<".$key.">".xmlify($value)."</".$key.">");
+					$root = new SimpleXMLElement("<".$key.">".self::escape($value)."</".$key.">");
 				}
 
 				$dom = dom_import_simplexml($root)->ownerDocument;
@@ -103,7 +104,7 @@ class XML
 			}
 
 			if (!is_array($value)) {
-				$element = $xml->addChild($key, xmlify($value), $namespace);
+				$element = $xml->addChild($key, self::escape($value), $namespace);
 			} elseif (is_array($value)) {
 				$element = $xml->addChild($key, null, $namespace);
 				self::fromArray($value, $element, $remove_header, $namespaces, false);
@@ -122,7 +123,7 @@ class XML
 	public static function copy(&$source, &$target, $elementname)
 	{
 		if (count($source->children()) == 0) {
-			$target->addChild($elementname, xmlify($source));
+			$target->addChild($elementname, self::escape($source));
 		} else {
 			$child = $target->addChild($elementname);
 			foreach ($source->children() as $childfield => $childentry) {
@@ -143,11 +144,11 @@ class XML
 	 */
 	public static function createElement($doc, $element, $value = "", $attributes = [])
 	{
-		$element = $doc->createElement($element, xmlify($value));
+		$element = $doc->createElement($element, self::escape($value));
 
 		foreach ($attributes as $key => $value) {
 			$attribute = $doc->createAttribute($key);
-			$attribute->value = xmlify($value);
+			$attribute->value = self::escape($value);
 			$element->appendChild($attribute);
 		}
 		return $element;
@@ -248,7 +249,7 @@ class XML
 		}
 
 		if (!function_exists('xml_parser_create')) {
-			logger('Xml::toArray: parser function missing');
+			Logger::log('Xml::toArray: parser function missing');
 			return [];
 		}
 
@@ -263,7 +264,7 @@ class XML
 		}
 
 		if (! $parser) {
-			logger('Xml::toArray: xml_parser_create: no resource');
+			Logger::log('Xml::toArray: xml_parser_create: no resource');
 			return [];
 		}
 
@@ -275,9 +276,9 @@ class XML
 		@xml_parser_free($parser);
 
 		if (! $xml_values) {
-			logger('Xml::toArray: libxml: parse error: ' . $contents, LOGGER_DATA);
+			Logger::log('Xml::toArray: libxml: parse error: ' . $contents, Logger::DATA);
 			foreach (libxml_get_errors() as $err) {
-				logger('libxml: parse: ' . $err->code . " at " . $err->line . ":" . $err->column . " : " . $err->message, LOGGER_DATA);
+				Logger::log('libxml: parse: ' . $err->code . " at " . $err->line . ":" . $err->column . " : " . $err->message, Logger::DATA);
 			}
 			libxml_clear_errors();
 			return;
@@ -423,9 +424,9 @@ class XML
 
 		$x = @simplexml_load_string($s);
 		if (!$x) {
-			logger('libxml: parse: error: ' . $s, LOGGER_DATA);
+			Logger::log('libxml: parse: error: ' . $s, Logger::DATA);
 			foreach (libxml_get_errors() as $err) {
-				logger('libxml: parse: ' . $err->code." at ".$err->line.":".$err->column." : ".$err->message, LOGGER_DATA);
+				Logger::log('libxml: parse: ' . $err->code." at ".$err->line.":".$err->column." : ".$err->message, Logger::DATA);
 			}
 			libxml_clear_errors();
 		}
@@ -460,5 +461,44 @@ class XML
 		}
 
 		return $first_item->attributes;
+	}
+
+	/**
+	 * escape text ($str) for XML transport
+	 * @param string $str
+	 * @return string Escaped text.
+	 */
+	public static function escape($str)
+	{
+		$buffer = htmlspecialchars($str, ENT_QUOTES, "UTF-8");
+		$buffer = trim($buffer);
+
+		return $buffer;
+	}
+
+	/**
+	 * undo an escape
+	 * @param string $s xml escaped text
+	 * @return string unescaped text
+	 */
+	public static function unescape($s)
+	{
+		$ret = htmlspecialchars_decode($s, ENT_QUOTES);
+		return $ret;
+	}
+
+	/**
+	 * apply escape() to all values of array $val, recursively
+	 * @param array $val
+	 * @return array
+	 */
+	public static function arrayEscape($val)
+	{
+		if (is_bool($val)) {
+			return $val?"true":"false";
+		} elseif (is_array($val)) {
+			return array_map('XML::arrayEscape', $val);
+		}
+		return self::escape((string) $val);
 	}
 }

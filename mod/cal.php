@@ -12,15 +12,18 @@ use Friendica\Content\Nav;
 use Friendica\Content\Widget;
 use Friendica\Core\Config;
 use Friendica\Core\L10n;
+use Friendica\Core\Renderer;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
 use Friendica\Model\Contact;
 use Friendica\Model\Event;
 use Friendica\Model\Group;
+use Friendica\Model\Item;
 use Friendica\Model\Profile;
 use Friendica\Protocol\DFRN;
 use Friendica\Util\DateTimeFormat;
 use Friendica\Util\Temporal;
+use Friendica\Util\Security;
 
 function cal_init(App $a)
 {
@@ -57,9 +60,9 @@ function cal_init(App $a)
 
 	$account_type = Contact::getAccountType($profile);
 
-	$tpl = get_markup_template("vcard-widget.tpl");
+	$tpl = Renderer::getMarkupTemplate("vcard-widget.tpl");
 
-	$vcard_widget = replace_macros($tpl, [
+	$vcard_widget = Renderer::replaceMacros($tpl, [
 		'$name' => $profile['name'],
 		'$photo' => $profile['photo'],
 		'$addr' => (($profile['addr'] != "") ? $profile['addr'] : ""),
@@ -69,7 +72,7 @@ function cal_init(App $a)
 
 	$cal_widget = Widget\CalendarExport::getHTML();
 
-	if (!x($a->page, 'aside')) {
+	if (empty($a->page['aside'])) {
 		$a->page['aside'] = '';
 	}
 
@@ -86,23 +89,18 @@ function cal_content(App $a)
 	// get the translation strings for the callendar
 	$i18n = Event::getStrings();
 
-	$htpl = get_markup_template('event_head.tpl');
-	$a->page['htmlhead'] .= replace_macros($htpl, [
+	$htpl = Renderer::getMarkupTemplate('event_head.tpl');
+	$a->page['htmlhead'] .= Renderer::replaceMacros($htpl, [
 		'$baseurl' => System::baseUrl(),
 		'$module_url' => '/cal/' . $a->data['user']['nickname'],
 		'$modparams' => 2,
 		'$i18n' => $i18n,
 	]);
 
-	$etpl = get_markup_template('event_end.tpl');
-	$a->page['end'] .= replace_macros($etpl, [
-		'$baseurl' => System::baseUrl(),
-	]);
-
 	$mode = 'view';
 	$y = 0;
 	$m = 0;
-	$ignored = (x($_REQUEST, 'ignored') ? intval($_REQUEST['ignored']) : 0);
+	$ignored = (!empty($_REQUEST['ignored']) ? intval($_REQUEST['ignored']) : 0);
 
 	$format = 'ical';
 	if ($a->argc == 4 && $a->argv[2] == 'export') {
@@ -117,7 +115,7 @@ function cal_content(App $a)
 	$owner_uid = $a->data['user']['uid'];
 	$nick = $a->data['user']['nickname'];
 
-	if (x($_SESSION, 'remote') && is_array($_SESSION['remote'])) {
+	if (!empty($_SESSION['remote']) && is_array($_SESSION['remote'])) {
 		foreach ($_SESSION['remote'] as $v) {
 			if ($v['uid'] == $a->profile['profile_uid']) {
 				$contact_id = $v['cid'];
@@ -146,7 +144,7 @@ function cal_content(App $a)
 	}
 
 	// get the permissions
-	$sql_perms = item_permissions_sql($owner_uid, $remote_contact, $groups);
+	$sql_perms = Item::getPermissionsSQLByUserId($owner_uid, $remote_contact, $groups);
 	// we only want to have the events of the profile owner
 	$sql_extra = " AND `event`.`cid` = 0 " . $sql_perms;
 
@@ -197,11 +195,11 @@ function cal_content(App $a)
 
 
 		if (!empty($a->argv[2]) && ($a->argv[2] === 'json')) {
-			if (x($_GET, 'start')) {
+			if (!empty($_GET['start'])) {
 				$start = $_GET['start'];
 			}
 
-			if (x($_GET, 'end')) {
+			if (!empty($_GET['end'])) {
 				$finish = $_GET['end'];
 			}
 		}
@@ -235,7 +233,7 @@ function cal_content(App $a)
 			$r = Event::sortByDate($r);
 			foreach ($r as $rr) {
 				$j = $rr['adjust'] ? DateTimeFormat::local($rr['start'], 'j') : DateTimeFormat::utc($rr['start'], 'j');
-				if (!x($links, $j)) {
+				if (empty($links[$j])) {
 					$links[$j] = System::baseUrl() . '/' . $a->cmd . '#link-' . $j;
 				}
 			}
@@ -250,13 +248,13 @@ function cal_content(App $a)
 		}
 
 		// links: array('href', 'text', 'extra css classes', 'title')
-		if (x($_GET, 'id')) {
-			$tpl = get_markup_template("event.tpl");
+		if (!empty($_GET['id'])) {
+			$tpl = Renderer::getMarkupTemplate("event.tpl");
 		} else {
 //			if (Config::get('experimentals','new_calendar')==1){
-			$tpl = get_markup_template("events_js.tpl");
+			$tpl = Renderer::getMarkupTemplate("events_js.tpl");
 //			} else {
-//				$tpl = get_markup_template("events.tpl");
+//				$tpl = Renderer::getMarkupTemplate("events.tpl");
 //			}
 		}
 
@@ -270,7 +268,7 @@ function cal_content(App $a)
 			$events[$key]['item'] = $event_item;
 		}
 
-		$o = replace_macros($tpl, [
+		$o = Renderer::replaceMacros($tpl, [
 			'$baseurl' => System::baseUrl(),
 			'$tabs' => $tabs,
 			'$title' => L10n::t('Events'),
@@ -286,7 +284,7 @@ function cal_content(App $a)
 			"list" => L10n::t("list"),
 		]);
 
-		if (x($_GET, 'id')) {
+		if (!empty($_GET['id'])) {
 			echo $o;
 			killme();
 		}
@@ -304,7 +302,7 @@ function cal_content(App $a)
 		// Respect the export feature setting for all other /cal pages if it's not the own profile
 		if ((local_user() !== intval($owner_uid)) && !Feature::isEnabled($owner_uid, "export_calendar")) {
 			notice(L10n::t('Permission denied.') . EOL);
-			goaway('cal/' . $nick);
+			$a->internalRedirect('cal/' . $nick);
 		}
 
 		// Get the export data by uid
@@ -325,7 +323,7 @@ function cal_content(App $a)
 				$return_path = "cal/" . $nick;
 			}
 
-			goaway($return_path);
+			$a->internalRedirect($return_path);
 		}
 
 		// If nothing went wrong we can echo the export content
