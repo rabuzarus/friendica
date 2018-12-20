@@ -3,6 +3,7 @@
 use Friendica\Core\Addon;
 use Friendica\Core\Config;
 use Friendica\Core\L10n;
+use Friendica\Core\Logger;
 use Friendica\Core\PConfig;
 use Friendica\Core\Update;
 use Friendica\Core\Worker;
@@ -254,5 +255,54 @@ function update_1288() {
 	DBA::e("UPDATE `item-activity` INNER JOIN `item` ON `item`.`iaid` = `item-activity`.`id` SET `item-activity`.`uri-id` = `item`.`uri-id` WHERE `item-activity`.`uri-id` IS NULL OR `item-activity`.`uri-id` = 0");
 	DBA::e("UPDATE `item-content` INNER JOIN `item` ON `item`.`icid` = `item-content`.`id` SET `item-content`.`uri-id` = `item`.`uri-id` WHERE `item-content`.`uri-id` IS NULL OR `item-content`.`uri-id` = 0");
 
+	return Update::SUCCESS;
+}
+
+	
+// Post-update script of PR 5751
+function update_1293()
+{
+	$allGenders = DBA::select('contact', ['id', 'gender']);
+	$allLangs = L10n::getAvailableLanguages();
+	$success = 0;
+	$fail = 0;
+	foreach ($allGenders as $key => $gender) {
+		if ($gender['gender'] != '') {
+			foreach ($allLangs as $key => $lang) {
+
+				$a = new \stdClass();
+				$a->strings = [];
+
+				// First we get the the localizations
+				if (file_exists("view/lang/$lang/strings.php")) {
+					include "view/lang/$lang/strings.php";
+				}
+				if (file_exists("addon/morechoice/lang/$lang/strings.php")) {
+					include "addon/morechoice/lang/$lang/strings.php";
+				}
+
+				$localizedStrings = $a->strings;
+				unset($a);
+
+				$key = array_search($gender['gender'], $localizedStrings);
+				if ($key !== false) {
+					break;
+				}
+
+				// defaulting to empty string
+				$key = '';
+			}
+
+			if ($key == '') {
+				$fail++;
+			} else {
+				DBA::update('contact', ['gender' => $key], ['id' => $gender['id']]);
+				logger::log('Updated contact ' . $gender['id'] . ' to gender ' . $key . ' (was: ' . $gender['gender'] . ')');
+				$success++;
+			}
+		}
+	}
+
+	Logger::log("Gender fix completed. Success: $success. Fail: $fail");
 	return Update::SUCCESS;
 }

@@ -145,15 +145,31 @@ class ContactSelector
 	public static function gender($current = "", $suffix = "")
 	{
 		$o = '';
-		$select = ['', L10n::t('Male'), L10n::t('Female'), L10n::t('Currently Male'), L10n::t('Currently Female'), L10n::t('Mostly Male'), L10n::t('Mostly Female'), L10n::t('Transgender'), L10n::t('Intersex'), L10n::t('Transsexual'), L10n::t('Hermaphrodite'), L10n::t('Neuter'), L10n::t('Non-specific'), L10n::t('Other'), L10n::t('Undecided')];
+		$select = [
+			'EMPTY'            => '',
+			'Male'             => L10n::t('Male'),
+			'Female'           => L10n::t('Female'),
+			'Currently Male'   => L10n::t('Currently Male'),
+			'Currently Female' => L10n::t('Currently Female'),
+			'Mostly Male'      => L10n::t('Mostly Male'),
+			'Mostly Female'    => L10n::t('Mostly Female'),
+			'Transgender'      => L10n::t('Transgender'),
+			'Intersex'         => L10n::t('Intersex'),
+			'Transsexual'      => L10n::t('Transsexual'),
+			'Hermaphrodite'    => L10n::t('Hermaphrodite'),
+			'Neuter'           => L10n::t('Neuter'),
+			'Non-specific'     => L10n::t('Non-specific'),
+			'Other'            => L10n::t('Other'),
+			'Undecided'        => L10n::t('Undecided'),
+		];
 
 		Addon::callHooks('gender_selector', $select);
 
 		$o .= "<select name=\"gender$suffix\" id=\"gender-select$suffix\" size=\"1\" >";
-		foreach ($select as $selection) {
+		foreach ($select as $neutral => $selection) {
 			if ($selection !== 'NOTRANSLATION') {
-				$selected = (($selection == $current) ? ' selected="selected" ' : '');
-				$o .= "<option value=\"$selection\" $selected >$selection</option>";
+				$selected = (($neutral == $current) ? ' selected="selected" ' : '');
+				$o .= "<option value=\"$neutral\" $selected >$selection</option>";
 			}
 		}
 		$o .= '</select>';
@@ -167,16 +183,30 @@ class ContactSelector
 	public static function sexualPreference($current = "", $suffix = "")
 	{
 		$o = '';
-		$select = ['', L10n::t('Males'), L10n::t('Females'), L10n::t('Gay'), L10n::t('Lesbian'), L10n::t('No Preference'), L10n::t('Bisexual'), L10n::t('Autosexual'), L10n::t('Abstinent'), L10n::t('Virgin'), L10n::t('Deviant'), L10n::t('Fetish'), L10n::t('Oodles'), L10n::t('Nonsexual')];
-
+		$select = [
+			'EMPTY'         => '',
+			'Males'         => L10n::t('Males'),
+			'Females'       => L10n::t('Females'),
+			'Gay'           => L10n::t('Gay'),
+			'Lesbian'       => L10n::t('Lesbian'),
+			'No Preference' => L10n::t('No Preference'),
+			'Bisexual'      => L10n::t('Bisexual'),
+			'Autosexual'    => L10n::t('Autosexual'),
+			'Abstinent'     => L10n::t('Abstinent'),
+			'Virgin'        => L10n::t('Virgin'),
+			'Deviant'       => L10n::t('Deviant'),
+			'Fetish'        => L10n::t('Fetish'),
+			'Oodles'        => L10n::t('Oodles'),
+			'Nonsexual'     => L10n::t('Nonsexual'),
+		];
 
 		Addon::callHooks('sexpref_selector', $select);
 
 		$o .= "<select name=\"sexual$suffix\" id=\"sexual-select$suffix\" size=\"1\" >";
-		foreach ($select as $selection) {
+		foreach ($select as $neutral => $selection) {
 			if ($selection !== 'NOTRANSLATION') {
-				$selected = (($selection == $current) ? ' selected="selected" ' : '');
-				$o .= "<option value=\"$selection\" $selected >$selection</option>";
+				$selected = (($neutral == $current) ? ' selected="selected" ' : '');
+				$o .= "<option value=\"$neutral\" $selected >$selection</option>";
 			}
 		}
 		$o .= '</select>';
@@ -189,15 +219,48 @@ class ContactSelector
 	public static function maritalStatus($current = "")
 	{
 		$o = '';
-		$select = ['', L10n::t('Single'), L10n::t('Lonely'), L10n::t('Available'), L10n::t('Unavailable'), L10n::t('Has crush'), L10n::t('Infatuated'), L10n::t('Dating'), L10n::t('Unfaithful'), L10n::t('Sex Addict'), L10n::t('Friends'), L10n::t('Friends/Benefits'), L10n::t('Casual'), L10n::t('Engaged'), L10n::t('Married'), L10n::t('Imaginarily married'), L10n::t('Partners'), L10n::t('Cohabiting'), L10n::t('Common law'), L10n::t('Happy'), L10n::t('Not looking'), L10n::t('Swinger'), L10n::t('Betrayed'), L10n::t('Separated'), L10n::t('Unstable'), L10n::t('Divorced'), L10n::t('Imaginarily divorced'), L10n::t('Widowed'), L10n::t('Uncertain'), L10n::t('It\'s complicated'), L10n::t('Don\'t care'), L10n::t('Ask me')];
+		$select = [
+			'EMPTY'                => '',
+			'Single'               => L10n::t('Single'),
+			'Lonely'               => L10n::t('Lonely'),
+			'Available'            => L10n::t('Available'),
+			'Unavailable'          => L10n::t('Unavailable'),
+			'Has crush'            => L10n::t('Has crush'),
+			'Infatuated'           => L10n::t('Infatuated'),
+			'Dating'               => L10n::t('Dating'),
+			'Unfaithful'           => L10n::t('Unfaithful'),
+			'Sex Addict'           => L10n::t('Sex Addict'),
+			'Friends'              => L10n::t('Friends'),
+			'Friends/Benefits'     => L10n::t('Friends/Benefits'),
+			'Casual'               => L10n::t('Casual'),
+			'Engaged'              => L10n::t('Engaged'),
+			'Married'              => L10n::t('Married'),
+			'Imaginarily married'  => L10n::t('Imaginarily married'),
+			'Partners'             => L10n::t('Partners'),
+			'Cohabiting'           => L10n::t('Cohabiting'),
+			'Common law'           => L10n::t('Common law'),
+			'Happy'                => L10n::t('Happy'),
+			'Not looking'          => L10n::t('Not looking'),
+			'Swinger'              => L10n::t('Swinger'),
+			'Betrayed'             => L10n::t('Betrayed'),
+			'Separated'            => L10n::t('Separated'),
+			'Unstable'             => L10n::t('Unstable'),
+			'Divorced'             => L10n::t('Divorced'),
+			'Imaginarily divorced' => L10n::t('Imaginarily divorced'),
+			'Widowed'              => L10n::t('Widowed'),
+			'Uncertain'            => L10n::t('Uncertain'),
+			'It\'s complicated'    => L10n::t('It\'s complicated'),
+			'Don\'t care'          => L10n::t('Don\'t care'),
+			'Ask me'               => L10n::t('Ask me'),
+		];
 
 		Addon::callHooks('marital_selector', $select);
 
 		$o .= '<select name="marital" id="marital-select" size="1" >';
-		foreach ($select as $selection) {
+		foreach ($select as $neutral => $selection) {
 			if ($selection !== 'NOTRANSLATION') {
-				$selected = (($selection == $current) ? ' selected="selected" ' : '');
-				$o .= "<option value=\"$selection\" $selected >$selection</option>";
+				$selected = (($neutral == $current) ? ' selected="selected" ' : '');
+				$o .= "<option value=\"$neutral\" $selected >$selection</option>";
 			}
 		}
 		$o .= '</select>';
