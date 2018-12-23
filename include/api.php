@@ -1526,12 +1526,14 @@ function api_search($type)
 
 	if (api_user() === false || $user_info === false) { throw new ForbiddenException(); }
 
-	if (empty($_REQUEST['q'])) { throw new BadRequestException("q parameter is required."); }
+	if (empty($_REQUEST['q'])) { throw new BadRequestException('q parameter is required.'); }
 	
 	$searchTerm = trim(rawurldecode($_REQUEST['q']));
 
 	$data = [];
+	$data['status'] = [];
 	$count = 15;
+	$exclude_replies = !empty($_REQUEST['exclude_replies']);
 	if (!empty($_REQUEST['rpp'])) {
 		$count = $_REQUEST['rpp'];
 	} elseif (!empty($_REQUEST['count'])) {
@@ -1550,31 +1552,45 @@ function api_search($type)
 			AND `otype` = ? AND `type` = ? AND `term` = ?",
 			$since_id, local_user(), TERM_OBJ_POST, TERM_HASHTAG, $searchTerm];
 		if ($max_id > 0) {
-			$condition[0] .= " AND `oid` <= ?";
+			$condition[0] .= ' AND `oid` <= ?';
 			$condition[] = $max_id;
 		}
 		$terms = DBA::select('term', ['oid'], $condition, []);
 		$itemIds = [];
-		while($term = DBA::fetch($terms)){ $itemIds[] = $term['oid']; }
+		while ($term = DBA::fetch($terms)) {
+			$itemIds[] = $term['oid'];
+		}
 		DBA::close($terms);
-		$condition = ['id' => empty($itemIds) ? [0] : $itemIds ];
+
+		if (empty($itemIds)) {
+			return api_format_data('statuses', $type, $data);
+		}
+
+		$preCondition = ['`id` IN (' . implode(', ', $itemIds) . ')'];
+		if ($exclude_replies) {
+			$preCondition[] = '`id` = `parent`';
+		}
+
+		$condition = [implode(' AND ', $preCondition)];
 	} else {
 		$condition = ["`id` > ? 
+			" . ($exclude_replies ? " AND `id` = `parent` " : ' ') . "
 			AND (`uid` = 0 OR (`uid` = ? AND NOT `global`))
 			AND `body` LIKE CONCAT('%',?,'%')",
 			$since_id, api_user(), $_REQUEST['q']];
 		if ($max_id > 0) {
-			$condition[0] .= " AND `id` <= ?";
+			$condition[0] .= ' AND `id` <= ?';
 			$condition[] = $max_id;
 		}
-
 	}
 
 	$statuses = Item::selectForUser(api_user(), [], $condition, $params);
 
 	$data['status'] = api_format_items(Item::inArray($statuses), $user_info);
 
-	return api_format_data("statuses", $type, $data);
+	bindComments($data['status']);
+
+	return api_format_data('statuses', $type, $data);
 }
 
 /// @TODO move to top of file or somewhere better
@@ -1655,6 +1671,8 @@ function api_statuses_home_timeline($type)
 			Item::update(['unseen' => false], ['unseen' => true, 'id' => $idarray]);
 		}
 	}
+	
+	bindComments($ret);
 
 	$data = ['status' => $ret];
 	switch ($type) {
@@ -1667,6 +1685,7 @@ function api_statuses_home_timeline($type)
 
 	return api_format_data("statuses", $type, $data);
 }
+
 
 /// @TODO move to top of file or somewhere better
 api_register_func('api/statuses/home_timeline', 'api_statuses_home_timeline', true);
@@ -1737,6 +1756,8 @@ function api_statuses_public_timeline($type)
 
 	$ret = api_format_items($r, $user_info, false, $type);
 
+	bindComments($ret);
+
 	$data = ['status' => $ret];
 	switch ($type) {
 		case "atom":
@@ -1793,6 +1814,8 @@ function api_statuses_networkpublic_timeline($type)
 	$statuses = Item::selectThreadForUser(api_user(), Item::DISPLAY_FIELDLIST, $condition, $params);
 
 	$ret = api_format_items(Item::inArray($statuses), $user_info, false, $type);
+
+	bindComments($ret);
 
 	$data = ['status' => $ret];
 	switch ($type) {
@@ -2197,6 +2220,8 @@ function api_statuses_user_timeline($type)
 
 	$ret = api_format_items(Item::inArray($statuses), $user_info, true, $type);
 
+	bindComments($ret);
+
 	$data = ['status' => $ret];
 	switch ($type) {
 		case "atom":
@@ -2341,6 +2366,8 @@ function api_favorites($type)
 
 		$ret = api_format_items(Item::inArray($statuses), $user_info, false, $type);
 	}
+
+	bindComments($ret);
 
 	$data = ['status' => $ret];
 	switch ($type) {
@@ -5971,6 +5998,42 @@ function api_saved_searches_list($type)
 
 /// @TODO move to top of file or somewhere better
 api_register_func('api/saved_searches/list', 'api_saved_searches_list', true);
+
+/*
+ * Bind comment numbers(friendica_comments: Int) on each statuses page of *_timeline / favorites / search
+ *
+ * @brief Number of comments
+ *
+ * @param object $data [Status, Status]
+ *
+ * @return void
+ */
+function bindComments(&$data) 
+{
+	if (count($data) == 0) {
+		return;
+	}
+	
+	$ids = [];
+	$comments = [];
+	foreach ($data as $item) {
+		$ids[] = $item['id'];
+	}
+
+	$idStr = DBA::escape(implode(', ', $ids));
+	$sql = "SELECT `parent`, COUNT(*) as comments FROM `item` WHERE `parent` IN ($idStr) AND `deleted` = ? AND `gravity`= ? GROUP BY `parent`";
+	$items = DBA::p($sql, 0, GRAVITY_COMMENT);
+	$itemsData = DBA::toArray($items);
+
+	foreach ($itemsData as $item) {
+		$comments[$item['parent']] = $item['comments'];
+	}
+
+	foreach ($data as $idx => $item) {
+		$id = $item['id'];
+		$data[$idx]['friendica_comments'] = isset($comments[$id]) ? $comments[$id] : 0;
+	}
+}
 
 /*
 @TODO Maybe open to implement?
