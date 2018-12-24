@@ -9,6 +9,7 @@ use Friendica\Core\Update;
 use Friendica\Core\Worker;
 use Friendica\Database\DBA;
 use Friendica\Model\Contact;
+use Friendica\Model\GContact;
 use Friendica\Model\Item;
 use Friendica\Model\User;
 use Friendica\Util\DateTimeFormat;
@@ -293,51 +294,57 @@ function update_1288()
 	return Update::SUCCESS;
 }
 
-	
 // Post-update script of PR 5751
-function update_1293()
+function update_1294()
 {
-	$allGenders = DBA::select('contact', ['id', 'gender']);
-	$allLangs = L10n::getAvailableLanguages();
-	$success = 0;
-	$fail = 0;
-	foreach ($allGenders as $key => $gender) {
-		if ($gender['gender'] != '') {
-			foreach ($allLangs as $key => $lang) {
-				$a = new \stdClass();
-				$a->strings = [];
+	$keys = ['gender', 'marital', 'sexual'];
+	foreach ($keys as $translateKey) {
+		$allData = DBA::select('profile', ['id', $translateKey]);
+		$allLangs = L10n::getAvailableLanguages();
+		$success = 0;
+		$fail = 0;
+		foreach ($allData as $key => $data) {
+			$toTranslate = $data[$translateKey];
+			if ($toTranslate != '') {
+				foreach ($allLangs as $key => $lang) {
+					$a = new \stdClass();
+					$a->strings = [];
 
-				// First we get the the localizations
-				if (file_exists("view/lang/$lang/strings.php")) {
-					include "view/lang/$lang/strings.php";
+					// First we get the the localizations
+					if (file_exists("view/lang/$lang/strings.php")) {
+						include "view/lang/$lang/strings.php";
+					}
+					if (file_exists("addon/morechoice/lang/$lang/strings.php")) {
+						include "addon/morechoice/lang/$lang/strings.php";
+					}
+
+					$localizedStrings = $a->strings;
+					unset($a);
+
+					$key = array_search($toTranslate, $localizedStrings);
+					if ($key !== false) {
+						break;
+					}
+
+					// defaulting to empty string
+					$key = '';
 				}
-				if (file_exists("addon/morechoice/lang/$lang/strings.php")) {
-					include "addon/morechoice/lang/$lang/strings.php";
+
+				if ($key == '') {
+					$fail++;
+				} else {
+					DBA::update('profile', [$translateKey => $key], ['id' => $data['id']]);
+					logger::log('Updated contact ' . $data['id'] . " to $translateKey " . $key .
+						' (was: ' . $data[$translateKey] . ')');
+					Worker::add(PRIORITY_LOW, 'ProfileUpdate', $data['id']);		
+					Contact::updateSelfFromUserID($data['id']);
+					GContact::updateForUser($data['id']);
+					$success++;
 				}
-
-				$localizedStrings = $a->strings;
-				unset($a);
-
-				$key = array_search($gender['gender'], $localizedStrings);
-				if ($key !== false) {
-					break;
-				}
-
-				// defaulting to empty string
-				$key = '';
-			}
-
-			if ($key == '') {
-				$fail++;
-			} else {
-				DBA::update('contact', ['gender' => $key], ['id' => $gender['id']]);
-				logger::log('Updated contact ' . $gender['id'] . ' to gender ' . $key .
-					' (was: ' . $gender['gender'] . ')');
-				$success++;
 			}
 		}
-	}
 
-	Logger::log("Gender fix completed. Success: $success. Fail: $fail");
+		Logger::log($translateKey . " fix completed. Success: $success. Fail: $fail");	
+	}
 	return Update::SUCCESS;
 }
