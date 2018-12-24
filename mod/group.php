@@ -20,7 +20,7 @@ use Friendica\Util\Strings;
 
 function group_init(App $a) {
 	if (local_user()) {
-		$a->page['aside'] = Model\Group::sidebarWidget('contacts', 'group', 'extended', (($a->argc > 1) ? $a->argv[1] : 'everyone'));
+		$a->page['aside'] = Model\Group::sidebarWidget('contact', 'group', 'extended', (($a->argc > 1) ? $a->argv[1] : 'everyone'));
 	}
 }
 
@@ -129,7 +129,6 @@ function group_content(App $a) {
 
 		$members = [];
 		$preselected = [];
-		$entry = [];
 
 		$context = $context + [
 			'$title' => $group['name'],
@@ -191,8 +190,6 @@ function group_content(App $a) {
 		$group = $r[0];
 		$members = Model\Contact::getByGroupId($group['id']);
 		$preselected = [];
-		$entry = [];
-		$id = 0;
 
 		if (count($members)) {
 			foreach ($members as $member) {

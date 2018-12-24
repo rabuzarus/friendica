@@ -54,18 +54,21 @@ class Item extends BaseObject
 	const PT_PERSONAL_NOTE = 128;
 
 	// Field list that is used to display the items
-	const DISPLAY_FIELDLIST = ['uid', 'id', 'parent', 'uri', 'thr-parent', 'parent-uri', 'guid', 'network',
-			'commented', 'created', 'edited', 'received', 'verb', 'object-type', 'postopts', 'plink',
-			'wall', 'private', 'starred', 'origin', 'title', 'body', 'file', 'attach', 'language',
-			'content-warning', 'location', 'coord', 'app', 'rendered-hash', 'rendered-html', 'object',
-			'allow_cid', 'allow_gid', 'deny_cid', 'deny_gid', 'item_id',
-			'author-id', 'author-link', 'author-name', 'author-avatar', 'author-network',
-			'owner-id', 'owner-link', 'owner-name', 'owner-avatar', 'owner-network',
-			'contact-id', 'contact-link', 'contact-name', 'contact-avatar',
-			'writable', 'self', 'cid', 'alias',
-			'event-id', 'event-created', 'event-edited', 'event-start', 'event-finish',
-			'event-summary', 'event-desc', 'event-location', 'event-type',
-			'event-nofinish', 'event-adjust', 'event-ignore', 'event-id'];
+	const DISPLAY_FIELDLIST = [
+		'uid', 'id', 'parent', 'uri', 'thr-parent', 'parent-uri', 'guid', 'network',
+		'commented', 'created', 'edited', 'received', 'verb', 'object-type', 'postopts', 'plink',
+		'wall', 'private', 'starred', 'origin', 'title', 'body', 'file', 'attach', 'language',
+		'content-warning', 'location', 'coord', 'app', 'rendered-hash', 'rendered-html', 'object',
+		'allow_cid', 'allow_gid', 'deny_cid', 'deny_gid', 'item_id',
+		'author-id', 'author-link', 'author-name', 'author-avatar', 'author-network',
+		'owner-id', 'owner-link', 'owner-name', 'owner-avatar', 'owner-network',
+		'contact-id', 'contact-link', 'contact-name', 'contact-avatar',
+		'writable', 'self', 'cid', 'alias',
+		'event-id', 'event-created', 'event-edited', 'event-start', 'event-finish',
+		'event-summary', 'event-desc', 'event-location', 'event-type',
+		'event-nofinish', 'event-adjust', 'event-ignore', 'event-id',
+		'delivery_queue_count', 'delivery_queue_done'
+	];
 
 	// Field list that is used to deliver items via the protocols
 	const DELIVER_FIELDLIST = ['uid', 'id', 'parent', 'uri', 'thr-parent', 'parent-uri', 'guid',
@@ -83,9 +86,6 @@ class Item extends BaseObject
 
 	// Field list for "item-content" table that is not present in the "item" table
 	const CONTENT_FIELDLIST = ['language'];
-
-	// Field list for additional delivery data
-	const DELIVERY_DATA_FIELDLIST = ['postopts', 'inform'];
 
 	// All fields in the item table
 	const ITEM_FIELDLIST = ['id', 'uid', 'parent', 'uri', 'parent-uri', 'thr-parent', 'guid',
@@ -194,7 +194,7 @@ class Item extends BaseObject
 
 		// Fetch data from the item-content table whenever there is content there
 		if (self::isLegacyMode()) {
-			$legacy_fields = array_merge(self::DELIVERY_DATA_FIELDLIST, self::MIXED_CONTENT_FIELDLIST);
+			$legacy_fields = array_merge(ItemDeliveryData::LEGACY_FIELD_LIST, self::MIXED_CONTENT_FIELDLIST);
 			foreach ($legacy_fields as $field) {
 				if (empty($row[$field]) && !empty($row['internal-item-' . $field])) {
 					$row[$field] = $row['internal-item-' . $field];
@@ -555,7 +555,7 @@ class Item extends BaseObject
 
 		$fields['item-content'] = array_merge(self::CONTENT_FIELDLIST, self::MIXED_CONTENT_FIELDLIST);
 
-		$fields['item-delivery-data'] = self::DELIVERY_DATA_FIELDLIST;
+		$fields['item-delivery-data'] = array_merge(ItemDeliveryData::LEGACY_FIELD_LIST, ItemDeliveryData::FIELD_LIST);
 
 		$fields['permissionset'] = ['allow_cid', 'allow_gid', 'deny_cid', 'deny_gid'];
 
@@ -730,11 +730,12 @@ class Item extends BaseObject
 			$selected[] = 'interaction';
 		}
 
+		$legacy_fields = array_merge(ItemDeliveryData::LEGACY_FIELD_LIST, self::MIXED_CONTENT_FIELDLIST);
+
 		$selection = [];
 		foreach ($fields as $table => $table_fields) {
 			foreach ($table_fields as $field => $select) {
 				if (empty($selected) || in_array($select, $selected)) {
-					$legacy_fields = array_merge(self::DELIVERY_DATA_FIELDLIST, self::MIXED_CONTENT_FIELDLIST);
 					if (self::isLegacyMode() && in_array($select, $legacy_fields)) {
 						$selection[] = "`item`.`".$select."` AS `internal-item-" . $select . "`";
 					}
@@ -814,7 +815,9 @@ class Item extends BaseObject
 			}
 		}
 
-		$clear_fields = ['bookmark', 'type', 'author-name', 'author-avatar', 'author-link', 'owner-name', 'owner-avatar', 'owner-link'];
+		$delivery_data = ItemDeliveryData::extractFields($fields);
+
+		$clear_fields = ['bookmark', 'type', 'author-name', 'author-avatar', 'author-link', 'owner-name', 'owner-avatar', 'owner-link', 'postopts', 'inform'];
 		foreach ($clear_fields as $field) {
 			if (array_key_exists($field, $fields)) {
 				$fields[$field] = null;
@@ -834,12 +837,6 @@ class Item extends BaseObject
 		} else {
 			$files = null;
 		}
-
-		$delivery_data = ['postopts' => defaults($fields, 'postopts', ''),
-			'inform' => defaults($fields, 'inform', '')];
-
-		$fields['postopts'] = null;
-		$fields['inform'] = null;
 
 		if (!empty($fields)) {
 			$success = DBA::update('item', $fields, $condition);
@@ -918,7 +915,7 @@ class Item extends BaseObject
 				}
 			}
 
-			self::updateDeliveryData($item['id'], $delivery_data);
+			ItemDeliveryData::update($item['id'], $delivery_data);
 
 			self::updateThread($item['id']);
 
@@ -1065,7 +1062,7 @@ class Item extends BaseObject
 			self::delete(['uri' => $item['uri'], 'uid' => 0, 'deleted' => false], $priority);
 		}
 
-		DBA::delete('item-delivery-data', ['iid' => $item['id']]);
+		ItemDeliveryData::delete($item['id']);
 
 		// We don't delete the item-activity here, since we need some of the data for ActivityPub
 
@@ -1242,7 +1239,7 @@ class Item extends BaseObject
 
 	public static function insert($item, $force_parent = false, $notify = false, $dontcache = false)
 	{
-		$a = get_app();
+		$orig_item = $item;
 
 		// If it is a posting where users should get notifications, then define it as wall posting
 		if ($notify) {
@@ -1667,8 +1664,7 @@ class Item extends BaseObject
 			self::insertContent($item);
 		}
 
-		$delivery_data = ['postopts' => defaults($item, 'postopts', ''),
-			'inform' => defaults($item, 'inform', '')];
+		$delivery_data = ItemDeliveryData::extractFields($item);
 
 		unset($item['postopts']);
 		unset($item['inform']);
@@ -1707,10 +1703,7 @@ class Item extends BaseObject
 			if ($spoolpath != "") {
 				$spool = $spoolpath.'/'.$file;
 
-				// Ensure to have the removed data from above again in the item array
-				$item = array_merge($item, $delivery_data);
-
-				file_put_contents($spool, json_encode($item));
+				file_put_contents($spool, json_encode($orig_item));
 				Logger::log("Item wasn't stored - Item was spooled into file ".$file, Logger::DEBUG);
 			}
 			return 0;
@@ -1811,9 +1804,7 @@ class Item extends BaseObject
 			self::updateThread($parent_id);
 		}
 
-		$delivery_data['iid'] = $current_post;
-
-		self::insertDeliveryData($delivery_data);
+		ItemDeliveryData::insert($current_post, $delivery_data);
 
 		DBA::commit();
 
@@ -1855,38 +1846,10 @@ class Item extends BaseObject
 	}
 
 	/**
-	 * @brief Insert a new item delivery data entry
-	 *
-	 * @param array $item The item fields that are to be inserted
-	 */
-	private static function insertDeliveryData($delivery_data)
-	{
-		if (empty($delivery_data['iid']) || (empty($delivery_data['postopts']) && empty($delivery_data['inform']))) {
-			return;
-		}
-
-		DBA::insert('item-delivery-data', $delivery_data);
-	}
-
-	/**
-	 * @brief Update an existing item delivery data entry
-	 *
-	 * @param integer $id The item id that is to be updated
-	 * @param array $item The item fields that are to be inserted
-	 */
-	private static function updateDeliveryData($id, $delivery_data)
-	{
-		if (empty($id) || (empty($delivery_data['postopts']) && empty($delivery_data['inform']))) {
-			return;
-		}
-
-		DBA::update('item-delivery-data', $delivery_data, ['iid' => $id], true);
-	}
-
-	/**
 	 * @brief Insert a new item content entry
 	 *
 	 * @param array $item The item fields that are to be inserted
+	 * @return bool
 	 */
 	private static function insertActivity(&$item)
 	{
