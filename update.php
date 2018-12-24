@@ -293,16 +293,17 @@ function update_1288()
 	return Update::SUCCESS;
 }
 
-	
 // Post-update script of PR 5751
 function update_1293()
 {
-	$allGenders = DBA::select('contact', ['id', 'gender']);
+	$translateKey = 'gender';
+	$allData = DBA::select('profile', ['id', $translateKey]);
 	$allLangs = L10n::getAvailableLanguages();
 	$success = 0;
 	$fail = 0;
-	foreach ($allGenders as $key => $gender) {
-		if ($gender['gender'] != '') {
+	foreach ($allData as $key => $data) {
+		$toTranslate = $data[$translateKey];
+		if ($toTranslate != '') {
 			foreach ($allLangs as $key => $lang) {
 				$a = new \stdClass();
 				$a->strings = [];
@@ -318,7 +319,7 @@ function update_1293()
 				$localizedStrings = $a->strings;
 				unset($a);
 
-				$key = array_search($gender['gender'], $localizedStrings);
+				$key = array_search($toTranslate, $localizedStrings);
 				if ($key !== false) {
 					break;
 				}
@@ -330,14 +331,122 @@ function update_1293()
 			if ($key == '') {
 				$fail++;
 			} else {
-				DBA::update('contact', ['gender' => $key], ['id' => $gender['id']]);
-				logger::log('Updated contact ' . $gender['id'] . ' to gender ' . $key .
-					' (was: ' . $gender['gender'] . ')');
+				DBA::update('profile', [$translateKey => $key], ['id' => $data['id']]);
+				logger::log('Updated contact ' . $data['id'] . " to $translateKey " . $key .
+					' (was: ' . $data[$translateKey] . ')');
+				Worker::add(PRIORITY_LOW, 'ProfileUpdate', $data['id']);		
+				Contact::updateSelfFromUserID($data['id']);
+				GContact::updateForUser($data['id']);
 				$success++;
 			}
 		}
 	}
 
-	Logger::log("Gender fix completed. Success: $success. Fail: $fail");
+	Logger::log($translateKey . " fix completed. Success: $success. Fail: $fail");
+	return Update::SUCCESS;
+}
+// Post-update script of PR 5751
+function update_1294()
+{
+	$translateKey = 'marital';
+	$allData = DBA::select('profile', ['id', $translateKey]);
+	$allLangs = L10n::getAvailableLanguages();
+	$success = 0;
+	$fail = 0;
+	foreach ($allData as $key => $data) {
+		$toTranslate = $data[$translateKey];
+		if ($toTranslate != '') {
+			foreach ($allLangs as $key => $lang) {
+				$a = new \stdClass();
+				$a->strings = [];
+
+				// First we get the the localizations
+				if (file_exists("view/lang/$lang/strings.php")) {
+					include "view/lang/$lang/strings.php";
+				}
+				if (file_exists("addon/morechoice/lang/$lang/strings.php")) {
+					include "addon/morechoice/lang/$lang/strings.php";
+				}
+
+				$localizedStrings = $a->strings;
+				unset($a);
+
+				$key = array_search($toTranslate, $localizedStrings);
+				if ($key !== false) {
+					break;
+				}
+
+				// defaulting to empty string
+				$key = '';
+			}
+
+			if ($key == '') {
+				$fail++;
+			} else {
+				DBA::update('profile', [$translateKey => $key], ['id' => $data['id']]);
+				logger::log('Updated contact ' . $data['id'] . " to $translateKey " . $key .
+					' (was: ' . $data[$translateKey] . ')');
+				Worker::add(PRIORITY_LOW, 'ProfileUpdate', $data['id']);		
+				Contact::updateSelfFromUserID($data['id']);
+				GContact::updateForUser($data['id']);
+				$success++;
+			}
+		}
+	}
+
+	Logger::log($translateKey . " fix completed. Success: $success. Fail: $fail");
+	return Update::SUCCESS;
+}
+
+// Post-update script of PR 5751
+function update_1295()
+{
+	$translateKey = 'sexual';
+	$allData = DBA::select('profile', ['id', $translateKey]);
+	$allLangs = L10n::getAvailableLanguages();
+	$success = 0;
+	$fail = 0;
+	foreach ($allData as $key => $data) {
+		$toTranslate = $data[$translateKey];
+		if ($toTranslate != '') {
+			foreach ($allLangs as $key => $lang) {
+				$a = new \stdClass();
+				$a->strings = [];
+
+				// First we get the the localizations
+				if (file_exists("view/lang/$lang/strings.php")) {
+					include "view/lang/$lang/strings.php";
+				}
+				if (file_exists("addon/morechoice/lang/$lang/strings.php")) {
+					include "addon/morechoice/lang/$lang/strings.php";
+				}
+
+				$localizedStrings = $a->strings;
+				unset($a);
+
+				$key = array_search($toTranslate, $localizedStrings);
+				if ($key !== false) {
+					break;
+				}
+
+				// defaulting to empty string
+				$key = '';
+			}
+
+			if ($key == '') {
+				$fail++;
+			} else {
+				DBA::update('profile', [$translateKey => $key], ['id' => $data['id']]);
+				logger::log('Updated contact ' . $data['id'] . " to $translateKey " . $key .
+					' (was: ' . $data[$translateKey] . ')');
+				Worker::add(PRIORITY_LOW, 'ProfileUpdate', $data['id']);		
+				Contact::updateSelfFromUserID($data['id']);
+				GContact::updateForUser($data['id']);
+				$success++;
+			}
+		}
+	}
+
+	Logger::log($translateKey . " fix completed. Success: $success. Fail: $fail");
 	return Update::SUCCESS;
 }
