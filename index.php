@@ -13,3 +13,4 @@ require_once 'boot.php';
 $a = new App(__DIR__, false);
 
 $a->runFrontend();
+
