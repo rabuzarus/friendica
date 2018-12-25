@@ -854,3 +854,4 @@ function validate_include(&$file)
 	// Simply return flag
 	return $valid;
 }
+
