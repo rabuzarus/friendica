@@ -19,8 +19,8 @@ use Friendica\App;
 use Friendica\Content\Pager;
 use Friendica\Content\Text\BBCode;
 use Friendica\Content\Text\HTML;
-use Friendica\Core\Addon;
 use Friendica\Core\Config;
+use Friendica\Core\Hook;
 use Friendica\Core\L10n;
 use Friendica\Core\Logger;
 use Friendica\Core\Protocol;
@@ -58,7 +58,7 @@ function item_post(App $a) {
 		exit();
 	}
 
-	Addon::callHooks('post_local_start', $_REQUEST);
+	Hook::callAll('post_local_start', $_REQUEST);
 
 	Logger::log('postvars ' . print_r($_REQUEST, true), Logger::DATA);
 
@@ -684,7 +684,7 @@ function item_post(App $a) {
 		exit();
 	}
 
-	Addon::callHooks('post_local',$datarray);
+	Hook::callAll('post_local',$datarray);
 
 	if (!empty($datarray['cancel'])) {
 		Logger::log('mod_item: post cancelled by addon.');
@@ -800,7 +800,7 @@ function item_post(App $a) {
 		}
 	}
 
-	Addon::callHooks('post_local_end', $datarray);
+	Hook::callAll('post_local_end', $datarray);
 
 	if (strlen($emailcc) && $profile_uid == local_user()) {
 		$erecips = explode(',', $emailcc);

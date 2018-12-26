@@ -14,8 +14,8 @@ use Friendica\App;
 use Friendica\Content\OEmbed;
 use Friendica\Content\Text\BBCode;
 use Friendica\Content\Text\HTML;
-use Friendica\Core\Addon;
 use Friendica\Core\Config;
+use Friendica\Core\Hook;
 use Friendica\Core\Logger;
 use Friendica\Core\Protocol;
 use Friendica\Core\System;
@@ -301,12 +301,12 @@ class DFRN
 		$root = self::addHeader($doc, $owner, $author, $alternatelink, true);
 
 		/// @TODO This hook can't work anymore
-		//	Addon::callHooks('atom_feed', $atom);
+		//	\Friendica\Core\Hook::callAll('atom_feed', $atom);
 
 		if (!DBA::isResult($items) || $onlyheader) {
 			$atom = trim($doc->saveXML());
 
-			Addon::callHooks('atom_feed_end', $atom);
+			Hook::callAll('atom_feed_end', $atom);
 
 			return $atom;
 		}
@@ -335,7 +335,7 @@ class DFRN
 
 		$atom = trim($doc->saveXML());
 
-		Addon::callHooks('atom_feed_end', $atom);
+		Hook::callAll('atom_feed_end', $atom);
 
 		return $atom;
 	}

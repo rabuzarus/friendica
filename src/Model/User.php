@@ -7,7 +7,6 @@ namespace Friendica\Model;
 
 use DivineOmega\PasswordExposed;
 use Exception;
-use Friendica\Core\Addon;
 use Friendica\Core\Config;
 use Friendica\Core\Hook;
 use Friendica\Core\L10n;
@@ -678,7 +677,7 @@ class User
 			}
 		}
 
-		Addon::callHooks('register_account', $uid);
+		Hook::callAll('register_account', $uid);
 
 		$return['user'] = $user;
 		return $return;

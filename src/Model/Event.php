@@ -7,7 +7,7 @@ namespace Friendica\Model;
 
 use Friendica\BaseObject;
 use Friendica\Content\Text\BBCode;
-use Friendica\Core\Addon;
+use Friendica\Core\Hook;
 use Friendica\Core\L10n;
 use Friendica\Core\Logger;
 use Friendica\Core\PConfig;
@@ -315,7 +315,7 @@ class Event extends BaseObject
 				$item_id = 0;
 			}
 
-			Addon::callHooks('event_updated', $event['id']);
+			Hook::callAll('event_updated', $event['id']);
 		} else {
 			$event['guid']  = defaults($arr, 'guid', System::createUUID());
 
@@ -365,7 +365,7 @@ class Event extends BaseObject
 				$item_id = Item::insert($item_arr);
 			}
 
-			Addon::callHooks("event_created", $event['id']);
+			Hook::callAll("event_created", $event['id']);
 		}
 
 		return $item_id;
