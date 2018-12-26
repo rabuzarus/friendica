@@ -19,7 +19,7 @@ function hub_return($valid, $body)
 	} else {
 		System::httpExit(404);
 	}
-	killme();
+	exit();
 }
 
 // when receiving an XML feed, always return OK

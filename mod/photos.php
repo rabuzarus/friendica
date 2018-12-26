@@ -187,7 +187,7 @@ function photos_post(App $a)
 
 	if (!$can_post) {
 		notice(L10n::t('Permission denied.') . EOL);
-		killme();
+		exit();
 	}
 
 	$owner_record = User::getOwnerDataById($page_owner_uid);
@@ -195,7 +195,7 @@ function photos_post(App $a)
 	if (!$owner_record) {
 		notice(L10n::t('Contact information unavailable') . EOL);
 		Logger::log('photos_post: unable to locate contact record for page owner. uid=' . $page_owner_uid);
-		killme();
+		exit();
 	}
 
 	if ($a->argc > 3 && $a->argv[2] === 'album') {
@@ -827,7 +827,7 @@ function photos_post(App $a)
 		@unlink($src);
 		$foo = 0;
 		Addon::callHooks('photo_post_end',$foo);
-		killme();
+		exit();
 	}
 
 	$exif = $image->orient($src);
@@ -853,7 +853,7 @@ function photos_post(App $a)
 	if (!$r) {
 		Logger::log('mod/photos.php: photos_post(): image store failed', Logger::DEBUG);
 		notice(L10n::t('Image upload failed.') . EOL);
-		killme();
+		exit();
 	}
 
 	if ($width > 640 || $height > 640) {

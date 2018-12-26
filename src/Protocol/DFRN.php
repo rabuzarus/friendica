@@ -177,7 +177,7 @@ class DFRN
 
 		if (! DBA::isResult($r)) {
 			Logger::log(sprintf('No contact found for nickname=%d', $owner_nick), Logger::WARNING);
-			killme();
+			exit();
 		}
 
 		$owner = $r[0];
@@ -213,7 +213,7 @@ class DFRN
 
 			if (! DBA::isResult($r)) {
 				Logger::log(sprintf('No contact found for uid=%d', $owner_id), Logger::WARNING);
-				killme();
+				exit();
 			}
 
 			$contact = $r[0];
@@ -359,7 +359,7 @@ class DFRN
 		$ret = Item::select(Item::DELIVER_FIELDLIST, $condition);
 		$items = Item::inArray($ret);
 		if (!DBA::isResult($items)) {
-			killme();
+			exit();
 		}
 
 		$item = $items[0];
@@ -367,7 +367,7 @@ class DFRN
 		if ($item['uid'] != 0) {
 			$owner = User::getOwnerDataById($item['uid']);
 			if (!$owner) {
-				killme();
+				exit();
 			}
 		} else {
 			$owner = ['uid' => 0, 'nick' => 'feed-item'];
@@ -1967,7 +1967,7 @@ class DFRN
 		 */
 		if (!DBA::isResult($fcontact)) {
 			// Database record did not get created. Quietly give up.
-			killme();
+			exit();
 		}
 
 		$fid = $r[0]["id"];

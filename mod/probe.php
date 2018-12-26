@@ -12,7 +12,7 @@ function probe_content(App $a)
 	if (!local_user()) {
 		System::httpExit(403, ["title" => L10n::t("Public access denied."),
 			"description" => L10n::t("Only logged in users are permitted to perform a probing.")]);
-		killme();
+		exit();
 	}
 
 	$o  = '<h3>Probe Diagnostic</h3>';
