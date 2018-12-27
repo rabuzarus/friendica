@@ -5,9 +5,8 @@
 namespace Friendica\Content;
 
 use Friendica\App;
-use Friendica\Content\Feature;
-use Friendica\Core\Addon;
 use Friendica\Core\Config;
+use Friendica\Core\Hook;
 use Friendica\Core\L10n;
 use Friendica\Core\Renderer;
 use Friendica\Core\System;
@@ -77,7 +76,7 @@ class Nav
 			'$search_hint'  => L10n::t('@name, !forum, #tags, content')
 		]);
 
-		Addon::callHooks('page_header', $nav);
+		Hook::callAll('page_header', $nav);
 
 		return $nav;
 	}
@@ -108,7 +107,7 @@ class Nav
 		if (local_user() || !$privateapps) {
 			$arr = ['app_menu' => self::$app_menu];
 
-			Addon::callHooks('app_menu', $arr);
+			Hook::callAll('app_menu', $arr);
 
 			self::$app_menu = $arr['app_menu'];
 		}
@@ -279,7 +278,7 @@ class Nav
 			$banner = '<a href="https://friendi.ca"><img id="logo-img" src="images/friendica-32.png" alt="logo" /></a><span id="logo-text"><a href="https://friendi.ca">Friendica</a></span>';
 		}
 
-		Addon::callHooks('nav_info', $nav);
+		Hook::callAll('nav_info', $nav);
 
 		return [
 			'sitelocation' => $sitelocation,

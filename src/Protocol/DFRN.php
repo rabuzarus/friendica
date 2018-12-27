@@ -14,8 +14,8 @@ use Friendica\App;
 use Friendica\Content\OEmbed;
 use Friendica\Content\Text\BBCode;
 use Friendica\Content\Text\HTML;
-use Friendica\Core\Addon;
 use Friendica\Core\Config;
+use Friendica\Core\Hook;
 use Friendica\Core\Logger;
 use Friendica\Core\Protocol;
 use Friendica\Core\System;
@@ -177,7 +177,7 @@ class DFRN
 
 		if (! DBA::isResult($r)) {
 			Logger::log(sprintf('No contact found for nickname=%d', $owner_nick), Logger::WARNING);
-			killme();
+			exit();
 		}
 
 		$owner = $r[0];
@@ -213,7 +213,7 @@ class DFRN
 
 			if (! DBA::isResult($r)) {
 				Logger::log(sprintf('No contact found for uid=%d', $owner_id), Logger::WARNING);
-				killme();
+				exit();
 			}
 
 			$contact = $r[0];
@@ -301,12 +301,12 @@ class DFRN
 		$root = self::addHeader($doc, $owner, $author, $alternatelink, true);
 
 		/// @TODO This hook can't work anymore
-		//	Addon::callHooks('atom_feed', $atom);
+		//	\Friendica\Core\Hook::callAll('atom_feed', $atom);
 
 		if (!DBA::isResult($items) || $onlyheader) {
 			$atom = trim($doc->saveXML());
 
-			Addon::callHooks('atom_feed_end', $atom);
+			Hook::callAll('atom_feed_end', $atom);
 
 			return $atom;
 		}
@@ -335,7 +335,7 @@ class DFRN
 
 		$atom = trim($doc->saveXML());
 
-		Addon::callHooks('atom_feed_end', $atom);
+		Hook::callAll('atom_feed_end', $atom);
 
 		return $atom;
 	}
@@ -359,7 +359,7 @@ class DFRN
 		$ret = Item::select(Item::DELIVER_FIELDLIST, $condition);
 		$items = Item::inArray($ret);
 		if (!DBA::isResult($items)) {
-			killme();
+			exit();
 		}
 
 		$item = $items[0];
@@ -367,7 +367,7 @@ class DFRN
 		if ($item['uid'] != 0) {
 			$owner = User::getOwnerDataById($item['uid']);
 			if (!$owner) {
-				killme();
+				exit();
 			}
 		} else {
 			$owner = ['uid' => 0, 'nick' => 'feed-item'];
@@ -1967,7 +1967,7 @@ class DFRN
 		 */
 		if (!DBA::isResult($fcontact)) {
 			// Database record did not get created. Quietly give up.
-			killme();
+			exit();
 		}
 
 		$fid = $r[0]["id"];

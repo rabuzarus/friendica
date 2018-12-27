@@ -12,7 +12,6 @@ use Friendica\Content\Pager;
 use Friendica\Content\Widget;
 use Friendica\Content\Text\HTML;
 use Friendica\Core\ACL;
-use Friendica\Core\Addon;
 use Friendica\Core\Config;
 use Friendica\Core\Hook;
 use Friendica\Core\L10n;
@@ -358,7 +357,7 @@ function network_content(App $a, $update = 0, $parent = 0)
 
 	/// @TODO Is this really necessary? $a is already available to hooks
 	$arr = ['query' => $a->query_string];
-	Addon::callHooks('network_content_init', $arr);
+	Hook::callAll('network_content_init', $arr);
 
 	$flat_mode = false;
 
@@ -628,7 +627,7 @@ function networkThreadedView(App $a, $update, $parent)
 		$group = DBA::selectFirst('group', ['name'], ['id' => $gid, 'uid' => local_user()]);
 		if (!DBA::isResult($group)) {
 			if ($update) {
-				killme();
+				exit();
 			}
 			notice(L10n::t('No such group') . EOL);
 			$a->internalRedirect('network/0');
@@ -1027,7 +1026,7 @@ function network_tabs(App $a)
 	}
 
 	$arr = ['tabs' => $tabs];
-	Addon::callHooks('network_tabs', $arr);
+	Hook::callAll('network_tabs', $arr);
 
 	$tpl = Renderer::getMarkupTemplate('common_tabs.tpl');
 

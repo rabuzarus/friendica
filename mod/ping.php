@@ -4,12 +4,11 @@
  */
 
 use Friendica\App;
-use Friendica\Content\Feature;
 use Friendica\Content\ForumManager;
 use Friendica\Content\Text\BBCode;
-use Friendica\Core\Addon;
 use Friendica\Core\Cache;
 use Friendica\Core\Config;
+use Friendica\Core\Hook;
 use Friendica\Core\L10n;
 use Friendica\Core\PConfig;
 use Friendica\Core\System;
@@ -124,7 +123,7 @@ function ping_init(App $a)
 				header("Content-type: text/xml");
 				echo XML::fromArray($data, $xml);
 			}
-			killme();
+			exit();
 		}
 
 		$notifs = ping_get_notifications(local_user());
@@ -138,7 +137,7 @@ function ping_init(App $a)
 		if (DBA::isResult($items)) {
 			$items_unseen = Item::inArray($items);
 			$arr = ['items' => $items_unseen];
-			Addon::callHooks('network_ping', $arr);
+			Hook::callAll('network_ping', $arr);
 
 			foreach ($items_unseen as $item) {
 				if ($item['wall']) {
@@ -411,7 +410,7 @@ function ping_init(App $a)
 		echo XML::fromArray(["result" => $data], $xml);
 	}
 
-	killme();
+	exit();
 }
 
 /**

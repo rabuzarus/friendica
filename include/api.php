@@ -11,9 +11,9 @@ use Friendica\Content\ContactSelector;
 use Friendica\Content\Feature;
 use Friendica\Content\Text\BBCode;
 use Friendica\Content\Text\HTML;
-use Friendica\Core\Addon;
 use Friendica\Core\Authentication;
 use Friendica\Core\Config;
+use Friendica\Core\Hook;
 use Friendica\Core\L10n;
 use Friendica\Core\Logger;
 use Friendica\Core\NotificationsManager;
@@ -175,7 +175,7 @@ function api_login(App $a)
 		list($consumer, $token) = $oauth1->verify_request($request);
 		if (!is_null($token)) {
 			$oauth1->loginUser($token->uid);
-			Addon::callHooks('logged_in', $a->user);
+			Hook::callAll('logged_in', $a->user);
 			return;
 		}
 		echo __FILE__.__LINE__.__FUNCTION__ . "<pre>";
@@ -225,7 +225,7 @@ function api_login(App $a)
 	* Addons should never set 'authenticated' except to indicate success - as hooks may be chained
 	* and later addons should not interfere with an earlier one that succeeded.
 	*/
-	Addon::callHooks('authenticate', $addon_auth);
+	Hook::callAll('authenticate', $addon_auth);
 
 	if ($addon_auth['authenticated'] && count($addon_auth['user_record'])) {
 		$record = $addon_auth['user_record'];
@@ -248,7 +248,7 @@ function api_login(App $a)
 
 	$_SESSION["allow_api"] = true;
 
-	Addon::callHooks('logged_in', $a->user);
+	Hook::callAll('logged_in', $a->user);
 }
 
 /**
@@ -3933,10 +3933,10 @@ function api_oauth_request_token()
 		$r = $oauth1->fetch_request_token(OAuthRequest::from_request());
 	} catch (Exception $e) {
 		echo "error=" . OAuthUtil::urlencode_rfc3986($e->getMessage());
-		killme();
+		exit();
 	}
 	echo $r;
-	killme();
+	exit();
 }
 
 /**
@@ -3952,10 +3952,10 @@ function api_oauth_access_token()
 		$r = $oauth1->fetch_access_token(OAuthRequest::from_request());
 	} catch (Exception $e) {
 		echo "error=". OAuthUtil::urlencode_rfc3986($e->getMessage());
-		killme();
+		exit();
 	}
 	echo $r;
-	killme();
+	exit();
 }
 
 /// @TODO move to top of file or somewhere better

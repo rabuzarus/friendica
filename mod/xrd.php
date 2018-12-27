@@ -4,7 +4,7 @@
  */
 
 use Friendica\App;
-use Friendica\Core\Addon;
+use Friendica\Core\Hook;
 use Friendica\Core\Renderer;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
@@ -97,7 +97,7 @@ function xrd_json($a, $uri, $alias, $profile_url, $r)
 	];
 
 	echo json_encode($json);
-	killme();
+	exit();
 }
 
 function xrd_xml($a, $uri, $alias, $profile_url, $r)
@@ -127,8 +127,8 @@ function xrd_xml($a, $uri, $alias, $profile_url, $r)
 	);
 
 	$arr = ['user' => $r, 'xml' => $o];
-	Addon::callHooks('personal_xrd', $arr);
+	Hook::callAll('personal_xrd', $arr);
 
 	echo $arr['xml'];
-	killme();
+	exit();
 }

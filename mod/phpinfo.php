@@ -12,5 +12,5 @@ function phpinfo_content()
 	}
 
 	phpinfo();
-	killme();
+	exit();
 }
