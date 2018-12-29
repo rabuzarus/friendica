@@ -77,6 +77,10 @@ class L10n extends BaseObject
 				}
 			}
 		}
+
+		if (isset($_GET['lang'])) {
+			$_SESSION['language'] = $_GET['lang'];
+		}
 	}
 
 	public static function setLangFromSession()
@@ -111,6 +115,10 @@ class L10n extends BaseObject
 					}
 				}
 			}
+		}
+
+		if (isset($_GET['lang'])) {
+			$lang_list = [$_GET['lang']];
 		}
 
 		// check if we have translations for the preferred languages and pick the 1st that has
