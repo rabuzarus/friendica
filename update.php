@@ -1,9 +1,9 @@
 <?php
 
 use Friendica\Core\Addon;
+use Friendica\BaseObject;
 use Friendica\Core\Config;
 use Friendica\Core\L10n;
-use Friendica\Core\Logger;
 use Friendica\Core\PConfig;
 use Friendica\Core\Update;
 use Friendica\Core\Worker;
@@ -334,8 +334,10 @@ function update_1294()
 					$fail++;
 				} else {
 					DBA::update('profile', [$translateKey => $key], ['id' => $data['id']]);
-					logger::log('Updated contact ' . $data['id'] . " to $translateKey " . $key .
-						' (was: ' . $data[$translateKey] . ')');
+					BaseObject::getApp()
+						->getLogger()
+						->notice('Updated contact', ['action' => 'update', 'contact' => $data['id'], "$translateKey" => $key,
+						'was' => $data[$translateKey]]);
 					Worker::add(PRIORITY_LOW, 'ProfileUpdate', $data['id']);		
 					Contact::updateSelfFromUserID($data['id']);
 					GContact::updateForUser($data['id']);
@@ -344,7 +346,9 @@ function update_1294()
 			}
 		}
 
-		Logger::log($translateKey . " fix completed. Success: $success. Fail: $fail");	
+		BaseObject::getApp()
+			->getLogger()
+			->notice($translateKey . " fix completed", ['action' => 'update', 'translateKey' => $translateKey, 'Success' => $success, 'Fail' => $fail ]);
 	}
 	return Update::SUCCESS;
 }

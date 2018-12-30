@@ -8,8 +8,10 @@ use Detection\MobileDetect;
 use DOMDocument;
 use DOMXPath;
 use Exception;
+use Friendica\Core\Logger;
 use Friendica\Database\DBA;
 use Friendica\Network\HTTPException\InternalServerErrorException;
+use Monolog;
 
 require_once 'boot.php';
 require_once 'include/text.php';
@@ -105,6 +107,11 @@ class App
 	private $isAjax;
 
 	/**
+	 * @var Monolog\Logger The current logger of this App
+	 */
+	private $logger;
+
+	/**
 	 * Register a stylesheet file path to be included in the <head> tag of every page.
 	 * Inclusion is done in App->initHead().
 	 * The path can be absolute or relative to the Friendica installation base folder.
@@ -145,12 +152,15 @@ class App
 	 * @brief App constructor.
 	 *
 	 * @param string $basePath  Path to the app base folder
+	 * @param Monolog\Logger    Logger of this application
 	 * @param bool   $isBackend Whether it is used for backend or frontend (Default true=backend)
 	 *
 	 * @throws Exception if the Basepath is not usable
 	 */
-	public function __construct($basePath, $isBackend = true)
+	public function __construct($basePath, $logger, $isBackend = true)
 	{
+		$this->logger = $logger;
+
 		if (!static::isDirectoryUsable($basePath, false)) {
 			throw new Exception('Basepath ' . $basePath . ' isn\'t usable.');
 		}
@@ -297,6 +307,21 @@ class App
 	}
 
 	/**
+	 * Returns the Logger of the Application
+	 *
+	 * @return Monolog\Logger The Logger
+	 * @throws InternalServerErrorException when the logger isn't created
+	 */
+	public function getLogger()
+	{
+		if (empty($this->logger)) {
+			throw new InternalServerErrorException('Logger of the Application is not defined');
+		}
+
+		return $this->logger;
+	}
+
+	/**
 	 * Reloads the whole app instance
 	 */
 	public function reload()
@@ -323,6 +348,8 @@ class App
 		Core\L10n::init();
 
 		$this->process_id = Core\System::processID('log');
+
+		Logger::loadDefaultHandler($this->logger, $this);
 	}
 
 	/**
