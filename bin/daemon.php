@@ -9,9 +9,9 @@
 
 use Friendica\App;
 use Friendica\Core\Config;
-use Friendica\Core\Logger;
 use Friendica\Core\Worker;
 use Friendica\Database\DBA;
+use Friendica\Util\LoggerFactory;
 
 // Get options
 $shortopts = 'f';
@@ -33,7 +33,7 @@ if (!file_exists("boot.php") && (sizeof($_SERVER["argv"]) != 0)) {
 require_once "boot.php";
 require_once "include/dba.php";
 
-$logger = Logger::create('daemon');
+$logger = LoggerFactory::create('daemon');
 
 $a = new App(dirname(__DIR__), $logger);
 
