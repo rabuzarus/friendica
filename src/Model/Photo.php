@@ -305,6 +305,7 @@ class Photo extends BaseObject
 		return $r;
 	}
 
+
 	/**
 	 * @brief Delete info from table and data from storage
 	 *
@@ -361,7 +362,7 @@ class Photo extends BaseObject
 
 		$fields['edited'] = DateTimeFormat::utcNow();
 
-		return DBA::update("photo", $fields, $conditions);
+		return DBA::update("photo", $fields, $conditions, $old_fields);
 	}
 
 	/**
