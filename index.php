@@ -9,7 +9,7 @@ use Friendica\Util\LoggerFactory;
 
 require_once 'boot.php';
 
-$logger = LoggerFactory::create('app');
+$logger = LoggerFactory::create('index');
 
 // We assume that the index.php is called by a frontend process
 // The value is set to "true" by default in App
