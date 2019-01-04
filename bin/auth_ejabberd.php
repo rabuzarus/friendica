@@ -34,7 +34,6 @@
 
 use Friendica\App;
 use Friendica\Util\ExAuth;
-use Friendica\Util\LoggerFactory;
 
 if (sizeof($_SERVER["argv"]) == 0) {
 	die();
@@ -53,9 +52,7 @@ chdir($directory);
 require_once "boot.php";
 require_once "include/dba.php";
 
-$logger = LoggerFactory::create('auth_ejabberd');
-
-$a = new App(dirname(__DIR__), $logger);
+$a = new App(dirname(__DIR__));
 
 if ($a->getMode()->isNormal()) {
 	$oAuth = new ExAuth();
