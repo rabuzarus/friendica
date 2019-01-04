@@ -34,7 +34,7 @@
 use Friendica\Database\DBA;
 
 if (!defined('DB_UPDATE_VERSION')) {
-	define('DB_UPDATE_VERSION', 1294);
+	define('DB_UPDATE_VERSION', 1295);
 }
 
 return [
@@ -98,6 +98,8 @@ return [
 			"allow_gid" => ["type" => "mediumtext", "comment" => "Access Control - list of allowed groups"],
 			"deny_cid" => ["type" => "mediumtext", "comment" => "Access Control - list of denied contact.id"],
 			"deny_gid" => ["type" => "mediumtext", "comment" => "Access Control - list of denied groups"],
+			"backend-class" => ["type" => "tinytext", "comment" => "Storage backend class"],
+			"backend-ref" => ["type" => "text", "comment" => "Storage backend data reference"],
 		],
 		"indexes" => [
 			"PRIMARY" => ["id"],

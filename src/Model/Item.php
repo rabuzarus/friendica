@@ -26,6 +26,8 @@ use Friendica\Model\FileTag;
 use Friendica\Model\PermissionSet;
 use Friendica\Model\Term;
 use Friendica\Model\ItemURI;
+use Friendica\Model\Photo;
+use Friendica\Model\Attach;
 use Friendica\Object\Image;
 use Friendica\Protocol\Diaspora;
 use Friendica\Protocol\OStatus;
@@ -1030,6 +1032,7 @@ class Item extends BaseObject
 		 * This only applies to photos uploaded from the photos page. Photos inserted into a post do not
 		 * generate a resource-id and therefore aren't intimately linked to the item.
 		 */
+		/// @TODO: this should first check if photo is used elsewhere
 		if (strlen($item['resource-id'])) {
 			Photo::delete(['resource-id' => $item['resource-id'], 'uid' => $item['uid']]);
 		}
@@ -1040,10 +1043,11 @@ class Item extends BaseObject
 		}
 
 		// If item has attachments, drop them
-		foreach (explode(", ", $item['attach']) as $attach) {
+		/// @TODO: this should first check if attachment is used elsewhere
+		foreach (explode(",", $item['attach']) as $attach) {
 			preg_match("|attach/(\d+)|", $attach, $matches);
 			if (is_array($matches) && count($matches) > 1) {
-				DBA::delete('attach', ['id' => $matches[1], 'uid' => $item['uid']]);
+				Attach::delete(['id' => $matches[1], 'uid' => $item['uid']]);
 			}
 		}
 
