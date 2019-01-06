@@ -36,15 +36,8 @@ require_once 'include/text.php';
 class Contact extends BaseObject
 {
 	/**
-	 * Page/profile types
-	 *
-	 * PAGE_NORMAL is a typical personal profile account
-	 * PAGE_SOAPBOX automatically approves all friend requests as Contact::SHARING, (readonly)
-	 * PAGE_COMMUNITY automatically approves all friend requests as Contact::SHARING, but with
-	 *      write access to wall and comments (no email and not included in page owner's ACL lists)
-	 * PAGE_FREELOVE automatically approves all friend requests as full friends (Contact::FRIEND).
-	 *
-	 * @{
+	 * @deprecated since version 2019.03
+	 * @see User::PAGE_FLAGS_NORMAL
 	 */
 	const PAGE_NORMAL    = 0;
 	const PAGE_SOAPBOX   = 1;
@@ -52,6 +45,32 @@ class Contact extends BaseObject
 	const PAGE_FREELOVE  = 3;
 	const PAGE_BLOG      = 4;
 	const PAGE_PRVGROUP  = 5;
+	const PAGE_NORMAL    = User::PAGE_FLAGS_NORMAL;
+	/**
+	 * @deprecated since version 2019.03
+	 * @see User::PAGE_FLAGS_SOAPBOX
+	 */
+	const PAGE_SOAPBOX   = User::PAGE_FLAGS_SOAPBOX;
+	/**
+	 * @deprecated since version 2019.03
+	 * @see User::PAGE_FLAGS_COMMUNITY
+	 */
+	const PAGE_COMMUNITY = User::PAGE_FLAGS_COMMUNITY;
+	/**
+	 * @deprecated since version 2019.03
+	 * @see User::PAGE_FLAGS_FREELOVE
+	 */
+	const PAGE_FREELOVE  = User::PAGE_FLAGS_FREELOVE;
+	/**
+	 * @deprecated since version 2019.03
+	 * @see User::PAGE_FLAGS_BLOG
+	 */
+	const PAGE_BLOG      = User::PAGE_FLAGS_BLOG;
+	/**
+	 * @deprecated since version 2019.03
+	 * @see User::PAGE_FLAGS_PRVGROUP
+	 */
+	const PAGE_PRVGROUP  = User::PAGE_FLAGS_PRVGROUP;
 	/**
 	 * @}
 	 */
@@ -531,8 +550,8 @@ class Contact extends BaseObject
 			$fields['micro'] = System::baseUrl() . '/images/person-48.jpg';
 		}
 
-		$fields['forum'] = $user['page-flags'] == self::PAGE_COMMUNITY;
-		$fields['prv'] = $user['page-flags'] == self::PAGE_PRVGROUP;
+		$fields['forum'] = $user['page-flags'] == User::PAGE_FLAGS_COMMUNITY;
+		$fields['prv'] = $user['page-flags'] == User::PAGE_FLAGS_PRVGROUP;
 
 		// it seems as if ported accounts can have wrong values, so we make sure that now everything is fine.
 		$fields['url'] = System::baseUrl() . '/profile/' . $user['nickname'];
@@ -1462,10 +1481,10 @@ class Contact extends BaseObject
 	{
 		// There are several fields that indicate that the contact or user is a forum
 		// "page-flags" is a field in the user table,
-		// "forum" and "prv" are used in the contact table. They stand for self::PAGE_COMMUNITY and self::PAGE_PRVGROUP.
-		// "community" is used in the gcontact table and is true if the contact is self::PAGE_COMMUNITY or self::PAGE_PRVGROUP.
-		if ((isset($contact['page-flags']) && (intval($contact['page-flags']) == self::PAGE_COMMUNITY))
-			|| (isset($contact['page-flags']) && (intval($contact['page-flags']) == self::PAGE_PRVGROUP))
+		// "forum" and "prv" are used in the contact table. They stand for User::PAGE_FLAGS_COMMUNITY and User::PAGE_FLAGS_PRVGROUP.
+		// "community" is used in the gcontact table and is true if the contact is User::PAGE_FLAGS_COMMUNITY or User::PAGE_FLAGS_PRVGROUP.
+		if ((isset($contact['page-flags']) && (intval($contact['page-flags']) == User::PAGE_FLAGS_COMMUNITY))
+			|| (isset($contact['page-flags']) && (intval($contact['page-flags']) == User::PAGE_FLAGS_PRVGROUP))
 			|| (isset($contact['forum']) && intval($contact['forum']))
 			|| (isset($contact['prv']) && intval($contact['prv']))
 			|| (isset($contact['community']) && intval($contact['community']))
@@ -1972,7 +1991,7 @@ class Contact extends BaseObject
 			/// @TODO Encapsulate this into a function/method
 			$fields = ['uid', 'username', 'email', 'page-flags', 'notify-flags', 'language'];
 			$user = DBA::selectFirst('user', $fields, ['uid' => $importer['uid']]);
-			if (DBA::isResult($user) && !in_array($user['page-flags'], [self::PAGE_SOAPBOX, self::PAGE_FREELOVE, self::PAGE_COMMUNITY])) {
+			if (DBA::isResult($user) && !in_array($user['page-flags'], [User::PAGE_FLAGS_SOAPBOX, User::PAGE_FLAGS_FREELOVE, User::PAGE_FLAGS_COMMUNITY])) {
 				// create notification
 				$hash = Strings::getRandomHex();
 
@@ -1985,7 +2004,7 @@ class Contact extends BaseObject
 				Group::addMember(User::getDefaultGroup($importer['uid'], $contact_record["network"]), $contact_record['id']);
 
 				if (($user['notify-flags'] & NOTIFY_INTRO) &&
-					in_array($user['page-flags'], [self::PAGE_NORMAL])) {
+					in_array($user['page-flags'], [User::PAGE_FLAGS_NORMAL])) {
 
 					notification([
 						'type'         => NOTIFY_INTRO,
@@ -2003,7 +2022,7 @@ class Contact extends BaseObject
 					]);
 
 				}
-			} elseif (DBA::isResult($user) && in_array($user['page-flags'], [self::PAGE_SOAPBOX, self::PAGE_FREELOVE, self::PAGE_COMMUNITY])) {
+			} elseif (DBA::isResult($user) && in_array($user['page-flags'], [User::PAGE_FLAGS_SOAPBOX, User::PAGE_FLAGS_FREELOVE, User::PAGE_FLAGS_COMMUNITY])) {
 				$condition = ['uid' => $importer['uid'], 'url' => $url, 'pending' => true];
 				DBA::update('contact', ['pending' => false], $condition);
 
