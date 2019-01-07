@@ -65,14 +65,7 @@ function ping_init(App $a)
 		$format = 'json';
 	}
 
-	$tags          = [];
-	$comments      = [];
-	$likes         = [];
-	$dislikes      = [];
-	$friends       = [];
-	$posts         = [];
 	$regs          = [];
-	$mails         = [];
 	$notifications = [];
 
 	$intro_count    = 0;
@@ -427,8 +420,6 @@ function ping_get_notifications($uid)
 	$seensql = "NOT";
 	$order   = "DESC";
 	$quit    = false;
-
-	$a = get_app();
 
 	do {
 		$r = q(
