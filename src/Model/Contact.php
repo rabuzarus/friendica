@@ -1178,9 +1178,10 @@ class Contact extends BaseObject
 				$contact = DBA::selectFirst('contact', $fields, ['addr' => $url]);
 			}
 
+			// The link could be provided as http although we stored it as https
+			$ssl_url = str_replace('http://', 'https://', $url);
+
 			if (!DBA::isResult($contact)) {
-				// The link could be provided as http although we stored it as https
-				$ssl_url = str_replace('http://', 'https://', $url);
 				$condition = ['alias' => [$url, Strings::normaliseLink($url), $ssl_url]];
 				$contact = DBA::selectFirst('contact', $fields, $condition);
 			}
@@ -1401,7 +1402,7 @@ class Contact extends BaseObject
 
 		require_once 'include/conversation.php';
 
-		$cid = Self::getIdForURL($contact_url);
+		$cid = self::getIdForURL($contact_url);
 
 		$contact = DBA::selectFirst('contact', ['contact-type', 'network'], ['id' => $cid]);
 		if (!DBA::isResult($contact)) {
