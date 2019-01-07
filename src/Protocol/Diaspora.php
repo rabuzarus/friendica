@@ -736,8 +736,6 @@ class Diaspora
 				Logger::log("Unknown message type ".$type);
 				return false;
 		}
-
-		return true;
 	}
 
 	/**
@@ -2290,8 +2288,6 @@ class Diaspora
 	 */
 	private static function receiveRequestMakeFriend(array $importer, array $contact)
 	{
-		$a = get_app();
-
 		if ($contact["rel"] == Contact::SHARING) {
 			DBA::update(
 				'contact',
@@ -2350,7 +2346,7 @@ class Diaspora
 					$user = DBA::selectFirst('user', [], ['uid' => $importer["uid"]]);
 					if (DBA::isResult($user)) {
 						Logger::log("Sending share message to author ".$author." - Contact: ".$contact["id"]." - User: ".$importer["uid"], Logger::DEBUG);
-						$ret = self::sendShare($user, $contact);
+						self::sendShare($user, $contact);
 					}
 				}
 				return true;
@@ -2384,7 +2380,7 @@ class Diaspora
 
 		$batch = (($ret["batch"]) ? $ret["batch"] : implode("/", array_slice(explode("/", $ret["url"]), 0, 3))."/receive/public");
 
-		$r = q(
+		q(
 			"INSERT INTO `contact` (`uid`, `network`,`addr`,`created`,`url`,`nurl`,`batch`,`name`,`nick`,`photo`,`pubkey`,`notify`,`poll`,`blocked`,`priority`)
 			VALUES (%d, '%s', '%s', '%s', '%s','%s','%s','%s','%s','%s','%s','%s','%s',%d,%d)",
 			intval($importer["uid"]),
@@ -2424,7 +2420,7 @@ class Diaspora
 
 			$hash = Strings::getRandomHex().(string)time();   // Generate a confirm_key
 
-			$ret = q(
+			q(
 				"INSERT INTO `intro` (`uid`, `contact-id`, `blocked`, `knowyou`, `note`, `hash`, `datetime`)
 				VALUES (%d, %d, %d, %d, '%s', '%s', '%s')",
 				intval($importer["uid"]),
@@ -2455,7 +2451,7 @@ class Diaspora
 				$new_relation = Contact::FOLLOWER;
 			}
 
-			$r = q(
+			q(
 				"UPDATE `contact` SET `rel` = %d,
 				`name-date` = '%s',
 				`uri-date` = '%s',
@@ -2473,7 +2469,7 @@ class Diaspora
 			$user = DBA::selectFirst('user', [], ['uid' => $importer["uid"]]);
 			if (DBA::isResult($user)) {
 				Logger::log("Sending share message (Relation: ".$new_relation.") to author ".$author." - Contact: ".$contact_record["id"]." - User: ".$importer["uid"], Logger::DEBUG);
-				$ret = self::sendShare($user, $contact_record);
+				self::sendShare($user, $contact_record);
 
 				// Send the profile data, maybe it weren't transmitted before
 				self::sendProfile($importer["uid"], [$contact_record]);
@@ -3049,8 +3045,6 @@ class Diaspora
 	 */
 	public static function transmit(array $owner, array $contact, $envelope, $public_batch, $queue_run = false, $guid = "", $no_queue = false)
 	{
-		$a = get_app();
-
 		$enabled = intval(Config::get("system", "diaspora_enabled"));
 		if (!$enabled) {
 			return 200;
@@ -3776,15 +3770,14 @@ class Diaspora
 			// Remove the handle
 			$handle = array_pop($signed_parts);
 
-			// Glue the parts together
-			$text = implode(";", $signed_parts);
-
-			$message = ["author" => $handle,
-					"guid" => $guid,
-					"parent_guid" => $parent_guid,
-					"text" => implode(";", $signed_parts),
-					"author_signature" => $item['signature'],
-					"parent_author_signature" => ""];
+			$message = [
+				"author" => $handle,
+				"guid" => $guid,
+				"parent_guid" => $parent_guid,
+				"text" => implode(";", $signed_parts),
+				"author_signature" => $item['signature'],
+				"parent_author_signature" => ""
+			];
 		}
 		return $message;
 	}
@@ -3897,14 +3890,6 @@ class Diaspora
 			return;
 		}
 
-		$conv = [
-			"author" => $cnv["creator"],
-			"guid" => $cnv["guid"],
-			"subject" => $cnv["subject"],
-			"created_at" => DateTimeFormat::utc($cnv['created'], DateTimeFormat::ATOM),
-			"participants" => $cnv["recips"]
-		];
-
 		$body = BBCode::toMarkdown($item["body"]);
 		$created = DateTimeFormat::utc($item["created"], DateTimeFormat::ATOM);
 
@@ -3921,12 +3906,13 @@ class Diaspora
 			$type = "message";
 		} else {
 			$message = [
-					"author" => $cnv["creator"],
-					"guid" => $cnv["guid"],
-					"subject" => $cnv["subject"],
-					"created_at" => DateTimeFormat::utc($cnv['created'], DateTimeFormat::ATOM),
-					"participants" => $cnv["recips"],
-					"message" => $msg];
+				"author" => $cnv["creator"],
+				"guid" => $cnv["guid"],
+				"subject" => $cnv["subject"],
+				"created_at" => DateTimeFormat::utc($cnv['created'], DateTimeFormat::ATOM),
+				"participants" => $cnv["recips"],
+				"message" => $msg
+			];
 
 			$type = "conversation";
 		}

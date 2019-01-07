@@ -393,8 +393,6 @@ class OStatus
 		$authordata = $xpath->query('//author')->item(0);
 		$author = self::fetchAuthor($xpath, $authordata, $importer, $contact, $stored);
 
-		$entry = $xpath->query('/atom:entry');
-
 		// Reverse the order of the entries
 		$entrylist = [];
 
@@ -523,7 +521,6 @@ class OStatus
 
 				if ($valid) {
 					$default_contact = 0;
-					$key = count(self::$itemlist);
 					for ($key = count(self::$itemlist) - 1; $key >= 0; $key--) {
 						if (empty(self::$itemlist[$key]['contact-id'])) {
 							self::$itemlist[$key]['contact-id'] = $default_contact;
@@ -1175,7 +1172,6 @@ class OStatus
 		} else {
 			return "http://".$server[0]."/notice/".$conversation[1];
 		}
-		return $href;
 	}
 
 	/**
@@ -1269,8 +1265,6 @@ class OStatus
 	 */
 	private static function addHeader(DOMDocument $doc, array $owner, $filter, $feed_mode = false)
 	{
-		$a = get_app();
-
 		$root = $doc->createElementNS(NAMESPACE_ATOM1, 'feed');
 		$doc->appendChild($root);
 
@@ -1670,7 +1664,7 @@ class OStatus
 			Logger::log("OStatus entry is from author ".$owner["url"]." - not from ".$item["author-link"].". Quitting.", Logger::DEBUG);
 		}
 
-		$title = self::entryHeader($doc, $entry, $owner, $item, $toplevel);
+		self::entryHeader($doc, $entry, $owner, $item, $toplevel);
 
 		$condition = ['uid' => $owner["uid"], 'guid' => $repeated_guid, 'private' => false,
 			'network' => [Protocol::DFRN, Protocol::DIASPORA, Protocol::OSTATUS]];
@@ -1733,7 +1727,7 @@ class OStatus
 			Logger::log("OStatus entry is from author ".$owner["url"]." - not from ".$item["author-link"].". Quitting.", Logger::DEBUG);
 		}
 
-		$title = self::entryHeader($doc, $entry, $owner, $item, $toplevel);
+		self::entryHeader($doc, $entry, $owner, $item, $toplevel);
 
 		$verb = NAMESPACE_ACTIVITY_SCHEMA."favorite";
 		self::entryContent($doc, $entry, $item, $owner, "Favorite", $verb, false);

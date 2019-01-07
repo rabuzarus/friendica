@@ -286,9 +286,6 @@ class XML
 
 		//Initializations
 		$xml_array = [];
-		$parents = [];
-		$opened_tags = [];
-		$arr = [];
 
 		$current = &$xml_array; // Reference
 

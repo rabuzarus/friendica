@@ -320,7 +320,6 @@ class Feed {
 				$href = "";
 				$length = "";
 				$type = "";
-				$title = "";
 
 				foreach ($enclosure->attributes AS $attribute) {
 					if (in_array($attribute->name, ["url", "href"])) {

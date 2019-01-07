@@ -164,7 +164,6 @@ class Photo extends BaseObject
 	 */
 	public static function getImageForPhoto(array $photo)
 	{
-		$data = "";
 		if ($photo["backend-class"] == "") {
 			// legacy data storage in "data" column
 			$i = self::selectFirst(["data"], ["id" => $photo["id"]]);
@@ -257,7 +256,6 @@ class Photo extends BaseObject
 		// if is an existing photo, reuse same backend
 		$data = "";
 		$backend_ref = "";
-		$backend_class = "";
 
 		if (DBA::isResult($existing_photo)) {
 			$backend_ref = (string)$existing_photo["backend-ref"];
@@ -265,6 +263,7 @@ class Photo extends BaseObject
 		} else {
 			$backend_class = StorageManager::getBackend();
 		}
+
 		if ($backend_class === "") {
 			$data = $Image->asString();
 		} else {

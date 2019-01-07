@@ -61,8 +61,6 @@ class DBClean {
 	 * 10:	Old conversations.
 	 */
 	private static function removeOrphans($stage) {
-		$count = 0;
-
 		// We split the deletion in many small tasks
 		$limit = Config::get('system', 'dbclean-expire-limit', 1000);
 
