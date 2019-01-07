@@ -918,7 +918,6 @@ function item_photo_menu($item) {
  */
 function builtin_activity_puller($item, &$conv_responses) {
 	foreach ($conv_responses as $mode => $v) {
-		$url = '';
 		$sparkle = '';
 
 		switch ($mode) {
