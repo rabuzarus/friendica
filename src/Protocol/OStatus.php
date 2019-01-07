@@ -1654,7 +1654,7 @@ class OStatus
 		}
 
 		if (!DBA::isResult($r)) {
-			$contact = owner;
+			$contact = $owner;
 		}
 
 		if (!isset($contact["poll"])) {
