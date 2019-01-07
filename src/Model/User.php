@@ -704,6 +704,7 @@ class User
 	 * @param string $siteurl
 	 * @param string $password Plaintext password
 	 * @return NULL|boolean from notification() and email() inherited
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 */
 	public static function sendRegisterPendingEmail($user, $sitename, $siteurl, $password)
 	{
@@ -739,6 +740,7 @@ class User
 	 * @param string $siteurl
 	 * @param string $password Plaintext password
 	 * @return NULL|boolean from notification() and email() inherited
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 */
 	public static function sendRegisterOpenEmail($user, $sitename, $siteurl, $password)
 	{

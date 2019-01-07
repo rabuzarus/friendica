@@ -1049,6 +1049,7 @@ class Contact extends BaseObject
 	 *
 	 * @param int $uid uid
 	 * @return array
+	 * @throws \Exception
 	 */
 	public static function getUngroupedList($uid)
 	{

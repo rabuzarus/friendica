@@ -244,6 +244,7 @@ class GContact
 	 * @param integer $uid id
 	 * @param integer $cid id
 	 * @return integer
+	 * @throws Exception
 	 */
 	public static function countCommonFriends($uid, $cid)
 	{
@@ -271,6 +272,7 @@ class GContact
 	 * @param integer $uid  id
 	 * @param integer $zcid zcid
 	 * @return integer
+	 * @throws Exception
 	 */
 	public static function countCommonFriendsZcid($uid, $zcid)
 	{
@@ -297,6 +299,7 @@ class GContact
 	 * @param integer $limit   optional, default 9999
 	 * @param boolean $shuffle optional, default false
 	 * @return object
+	 * @throws Exception
 	 */
 	public static function commonFriends($uid, $cid, $start = 0, $limit = 9999, $shuffle = false)
 	{
@@ -335,6 +338,7 @@ class GContact
 	 * @param integer $limit   optional, default 9999
 	 * @param boolean $shuffle optional, default false
 	 * @return object
+	 * @throws Exception
 	 */
 	public static function commonFriendsZcid($uid, $zcid, $start = 0, $limit = 9999, $shuffle = false)
 	{
@@ -364,6 +368,7 @@ class GContact
 	 * @param integer $uid user
 	 * @param integer $cid cid
 	 * @return integer
+	 * @throws Exception
 	 */
 	public static function countAllFriends($uid, $cid)
 	{
@@ -389,6 +394,7 @@ class GContact
 	 * @param integer $start optional, default 0
 	 * @param integer $limit optional, default 80
 	 * @return array
+	 * @throws Exception
 	 */
 	public static function allFriends($uid, $cid, $start = 0, $limit = 80)
 	{
@@ -1055,6 +1061,7 @@ class GContact
 
 	/**
 	 * @return string
+	 * @throws Exception
 	 */
 	public static function getRandomUrl()
 	{

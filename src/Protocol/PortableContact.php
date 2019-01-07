@@ -1524,6 +1524,7 @@ class PortableContact
 	/**
 	 * @brief Returns a list of all known servers
 	 * @return array List of server urls
+	 * @throws Exception
 	 */
 	public static function serverlist()
 	{
