@@ -30,6 +30,7 @@ class StorageManager
 	/**
 	 * @brief Return current storage backend class
 	 * @return string
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 */
 	public static function getBackend()
 	{
@@ -51,7 +52,8 @@ class StorageManager
 	/**
 	 * @brief Set current storage backend class
 	 *
-	 * @param string  $class  Backend class name
+	 * @param string $class Backend class name
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 */
 	public static function setBackend($class)
 	{
@@ -71,12 +73,12 @@ class StorageManager
 	}
 
 
-
 	/**
 	 * @brief Register a storage backend class
 	 *
-	 * @param string  $name   User readable backend name
-	 * @param string  $class  Backend class name
+	 * @param string $name  User readable backend name
+	 * @param string $class Backend class name
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 */
 	public static function register($name, $class)
 	{
@@ -90,7 +92,8 @@ class StorageManager
 	/**
 	 * @brief Unregister a storage backend class
 	 *
-	 * @param string  $name   User readable backend name
+	 * @param string $name User readable backend name
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 */
 	public static function unregister($name)
 	{
@@ -109,7 +112,8 @@ class StorageManager
 	 * @param string  $dest    Destination storage class name
 	 * @param array   $tables  Tables to look in for resources. Optional, defaults to ['photo', 'attach']
 	 *
-	 * @retur int Number of moved resources
+	 * @throws \Exception
+	 * @return int Number of moved resources
 	 */
 	public static function move($dest, $tables = null)
 	{

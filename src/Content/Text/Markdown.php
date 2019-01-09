@@ -25,6 +25,7 @@ class Markdown extends BaseObject
 	 * @param string $text
 	 * @param bool   $hardwrap
 	 * @return string
+	 * @throws \Exception
 	 */
 	public static function convert($text, $hardwrap = true) {
 		$stamp1 = microtime(true);
@@ -44,6 +45,8 @@ class Markdown extends BaseObject
 	 *
 	 * @param array $match Matching values for the callback
 	 * @return string Replaced mention
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
+	 * @throws \ImagickException
 	 */
 	private static function diasporaMention2BBCodeCallback($match)
 	{

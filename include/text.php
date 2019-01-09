@@ -145,6 +145,7 @@ function redir_private_images($a, &$item)
  *
  * @param string $text String with bbcode.
  * @return string Formattet HTML.
+ * @throws \Friendica\Network\HTTPException\InternalServerErrorException
  */
 function prepare_text($text) {
 	if (stristr($text, '[nosmile]')) {

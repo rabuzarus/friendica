@@ -138,13 +138,14 @@ class Logger extends BaseObject
 
 	/**
 	 * System is unusable.
+	 *
 	 * @see LoggerInterface::emergency()
 	 *
 	 * @param string $message
 	 * @param array  $context
 	 *
 	 * @return void
-	 *
+	 * @throws \Exception
 	 */
 	public static function emergency($message, $context = [])
 	{
@@ -168,7 +169,7 @@ class Logger extends BaseObject
 	 * @param array  $context
 	 *
 	 * @return void
-	 *
+	 * @throws \Exception
 	 */
 	public static function alert($message, $context = [])
 	{
@@ -191,7 +192,7 @@ class Logger extends BaseObject
 	 * @param array  $context
 	 *
 	 * @return void
-	 *
+	 * @throws \Exception
 	 */
 	public static function critical($message, $context = [])
 	{
@@ -213,7 +214,7 @@ class Logger extends BaseObject
 	 * @param array  $context
 	 *
 	 * @return void
-	 *
+	 * @throws \Exception
 	 */
 	public static function error($message, $context = [])
 	{
@@ -238,7 +239,7 @@ class Logger extends BaseObject
 	 * @param array  $context
 	 *
 	 * @return void
-	 *
+	 * @throws \Exception
 	 */
 	public static function warning($message, $context = [])
 	{
@@ -259,7 +260,7 @@ class Logger extends BaseObject
 	 * @param array  $context
 	 *
 	 * @return void
-	 *
+	 * @throws \Exception
 	 */
 	public static function notice($message, $context = [])
 	{
@@ -282,7 +283,7 @@ class Logger extends BaseObject
 	 * @param array  $context
 	 *
 	 * @return void
-	 *
+	 * @throws \Exception
 	 */
 	public static function info($message, $context = [])
 	{
@@ -303,6 +304,7 @@ class Logger extends BaseObject
 	 * @param array  $context
 	 *
 	 * @return void
+	 * @throws \Exception
 	 */
 	public static function debug($message, $context = [])
 	{
@@ -315,42 +317,44 @@ class Logger extends BaseObject
 		self::getApp()->saveTimestamp($stamp1, 'file');
 	}
 
-    /**
-     * @brief Logs the given message at the given log level
-     *
-     * @param string $msg
-     * @param string $level
+	/**
+	 * @brief Logs the given message at the given log level
 	 *
-	 * @deprecated since 2019.03 Use Logger::debug() Logger::info() , ... instead
-     */
-    public static function log($msg, $level = LogLevel::INFO)
-    {
-		if (!isset(self::$logger)) {
-			return;
-		}
-
-        $stamp1 = microtime(true);
-		self::$logger->log($level, $msg);
-        self::getApp()->saveTimestamp($stamp1, "file");
-    }
-
-    /**
-     * @brief An alternative logger for development.
-     * Works largely as log() but allows developers
-     * to isolate particular elements they are targetting
-     * personally without background noise
-     *
-     * @param string $msg
+	 * @param string $msg
 	 * @param string $level
-     */
-    public static function devLog($msg, $level = LogLevel::DEBUG)
-    {
+	 *
+	 * @throws \Exception
+	 * @deprecated since 2019.03 Use Logger::debug() Logger::info() , ... instead
+	 */
+	public static function log($msg, $level = LogLevel::INFO)
+	{
 		if (!isset(self::$logger)) {
 			return;
 		}
 
-        $stamp1 = microtime(true);
-        self::$devLogger->log($level, $msg);
-        self::getApp()->saveTimestamp($stamp1, "file");
-    }
+		$stamp1 = microtime(true);
+		self::$logger->log($level, $msg);
+		self::getApp()->saveTimestamp($stamp1, "file");
+	}
+
+	/**
+	 * @brief An alternative logger for development.
+	 * Works largely as log() but allows developers
+	 * to isolate particular elements they are targetting
+	 * personally without background noise
+	 *
+	 * @param string $msg
+	 * @param string $level
+	 * @throws \Exception
+	 */
+	public static function devLog($msg, $level = LogLevel::DEBUG)
+	{
+		if (!isset(self::$logger)) {
+			return;
+		}
+
+		$stamp1 = microtime(true);
+		self::$devLogger->log($level, $msg);
+		self::getApp()->saveTimestamp($stamp1, "file");
+	}
 }

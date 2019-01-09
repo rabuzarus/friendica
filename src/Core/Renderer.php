@@ -47,15 +47,16 @@ class Renderer extends BaseObject
 		'internal' => '',
 		'smarty3' => '}}'
     ];
-    
-    /**
-     * @brief This is our template processor
-     *
-     * @param string|FriendicaSmarty $s The string requiring macro substitution or an instance of FriendicaSmarty
-     * @param array $r                  key value pairs (search => replace)
-     * 
-     * @return string substituted string
-    */
+
+	/**
+	 * @brief This is our template processor
+	 *
+	 * @param string|FriendicaSmarty $s The string requiring macro substitution or an instance of FriendicaSmarty
+	 * @param array                  $r key value pairs (search => replace)
+	 *
+	 * @return string substituted string
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
+	 */
     public static function replaceMacros($s, $r)
     {
         $stamp1 = microtime(true);
@@ -77,14 +78,15 @@ class Renderer extends BaseObject
         return $output;
     }
 
-    /**
-     * @brief Load a given template $s
-     *
-     * @param string $s     Template to load.
-     * @param string $root  Optional.
-     * 
-     * @return string template.
-     */
+	/**
+	 * @brief Load a given template $s
+	 *
+	 * @param string $s    Template to load.
+	 * @param string $root Optional.
+	 *
+	 * @return string template.
+	 * @throws Exception
+	 */
     public static function getMarkupTemplate($s, $root = '')
     {
         $stamp1 = microtime(true);
@@ -128,7 +130,7 @@ class Renderer extends BaseObject
 	 * If $name is not defined, return engine defined by theme,
 	 * or default
 	 *
-	 * @return object Template Engine instance
+	 * @return ITemplateEngine Template Engine instance
 	 */
 	public static function getTemplateEngine()
 	{

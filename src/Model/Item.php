@@ -258,6 +258,7 @@ class Item extends BaseObject
 	 * @brief Fills an array with data from an item query
 	 *
 	 * @param object $stmt statement object
+	 * @param bool   $do_close
 	 * @return array Data array
 	 */
 	public static function inArray($stmt, $do_close = true) {
@@ -281,6 +282,7 @@ class Item extends BaseObject
 	 * @param array $condition array of fields for condition
 	 *
 	 * @return boolean Are there rows for that condition?
+	 * @throws \Exception
 	 */
 	public static function exists($condition) {
 		$stmt = self::select(['id'], $condition, ['limit' => 1]);
@@ -301,11 +303,12 @@ class Item extends BaseObject
 	 *
 	 * @brief Retrieve a single record from a table
 	 * @param integer $uid User ID
-	 * @param array  $fields
-	 * @param array  $condition
-	 * @param array  $params
+	 * @param array   $selected
+	 * @param array   $condition
+	 * @param array   $params
 	 * @return bool|array
-	 * @see DBA::select
+	 * @throws \Exception
+	 * @see   DBA::select
 	 */
 	public static function selectFirstForUser($uid, array $selected = [], array $condition = [], $params = [])
 	{
@@ -321,12 +324,13 @@ class Item extends BaseObject
 	/**
 	 * @brief Select rows from the item table for a given user
 	 *
-	 * @param integer $uid User ID
-	 * @param array  $selected  Array of selected fields, empty for all
-	 * @param array  $condition Array of fields for condition
-	 * @param array  $params    Array of several parameters
+	 * @param integer $uid       User ID
+	 * @param array   $selected  Array of selected fields, empty for all
+	 * @param array   $condition Array of fields for condition
+	 * @param array   $params    Array of several parameters
 	 *
 	 * @return boolean|object
+	 * @throws \Exception
 	 */
 	public static function selectForUser($uid, array $selected = [], array $condition = [], $params = [])
 	{
@@ -343,11 +347,12 @@ class Item extends BaseObject
 	 * Retrieve a single record from the item table and returns it in an associative array
 	 *
 	 * @brief Retrieve a single record from a table
-	 * @param array  $fields
-	 * @param array  $condition
-	 * @param array  $params
+	 * @param array $fields
+	 * @param array $condition
+	 * @param array $params
 	 * @return bool|array
-	 * @see DBA::select
+	 * @throws \Exception
+	 * @see   DBA::select
 	 */
 	public static function selectFirst(array $fields = [], array $condition = [], $params = [])
 	{
@@ -367,11 +372,12 @@ class Item extends BaseObject
 	/**
 	 * @brief Select rows from the item table
 	 *
-	 * @param array  $selected  Array of selected fields, empty for all
-	 * @param array  $condition Array of fields for condition
-	 * @param array  $params    Array of several parameters
+	 * @param array $selected  Array of selected fields, empty for all
+	 * @param array $condition Array of fields for condition
+	 * @param array $params    Array of several parameters
 	 *
 	 * @return boolean|object
+	 * @throws \Exception
 	 */
 	public static function select(array $selected = [], array $condition = [], $params = [])
 	{
@@ -407,12 +413,13 @@ class Item extends BaseObject
 	/**
 	 * @brief Select rows from the starting post in the item table
 	 *
-	 * @param integer $uid User ID
-	 * @param array  $fields    Array of selected fields, empty for all
-	 * @param array  $condition Array of fields for condition
-	 * @param array  $params    Array of several parameters
+	 * @param integer $uid       User ID
+	 * @param array   $selected
+	 * @param array   $condition Array of fields for condition
+	 * @param array   $params    Array of several parameters
 	 *
 	 * @return boolean|object
+	 * @throws \Exception
 	 */
 	public static function selectThreadForUser($uid, array $selected = [], array $condition = [], $params = [])
 	{
@@ -430,11 +437,12 @@ class Item extends BaseObject
 	 *
 	 * @brief Retrieve a single record from a table
 	 * @param integer $uid User ID
-	 * @param array  $selected
-	 * @param array  $condition
-	 * @param array  $params
+	 * @param array   $selected
+	 * @param array   $condition
+	 * @param array   $params
 	 * @return bool|array
-	 * @see DBA::select
+	 * @throws \Exception
+	 * @see   DBA::select
 	 */
 	public static function selectFirstThreadForUser($uid, array $selected = [], array $condition = [], $params = [])
 	{
@@ -451,11 +459,12 @@ class Item extends BaseObject
 	 * Retrieve a single record from the starting post in the item table and returns it in an associative array
 	 *
 	 * @brief Retrieve a single record from a table
-	 * @param array  $fields
-	 * @param array  $condition
-	 * @param array  $params
+	 * @param array $fields
+	 * @param array $condition
+	 * @param array $params
 	 * @return bool|array
-	 * @see DBA::select
+	 * @throws \Exception
+	 * @see   DBA::select
 	 */
 	public static function selectFirstThread(array $fields = [], array $condition = [], $params = [])
 	{
@@ -474,11 +483,12 @@ class Item extends BaseObject
 	/**
 	 * @brief Select rows from the starting post in the item table
 	 *
-	 * @param array  $selected  Array of selected fields, empty for all
-	 * @param array  $condition Array of fields for condition
-	 * @param array  $params    Array of several parameters
+	 * @param array $selected  Array of selected fields, empty for all
+	 * @param array $condition Array of fields for condition
+	 * @param array $params    Array of several parameters
 	 *
 	 * @return boolean|object
+	 * @throws \Exception
 	 */
 	public static function selectThread(array $selected = [], array $condition = [], $params = [])
 	{
@@ -524,6 +534,7 @@ class Item extends BaseObject
 	/**
 	 * @brief Returns a list of fields that are associated with the item table
 	 *
+	 * @param $usermode
 	 * @return array field list
 	 */
 	private static function fieldlist($usermode)
@@ -606,10 +617,11 @@ class Item extends BaseObject
 	/**
 	 * @brief Returns all needed "JOIN" commands for the "select" functions
 	 *
-	 * @param integer $uid User ID
-	 * @param string $sql_commands The parts of the built SQL commands in the "select" functions
-	 * @param boolean $thread_mode Called for the items (false) or for the threads (true)
+	 * @param integer $uid          User ID
+	 * @param string  $sql_commands The parts of the built SQL commands in the "select" functions
+	 * @param boolean $thread_mode  Called for the items (false) or for the threads (true)
 	 *
+	 * @param         $user_mode
 	 * @return string The SQL joins for the "select" functions
 	 */
 	private static function constructJoins($uid, $sql_commands, $thread_mode, $user_mode)
@@ -772,7 +784,7 @@ class Item extends BaseObject
 	/**
 	 * @brief Update existing item entries
 	 *
-	 * @param array $fields The fields that are to be changed
+	 * @param array $fields    The fields that are to be changed
 	 * @param array $condition The condition for finding the item entries
 	 *
 	 * In the future we may have to change permissions as well.
@@ -781,6 +793,7 @@ class Item extends BaseObject
 	 * A return value of "0" doesn't mean an error - but that 0 rows had been changed.
 	 *
 	 * @return integer|boolean number of affected rows - or "false" if there was an error
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 */
 	public static function update(array $fields, array $condition)
 	{
@@ -927,8 +940,9 @@ class Item extends BaseObject
 	/**
 	 * @brief Delete an item and notify others about it - if it was ours
 	 *
-	 * @param array $condition The condition for finding the item entries
-	 * @param integer $priority Priority for the notification
+	 * @param array   $condition The condition for finding the item entries
+	 * @param integer $priority  Priority for the notification
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 */
 	public static function delete($condition, $priority = PRIORITY_HIGH)
 	{
@@ -942,8 +956,9 @@ class Item extends BaseObject
 	/**
 	 * @brief Delete an item for an user and notify others about it - if it was ours
 	 *
-	 * @param array $condition The condition for finding the item entries
-	 * @param integer $uid User who wants to delete this item
+	 * @param array   $condition The condition for finding the item entries
+	 * @param integer $uid       User who wants to delete this item
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 */
 	public static function deleteForUser($condition, $uid)
 	{
@@ -968,10 +983,11 @@ class Item extends BaseObject
 	/**
 	 * @brief Delete an item and notify others about it - if it was ours
 	 *
-	 * @param integer $item_id Item ID that should be delete
+	 * @param integer $item_id  Item ID that should be delete
 	 * @param integer $priority Priority for the notification
 	 *
 	 * @return boolean success
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 */
 	public static function deleteById($item_id, $priority = PRIORITY_HIGH)
 	{
@@ -1845,6 +1861,7 @@ class Item extends BaseObject
 	 *
 	 * @param array $item The item fields that are to be inserted
 	 * @return bool
+	 * @throws \Exception
 	 */
 	private static function insertActivity(&$item)
 	{
@@ -1891,6 +1908,7 @@ class Item extends BaseObject
 	 * @brief Insert a new item content entry
 	 *
 	 * @param array $item The item fields that are to be inserted
+	 * @throws \Exception
 	 */
 	private static function insertContent(&$item)
 	{
@@ -1929,8 +1947,10 @@ class Item extends BaseObject
 	/**
 	 * @brief Update existing item content entries
 	 *
-	 * @param array $item The item fields that are to be changed
+	 * @param array $item      The item fields that are to be changed
 	 * @param array $condition The condition for finding the item content entries
+	 * @return bool
+	 * @throws \Exception
 	 */
 	private static function updateActivity($item, $condition)
 	{
@@ -1955,8 +1975,9 @@ class Item extends BaseObject
 	/**
 	 * @brief Update existing item content entries
 	 *
-	 * @param array $item The item fields that are to be changed
+	 * @param array $item      The item fields that are to be changed
 	 * @param array $condition The condition for finding the item content entries
+	 * @throws \Exception
 	 */
 	private static function updateContent($item, $condition)
 	{
@@ -1984,6 +2005,7 @@ class Item extends BaseObject
 	 *
 	 * @param integer $itemid      Item ID that should be added
 	 * @param string  $signed_text Original text (for Diaspora signatures), JSON encoded.
+	 * @throws \Exception
 	 */
 	public static function distribute($itemid, $signed_text = '')
 	{
@@ -2080,6 +2102,7 @@ class Item extends BaseObject
 	 * @param integer $itemid Item ID that should be added
 	 * @param array   $item   The item entry that will be stored
 	 * @param integer $uid    The user that will receive the item entry
+	 * @throws \Exception
 	 */
 	private static function storeForUser($itemid, $item, $uid)
 	{
@@ -2127,6 +2150,7 @@ class Item extends BaseObject
 	 * It is planned that in the future we will store public item entries only once.
 	 *
 	 * @param integer $itemid Item ID that should be added
+	 * @throws \Exception
 	 */
 	public static function addShadow($itemid)
 	{
@@ -2188,6 +2212,7 @@ class Item extends BaseObject
 	 * This function does the same like the function above - but for comments
 	 *
 	 * @param integer $itemid Item ID that should be added
+	 * @throws \Exception
 	 */
 	public static function addShadowPost($itemid)
 	{
@@ -2244,9 +2269,12 @@ class Item extends BaseObject
 		}
 	}
 
-	 /**
+	/**
 	 * Adds a language specification in a "language" element of given $arr.
 	 * Expects "body" element to exist in $arr.
+	 *
+	 * @param $item
+	 * @throws \Text_LanguageDetect_Exception
 	 */
 	private static function addLanguageToItemArray(&$item)
 	{
@@ -2292,10 +2320,11 @@ class Item extends BaseObject
 	/**
 	 * generate an unique URI
 	 *
-	 * @param integer $uid User id
-	 * @param string $guid An existing GUID (Otherwise it will be generated)
+	 * @param integer $uid  User id
+	 * @param string  $guid An existing GUID (Otherwise it will be generated)
 	 *
 	 * @return string
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 */
 	public static function newURI($uid, $guid = "")
 	{
@@ -2314,6 +2343,7 @@ class Item extends BaseObject
 	 * Don't set this value if it isn't from the owner (could be an author that we don't know)
 	 *
 	 * @param array $arr Contains the just posted item record
+	 * @throws \Exception
 	 */
 	private static function updateContact($arr)
 	{
@@ -2434,9 +2464,11 @@ class Item extends BaseObject
 
 	/**
 	 * This function is only used for the old Friendica app on Android that doesn't like paths with guid
+	 *
 	 * @param string $guid item guid
 	 * @param int    $uid  user id
 	 * @return array with id and nick of the item with the given guid
+	 * @throws \Exception
 	 */
 	public static function getIdAndNickByGuid($guid, $uid = 0)
 	{
@@ -2478,9 +2510,12 @@ class Item extends BaseObject
 
 	/**
 	 * look for mention tags and setup a second delivery chain for forum/community posts if appropriate
+	 *
 	 * @param int $uid
 	 * @param int $item_id
-	 * @return bool true if item was deleted, else false
+	 * @return void true if item was deleted, else false
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
+	 * @throws \ImagickException
 	 */
 	private static function tagDeliver($uid, $item_id)
 	{
@@ -2666,6 +2701,8 @@ class Item extends BaseObject
 	 * @param array  $item
 	 * @param int    $cid
 	 * @return string
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
+	 * @throws \ImagickException
 	 */
 	public static function fixPrivatePhotos($s, $uid, $item = null, $cid = 0)
 	{
@@ -2923,12 +2960,15 @@ class Item extends BaseObject
 	 *
 	 * @param string $item_id
 	 * @param string $verb
-	 * 		Activity verb. One of
-	 * 			like, unlike, dislike, undislike, attendyes, unattendyes,
-	 * 			attendno, unattendno, attendmaybe, unattendmaybe
-	 * @hook 'post_local_end'
-	 * 		array $arr
-	 * 			'post_id' => ID of posted item
+	 *            Activity verb. One of
+	 *            like, unlike, dislike, undislike, attendyes, unattendyes,
+	 *            attendno, unattendno, attendmaybe, unattendmaybe
+	 * @return bool
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
+	 * @throws \ImagickException
+	 * @hook  'post_local_end'
+	 *            array $arr
+	 *            'post_id' => ID of posted item
 	 */
 	public static function performLike($item_id, $verb)
 	{
@@ -3207,7 +3247,7 @@ class Item extends BaseObject
 	/**
 	 * get translated item type
 	 *
-	 * @param array $itme
+	 * @param $item
 	 * @return string
 	 */
 	public static function postType($item)
@@ -3233,6 +3273,7 @@ class Item extends BaseObject
 	 * @param array $item
 	 * @param bool  $update
 	 *
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 * @todo Remove reference, simply return "rendered-html" and "rendered-hash"
 	 */
 	public static function putInCache(&$item, $update = false)
@@ -3291,10 +3332,12 @@ class Item extends BaseObject
 	 * @param boolean $attach
 	 * @param boolean $is_preview
 	 * @return string item body html
-	 * @hook prepare_body_init item array before any work
-	 * @hook prepare_body_content_filter ('item'=>item array, 'filter_reasons'=>string array) before first bbcode to html
-	 * @hook prepare_body ('item'=>item array, 'html'=>body string, 'is_preview'=>boolean, 'filter_reasons'=>string array) after first bbcode to html
-	 * @hook prepare_body_final ('item'=>item array, 'html'=>body string) after attach icons and blockquote special case handling (spoiler, author)
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
+	 * @throws \ImagickException
+	 * @hook  prepare_body_init item array before any work
+	 * @hook  prepare_body_content_filter ('item'=>item array, 'filter_reasons'=>string array) before first bbcode to html
+	 * @hook  prepare_body ('item'=>item array, 'html'=>body string, 'is_preview'=>boolean, 'filter_reasons'=>string array) after first bbcode to html
+	 * @hook  prepare_body_final ('item'=>item array, 'html'=>body string) after attach icons and blockquote special case handling (spoiler, author)
 	 */
 	public static function prepareBody(array &$item, $attach = false, $is_preview = false)
 	{
@@ -3462,8 +3505,10 @@ class Item extends BaseObject
 
 	/**
 	 * get private link for item
+	 *
 	 * @param array $item
 	 * @return boolean|array False if item has not plink, otherwise array('href'=>plink url, 'title'=>translated title)
+	 * @throws \Exception
 	 */
 	public static function getPlink($item)
 	{

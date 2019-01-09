@@ -37,6 +37,7 @@ class Profile
 	 * @param integer User ID
 	 *
 	 * @return array Profile data
+	 * @throws \Exception
 	 */
 	public static function getByUID($uid)
 	{
@@ -97,12 +98,14 @@ class Profile
 	 *      the theme is chosen before the _init() function of a theme is run, which will usually
 	 *      load a lot of theme-specific content
 	 *
-	 * @brief Loads a profile into the page sidebar.
-	 * @param object  $a            App
+	 * @brief     Loads a profile into the page sidebar.
+	 * @param App     $a            App
 	 * @param string  $nickname     string
 	 * @param int     $profile      int
 	 * @param array   $profiledata  array
 	 * @param boolean $show_connect Show connect link
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
+	 * @throws \ImagickException
 	 */
 	public static function load(App $a, $nickname, $profile = 0, array $profiledata = [], $show_connect = true)
 	{
@@ -207,10 +210,11 @@ class Profile
 	 * Includes all available profile data
 	 *
 	 * @brief Get all profile data of a local user
-	 * @param string $nickname nick
-	 * @param int    $uid      uid
-	 * @param int    $profile_id  ID of the profile
+	 * @param string $nickname   nick
+	 * @param int    $uid        uid
+	 * @param int    $profile_id ID of the profile
 	 * @return array
+	 * @throws \Exception
 	 */
 	public static function getByNickname($nickname, $uid = 0, $profile_id = 0)
 	{
@@ -266,13 +270,15 @@ class Profile
 	 * because of all the conditional logic.
 	 *
 	 * @brief Formats a profile for display in the sidebar.
-	 * @param array $profile
-	 * @param int $block
+	 * @param array   $profile
+	 * @param int     $block
 	 * @param boolean $show_connect Show connect link
 	 *
 	 * @return string HTML sidebar module
 	 *
-	 * @note Returns empty string if passed $profile is wrong type or not populated
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
+	 * @throws \ImagickException
+	 * @note  Returns empty string if passed $profile is wrong type or not populated
 	 *
 	 * @hooks 'profile_sidebar_enter'
 	 *      array $profile - profile data
@@ -1016,6 +1022,8 @@ class Profile
 	 * Ported from Hubzilla: https://framagit.org/hubzilla/core/blob/master/include/channel.php
 	 *
 	 * @param App $a Application instance.
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
+	 * @throws \ImagickException
 	 */
 	public static function zrlInit(App $a)
 	{
@@ -1085,6 +1093,8 @@ class Profile
 	 * Ported from Hubzilla: https://framagit.org/hubzilla/core/blob/master/include/zid.php
 	 *
 	 * @param string $token
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
+	 * @throws \ImagickException
 	 */
 	public static function openWebAuthInit($token)
 	{
@@ -1167,7 +1177,8 @@ class Profile
 	 * @brief Get the user ID of the page owner
 	 * @return int user ID
 	 *
-	 * @note Returns local_user instead of user ID if "always_my_theme"
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
+	 * @note  Returns local_user instead of user ID if "always_my_theme"
 	 *      is set to true
 	 */
 	public static function getThemeUid()
@@ -1192,11 +1203,12 @@ class Profile
 	}
 
 	/**
-	* Stip query parameter from a string.
-	*
-	* @param string $s The input string.
-	* @return string The query parameter.
-	*/
+	 * Strip query parameter from a string.
+	 *
+	 * @param string $s The input string.
+	 * @param        $param
+	 * @return string The query parameter.
+	 */
 	public static function stripQueryParam($s, $param)
 	{
 		return preg_replace('/[\?&]' . $param . '=(.*?)(&|$)/ism', '$2', $s);

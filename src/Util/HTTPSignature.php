@@ -30,6 +30,7 @@ class HTTPSignature
 	 * @param $key
 	 *
 	 * @return array with verification data
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 */
 	public static function verifyMagic($key)
 	{
@@ -184,6 +185,7 @@ class HTTPSignature
 	 *   - \e string \b algorithm
 	 *   - \e array  \b headers
 	 *   - \e string \b signature
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 */
 	public static function parseSigheader($header)
 	{
@@ -229,6 +231,7 @@ class HTTPSignature
 	 *   - \e string \b key
 	 *   - \e string \b alg
 	 *   - \e string \b data
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 */
 	private static function decryptSigheader($header, $prvkey = null)
 	{
@@ -270,11 +273,12 @@ class HTTPSignature
 	/**
 	 * @brief Transmit given data to a target for a user
 	 *
-	 * @param array $data Data that is about to be send
-	 * @param string $target The URL of the inbox
-	 * @param integer $uid User id of the sender
+	 * @param array   $data   Data that is about to be send
+	 * @param string  $target The URL of the inbox
+	 * @param integer $uid    User id of the sender
 	 *
 	 * @return boolean Was the transmission successful?
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 */
 	public static function transmit($data, $target, $uid)
 	{
@@ -313,10 +317,11 @@ class HTTPSignature
 	/**
 	 * @brief Fetches JSON data for a user
 	 *
-	 * @param string $request request url
-	 * @param integer $uid User id of the requester
+	 * @param string  $request request url
+	 * @param integer $uid     User id of the requester
 	 *
 	 * @return array JSON array
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 */
 	public static function fetch($request, $uid)
 	{
@@ -364,7 +369,8 @@ class HTTPSignature
 	 * @param $content
 	 * @param $http_headers
 	 *
-	 * @return signer string
+	 * @return string Signer
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 */
 	public static function getSigner($content, $http_headers)
 	{
@@ -471,6 +477,7 @@ class HTTPSignature
 	 * @param $actor
 	 *
 	 * @return array with actor url and public key
+	 * @throws \Exception
 	 */
 	private static function fetchKey($id, $actor)
 	{

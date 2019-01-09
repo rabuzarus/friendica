@@ -18,6 +18,7 @@ class Email
 	 * @param string $username The username
 	 * @param string $password The password
 	 * @return object
+	 * @throws \Exception
 	 */
 	public static function connect($mailbox, $username, $password)
 	{
@@ -44,6 +45,7 @@ class Email
 	 * @param object $mbox       mailbox
 	 * @param string $email_addr email
 	 * @return array
+	 * @throws \Exception
 	 */
 	public static function poll($mbox, $email_addr)
 	{
@@ -105,6 +107,7 @@ class Email
 	 * @param integer $uid   user id
 	 * @param string  $reply reply
 	 * @return array
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 */
 	public static function getMessage($mbox, $uid, $reply)
 	{
@@ -320,6 +323,8 @@ class Email
 	 *
 	 * @return void
 	 *
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
+	 * @throws \ImagickException
 	 * @todo This could be changed to use the Emailer class
 	 */
 	public static function send($addr, $subject, $headers, $item)
