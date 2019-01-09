@@ -51,7 +51,7 @@
 		"npm-asset/cropperjs": "1.2.2",
 		"npm-asset/imagesloaded": "4.1.4",
 		"monolog/monolog": "^1.24"
-    },
+	},
 	"repositories": [
 		{
 			"type": "vcs",
