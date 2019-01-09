@@ -48,7 +48,7 @@ class Protocol
 	 *
 	 * @param string $profile_url
 	 * @return string
-	 * @throws Exception
+	 * @throws \Exception
 	 */
 	public static function getAddrFromProfileUrl($profile_url)
 	{
