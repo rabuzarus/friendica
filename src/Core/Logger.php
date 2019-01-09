@@ -83,9 +83,7 @@ class Logger extends BaseObject
 			return;
 		}
 
-		if (is_int($loglevel)) {
-			$loglevel = self::mapLegacyConfigDebugLevel($loglevel);
-		}
+		$loglevel = self::mapLegacyConfigDebugLevel((string)$loglevel);
 
 		LoggerFactory::addStreamHandler($logger, $logfile, $loglevel);
 
@@ -107,7 +105,7 @@ class Logger extends BaseObject
 	 * Mapping a legacy level to the PSR-3 compliant levels
 	 * @see https://github.com/php-fig/fig-standards/blob/master/accepted/PSR-3-logger-interface.md#5-psrlogloglevel
 	 *
-	 * @param int $level the level to be mapped
+	 * @param string $level the level to be mapped
 	 *
 	 * @return string the PSR-3 compliant level
 	 */
@@ -115,26 +113,26 @@ class Logger extends BaseObject
 	{
 		switch ($level) {
 			// legacy WARNING
-			case 0:
+			case "0":
 				return LogLevel::ERROR;
 			// legacy INFO
-			case 1:
+			case "1":
 				return LogLevel::WARNING;
 			// legacy TRACE
-			case 2:
+			case "2":
 				return LogLevel::NOTICE;
 			// legacy DEBUG
-			case 3:
+			case "3":
 				return LogLevel::INFO;
 			// legacy DATA
-			case 4:
+			case "4":
 				return LogLevel::DEBUG;
 			// legacy ALL
-			case 5:
+			case "5":
 				return LogLevel::DEBUG;
 			// default if nothing set
 			default:
-				return LogLevel::NOTICE;
+				return $level;
 		}
 	}
 
@@ -320,7 +318,7 @@ class Logger extends BaseObject
 	}
 
 	/**
-	 * @brief      Logs the given message at the given log level
+	 * @brief Logs the given message at the given log level
 	 *
 	 * @param string $msg
 	 * @param string $level
@@ -328,16 +326,16 @@ class Logger extends BaseObject
 	 * @throws \Exception
 	 * @deprecated since 2019.03 Use Logger::debug() Logger::info() , ... instead
 	 */
-    public static function log($msg, $level = LogLevel::NOTICE)
-    {
+	public static function log($msg, $level = LogLevel::INFO)
+	{
 		if (!isset(self::$logger)) {
 			return;
 		}
 
-        $stamp1 = microtime(true);
+		$stamp1 = microtime(true);
 		self::$logger->log($level, $msg);
-        self::getApp()->saveTimestamp($stamp1, "file");
-    }
+		self::getApp()->saveTimestamp($stamp1, "file");
+	}
 
 	/**
 	 * @brief An alternative logger for development.
@@ -349,14 +347,14 @@ class Logger extends BaseObject
 	 * @param string $level
 	 * @throws \Exception
 	 */
-    public static function devLog($msg, $level = LogLevel::DEBUG)
-    {
+	public static function devLog($msg, $level = LogLevel::DEBUG)
+	{
 		if (!isset(self::$logger)) {
 			return;
 		}
 
-        $stamp1 = microtime(true);
-        self::$devLogger->log($level, $msg);
-        self::getApp()->saveTimestamp($stamp1, "file");
-    }
+		$stamp1 = microtime(true);
+		self::$devLogger->log($level, $msg);
+		self::getApp()->saveTimestamp($stamp1, "file");
+	}
 }
