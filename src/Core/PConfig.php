@@ -23,7 +23,7 @@ require_once 'include/dba.php';
 class PConfig extends BaseObject
 {
 	/**
-	 * @var Friendica\Core\Config\IPConfigAdapter
+	 * @var \Friendica\Core\Config\IPConfigAdapter
 	 */
 	private static $adapter = null;
 
