@@ -455,8 +455,6 @@ class Processor
 			return;
 		}
 
-		$owner = User::getOwnerDataById($uid);
-
 		$cid = Contact::getIdForURL($activity['actor'], $uid);
 		if (empty($cid)) {
 			Logger::log('No contact found for ' . $activity['actor'], Logger::DEBUG);
@@ -490,8 +488,6 @@ class Processor
 		if (empty($uid)) {
 			return;
 		}
-
-		$owner = User::getOwnerDataById($uid);
 
 		$cid = Contact::getIdForURL($activity['actor'], $uid);
 		if (empty($cid)) {

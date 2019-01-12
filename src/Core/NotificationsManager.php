@@ -231,7 +231,6 @@ class NotificationsManager extends BaseObject
 	 */
 	private function formatNotifs(array $notifs, $ident = "")
 	{
-		$notif = [];
 		$arr = [];
 
 		if (DBA::isResult($notifs)) {

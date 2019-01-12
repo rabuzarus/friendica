@@ -317,7 +317,7 @@ function networkSetSeen($condition)
 	$unseen = Item::exists($condition);
 
 	if ($unseen) {
-		$r = Item::update(['unseen' => false], $condition);
+		Item::update(['unseen' => false], $condition);
 	}
 }
 
@@ -410,12 +410,6 @@ function networkFlatView(App $a, $update = 0)
 	// Rawmode is used for fetching new content at the end of the page
 	$rawmode = (isset($_GET['mode']) && ($_GET['mode'] == 'raw'));
 
-	if (isset($_GET['last_id'])) {
-		$last_id = intval($_GET['last_id']);
-	} else {
-		$last_id = 0;
-	}
-
 	$o = '';
 
 	$file = defaults($_GET, 'file', '');
@@ -452,8 +446,7 @@ function networkFlatView(App $a, $update = 0)
 
 	$pager = new Pager($a->query_string);
 
-	/// @TODO Figure out why this variable is unused
-	$pager_sql = networkPager($a, $pager, $update);
+	networkPager($a, $pager, $update);
 
 	if (strlen($file)) {
 		$condition = ["`term` = ? AND `otype` = ? AND `type` = ? AND `uid` = ?",
@@ -624,7 +617,6 @@ function networkThreadedView(App $a, $update, $parent)
 	$sql_extra3 = '';
 	$sql_table = '`thread`';
 	$sql_parent = '`iid`';
-	$sql_order = '';
 
 	if ($update) {
 		$sql_table = '`item`';

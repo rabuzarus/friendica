@@ -3740,7 +3740,6 @@ function api_direct_messages_new($type)
 	}
 
 	$replyto = '';
-	$sub     = '';
 	if (!empty($_REQUEST['replyto'])) {
 		$r = q(
 			'SELECT `parent-uri`, `title` FROM `mail` WHERE `uid`=%d AND `id`=%d',
