@@ -39,12 +39,6 @@ class Contact extends BaseObject
 	 * @deprecated since version 2019.03
 	 * @see User::PAGE_FLAGS_NORMAL
 	 */
-	const PAGE_NORMAL    = 0;
-	const PAGE_SOAPBOX   = 1;
-	const PAGE_COMMUNITY = 2;
-	const PAGE_FREELOVE  = 3;
-	const PAGE_BLOG      = 4;
-	const PAGE_PRVGROUP  = 5;
 	const PAGE_NORMAL    = User::PAGE_FLAGS_NORMAL;
 	/**
 	 * @deprecated since version 2019.03
@@ -76,7 +70,7 @@ class Contact extends BaseObject
 	 */
 
 	/**
-	 * @name account types
+	 * Account types
 	 *
 	 * TYPE_UNKNOWN - the account has been imported from gcontact where this is the default type value
 	 *
