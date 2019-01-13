@@ -95,7 +95,7 @@ function display_init(App $a)
 	}
 
 	if ($item["id"] != $item["parent"]) {
-		$item = Item::selectFirstForUser(local_user(), $fields, ['id' => $item["parent"]]);
+		$item = Item::selectFirstForUser($item_user, $fields, ['id' => $item["parent"]]);
 	}
 
 	$profiledata = display_fetchauthor($a, $item);
