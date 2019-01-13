@@ -16,6 +16,7 @@ use Friendica\Model\Contact;
 use Friendica\Model\Group;
 use Friendica\Model\Item;
 use Friendica\Model\Profile;
+use Friendica\Model\User;
 use Friendica\Protocol\DFRN;
 use Friendica\Util\Security;
 
@@ -182,7 +183,7 @@ function videos_content(App $a)
 
 	$owner_uid = $a->data['user']['uid'];
 
-	$community_page = (($a->data['user']['page-flags'] == Contact::PAGE_COMMUNITY) ? true : false);
+	$community_page = (($a->data['user']['page-flags'] == User::PAGE_FLAGS_COMMUNITY) ? true : false);
 
 	if ((local_user()) && (local_user() == $owner_uid)) {
 		$can_post = true;

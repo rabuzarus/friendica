@@ -150,7 +150,7 @@ class Diaspora
 
 		// Fetch the relay contact
 		$condition = ['uid' => 0, 'nurl' => Strings::normaliseLink($server_url),
-			'contact-type' => Contact::ACCOUNT_TYPE_RELAY];
+			'contact-type' => Contact::TYPE_RELAY];
 		$contact = DBA::selectFirst('contact', $fields, $condition);
 
 		if (DBA::isResult($contact)) {
@@ -190,7 +190,7 @@ class Diaspora
 		$fields = array_merge($fields, $network_fields);
 
 		$condition = ['uid' => 0, 'nurl' => Strings::normaliseLink($server_url),
-			'contact-type' => Contact::ACCOUNT_TYPE_RELAY];
+			'contact-type' => Contact::TYPE_RELAY];
 
 		if (DBA::exists('contact', $condition)) {
 			unset($fields['created']);
@@ -642,7 +642,7 @@ class Diaspora
 			return false;
 		}
 
-		$importer = ["uid" => 0, "page-flags" => Contact::PAGE_FREELOVE];
+		$importer = ["uid" => 0, "page-flags" => User::PAGE_FLAGS_FREELOVE];
 		$success = self::dispatch($importer, $msg, $fields);
 
 		return $success;
@@ -1126,7 +1126,7 @@ class Diaspora
 		 */
 		// It is deactivated by now, due to side effects. See issue https://github.com/friendica/friendica/pull/4033
 		// It is not removed by now. Possibly the code is needed?
-		//if (!$is_comment && $contact["rel"] == Contact::FOLLOWER && in_array($importer["page-flags"], array(Contact::PAGE_FREELOVE))) {
+		//if (!$is_comment && $contact["rel"] == Contact::FOLLOWER && in_array($importer["page-flags"], array(User::PAGE_FLAGS_FREELOVE))) {
 		//	DBA::update(
 		//		'contact',
 		//		array('rel' => Contact::FRIEND, 'writable' => true),
@@ -1146,7 +1146,7 @@ class Diaspora
 			// Yes, then it is fine.
 			return true;
 			// Is it a post to a community?
-		} elseif (($contact["rel"] == Contact::FOLLOWER) && in_array($importer["page-flags"], [Contact::PAGE_COMMUNITY, Contact::PAGE_PRVGROUP])) {
+		} elseif (($contact["rel"] == Contact::FOLLOWER) && in_array($importer["page-flags"], [User::PAGE_FLAGS_COMMUNITY, User::PAGE_FLAGS_PRVGROUP])) {
 			// That's good
 			return true;
 			// Is the message a global user or a comment?
@@ -2414,7 +2414,7 @@ class Diaspora
 			}
 		}
 
-		if (!$following && $sharing && in_array($importer["page-flags"], [Contact::PAGE_SOAPBOX, Contact::PAGE_NORMAL])) {
+		if (!$following && $sharing && in_array($importer["page-flags"], [User::PAGE_FLAGS_SOAPBOX, User::PAGE_FLAGS_NORMAL])) {
 			Logger::log("Author ".$author." wants to share with us - but doesn't want to listen. Request is ignored.", Logger::DEBUG);
 			return false;
 		} elseif (!$following && !$sharing) {
@@ -2472,7 +2472,7 @@ class Diaspora
 
 		Contact::updateAvatar($ret["photo"], $importer['uid'], $contact_record["id"], true);
 
-		if (in_array($importer["page-flags"], [Contact::PAGE_NORMAL, Contact::PAGE_PRVGROUP])) {
+		if (in_array($importer["page-flags"], [User::PAGE_FLAGS_NORMAL, User::PAGE_FLAGS_PRVGROUP])) {
 			Logger::log("Sending intra message for author ".$author.".", Logger::DEBUG);
 
 			$hash = Strings::getRandomHex().(string)time();   // Generate a confirm_key
@@ -2500,9 +2500,9 @@ class Diaspora
 			 * but if our page-type is Profile::PAGE_COMMUNITY or Profile::PAGE_SOAPBOX
 			 * we are going to change the relationship and make them a follower.
 			 */
-			if (($importer["page-flags"] == Contact::PAGE_FREELOVE) && $sharing && $following) {
+			if (($importer["page-flags"] == User::PAGE_FLAGS_FREELOVE) && $sharing && $following) {
 				$new_relation = Contact::FRIEND;
-			} elseif (($importer["page-flags"] == Contact::PAGE_FREELOVE) && $sharing) {
+			} elseif (($importer["page-flags"] == User::PAGE_FLAGS_FREELOVE) && $sharing) {
 				$new_relation = Contact::SHARING;
 			} else {
 				$new_relation = Contact::FOLLOWER;
@@ -3157,7 +3157,7 @@ class Diaspora
 		Logger::log("transmit: ".$logid."-".$guid." to ".$dest_url." returns: ".$return_code);
 
 		if (!$return_code || (($return_code == 503) && (stristr($postResult->getHeader(), "retry-after")))) {
-			if (!$no_queue && !empty($contact['contact-type']) && ($contact['contact-type'] != Contact::ACCOUNT_TYPE_RELAY)) {
+			if (!$no_queue && !empty($contact['contact-type']) && ($contact['contact-type'] != Contact::TYPE_RELAY)) {
 				Logger::log("queue message");
 				// queue message for redelivery
 				Queue::add($contact["id"], Protocol::DIASPORA, $envelope, $public_batch, $guid);

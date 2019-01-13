@@ -33,6 +33,55 @@ require_once 'include/text.php';
 class User
 {
 	/**
+	 * @name page/profile types
+	 *
+	 * PAGE_NORMAL is a typical personal profile account
+	 * PAGE_SOAPBOX automatically approves all friend requests as Contact::SHARING, (readonly)
+	 * PAGE_COMMUNITY automatically approves all friend requests as Contact::SHARING, but with
+	 *      write access to wall and comments (no email and not included in page owner's ACL lists)
+	 * PAGE_FREELOVE automatically approves all friend requests as full friends (Contact::FRIEND).
+	 *
+	 * @{
+	 */
+	const PAGE_FLAGS_NORMAL    = 0;
+	const PAGE_FLAGS_SOAPBOX   = 1;
+	const PAGE_FLAGS_COMMUNITY = 2;
+	const PAGE_FLAGS_FREELOVE  = 3;
+	const PAGE_FLAGS_BLOG      = 4;
+	const PAGE_FLAGS_PRVGROUP  = 5;
+	/**
+	 * @}
+	 */
+
+	/**
+	 * Account types
+	 *
+	 * ACCOUNT_TYPE_PERSON - the account belongs to a person
+	 *	Associated page types: PAGE_FLAGS_NORMAL, PAGE_FLAGS_SOAPBOX, PAGE_FLAGS_FREELOVE
+	 *
+	 * ACCOUNT_TYPE_ORGANISATION - the account belongs to an organisation
+	 *	Associated page type: PAGE_FLAGS_SOAPBOX
+	 *
+	 * ACCOUNT_TYPE_NEWS - the account is a news reflector
+	 *	Associated page type: PAGE_FLAGS_SOAPBOX
+	 *
+	 * ACCOUNT_TYPE_COMMUNITY - the account is community forum
+	 *	Associated page types: PAGE_COMMUNITY, PAGE_FLAGS_PRVGROUP
+	 *
+	 * ACCOUNT_TYPE_RELAY - the account is a relay
+	 *      This will only be assigned to contacts, not to user accounts
+	 * @{
+	 */
+	const ACCOUNT_TYPE_PERSON =       0;
+	const ACCOUNT_TYPE_ORGANISATION = 1;
+	const ACCOUNT_TYPE_NEWS =         2;
+	const ACCOUNT_TYPE_COMMUNITY =    3;
+	const ACCOUNT_TYPE_RELAY =        4;
+	/**
+	 * @}
+	 */
+
+	/**
 	 * Returns true if a user record exists with the provided id
 	 *
 	 * @param  integer $uid

@@ -1990,17 +1990,18 @@ function admin_page_users(App $a)
 	$adminlist = explode(",", str_replace(" ", "", Config::get('config', 'admin_email')));
 	$_setup_users = function ($e) use ($adminlist) {
 		$page_types = [
-			Contact::PAGE_NORMAL    => L10n::t('Normal Account Page'),
-			Contact::PAGE_SOAPBOX   => L10n::t('Soapbox Page'),
-			Contact::PAGE_COMMUNITY => L10n::t('Public Forum'),
-			Contact::PAGE_FREELOVE  => L10n::t('Automatic Friend Page'),
-			Contact::PAGE_PRVGROUP  => L10n::t('Private Forum')
+			User::PAGE_FLAGS_NORMAL    => L10n::t('Normal Account Page'),
+			User::PAGE_FLAGS_SOAPBOX   => L10n::t('Soapbox Page'),
+			User::PAGE_FLAGS_COMMUNITY => L10n::t('Public Forum'),
+			User::PAGE_FLAGS_FREELOVE  => L10n::t('Automatic Friend Page'),
+			User::PAGE_FLAGS_PRVGROUP  => L10n::t('Private Forum')
 		];
 		$account_types = [
-			Contact::ACCOUNT_TYPE_PERSON       => L10n::t('Personal Page'),
-			Contact::ACCOUNT_TYPE_ORGANISATION => L10n::t('Organisation Page'),
-			Contact::ACCOUNT_TYPE_NEWS         => L10n::t('News Page'),
-			Contact::ACCOUNT_TYPE_COMMUNITY    => L10n::t('Community Forum')
+			User::ACCOUNT_TYPE_PERSON       => L10n::t('Personal Page'),
+			User::ACCOUNT_TYPE_ORGANISATION => L10n::t('Organisation Page'),
+			User::ACCOUNT_TYPE_NEWS         => L10n::t('News Page'),
+			User::ACCOUNT_TYPE_COMMUNITY    => L10n::t('Community Forum'),
+			User::ACCOUNT_TYPE_RELAY        => L10n::t('Relay'),
 		];
 
 		$e['page_flags_raw'] = $e['page-flags'];
