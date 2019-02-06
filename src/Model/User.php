@@ -71,7 +71,7 @@ class User
 	const ACCOUNT_TYPE_PERSON =       0;
 	const ACCOUNT_TYPE_ORGANISATION = 1;
 	const ACCOUNT_TYPE_NEWS =         2;
-	const ACCOUNT_TYPE_COMMUNITY =    3;
+	const ACCOUNT_TYPE_COMMUNITY =   3;
 	const ACCOUNT_TYPE_RELAY =        4;
 	/**
 	 * @}
@@ -488,21 +488,25 @@ class User
 
 		$using_invites = Config::get('system', 'invitation_only');
 
-		$invite_id  = !empty($data['invite_id'])  ? Strings::escapeTags(trim($data['invite_id']))  : '';
-		$username   = !empty($data['username'])   ? Strings::escapeTags(trim($data['username']))   : '';
-		$nickname   = !empty($data['nickname'])   ? Strings::escapeTags(trim($data['nickname']))   : '';
-		$email      = !empty($data['email'])      ? Strings::escapeTags(trim($data['email']))      : '';
-		$openid_url = !empty($data['openid_url']) ? Strings::escapeTags(trim($data['openid_url'])) : '';
-		$photo      = !empty($data['photo'])      ? Strings::escapeTags(trim($data['photo']))      : '';
-		$password   = !empty($data['password'])   ? trim($data['password'])           : '';
-		$password1  = !empty($data['password1'])  ? trim($data['password1'])          : '';
-		$confirm    = !empty($data['confirm'])    ? trim($data['confirm'])            : '';
-		$blocked    = !empty($data['blocked']);
-		$verified   = !empty($data['verified']);
-		$language   = !empty($data['language'])   ? Strings::escapeTags(trim($data['language']))   : 'en';
+		$invite_id    = !empty($data['invite_id'])    ? Strings::escapeTags(trim($data['invite_id']))  : '';
+		$username     = !empty($data['username'])     ? Strings::escapeTags(trim($data['username']))   : '';
+		$nickname     = !empty($data['nickname'])     ? Strings::escapeTags(trim($data['nickname']))   : '';
+		$email        = !empty($data['email'])        ? Strings::escapeTags(trim($data['email']))      : '';
+		$openid_url   = !empty($data['openid_url'])   ? Strings::escapeTags(trim($data['openid_url'])) : '';
+		$photo        = !empty($data['photo'])        ? Strings::escapeTags(trim($data['photo']))      : '';
+		$password     = !empty($data['password'])     ? trim($data['password'])           : '';
+		$password1    = !empty($data['password1'])    ? trim($data['password1'])          : '';
+		$confirm      = !empty($data['confirm'])      ? trim($data['confirm'])            : '';
+		$blocked      = !empty($data['blocked']);
+		$verified     = !empty($data['verified']);
+		$language     = !empty($data['language'])     ? Strings::escapeTags(trim($data['language']))   : 'en';
+		$account_type = !empty($data['account-type']) ? intval($data['account-type']) : 0;
+		$page_flags   = !empty($data['page-flags'])   ? intval($data['page-flags'])   : 0;
+		$parent_uid   = !empty($data['parent-uid'])   ? intval($data['parent-uid'])   : 0;
 
 		$publish = !empty($data['profile_publish_reg']);
 		$netpublish = $publish && Config::get('system', 'directory');
+		$hidewall = 0;
 
 		if ($password1 != $confirm) {
 			throw new Exception(L10n::t('Passwords do not match. Password unchanged.'));
@@ -616,6 +620,12 @@ class User
 			throw new Exception(L10n::t('Nickname is already registered. Please choose another.'));
 		}
 
+		$page_flags = self::sanitizePageFlag($account_type, $page_flags);
+
+		if ($page_flags == User::PAGE_FLAGS_PRVGROUP) {
+			$hidewall = 1;
+		}
+
 		$new_password = strlen($password) ? $password : User::generateNewPassword();
 		$new_password_encoded = self::hashPassword($new_password);
 
@@ -649,7 +659,11 @@ class User
 			'blocked'  => $blocked,
 			'language' => $language,
 			'timezone' => 'UTC',
-			'register_date' => DateTimeFormat::utcNow(),
+			'hidewall' => $hidewall,
+			'account-type'     => $account_type,
+			'page-flags'       => $page_flags,
+			'parent-uid'       => $parent_uid,
+			'register_date'    => DateTimeFormat::utcNow(),
 			'default-location' => ''
 		]);
 
@@ -965,5 +979,49 @@ class User
 		}
 
 		return $identities;
+	}
+
+	/**
+	 * Adjust the page flag if the account type doesn't fit to the page flag.
+	 * 
+	 * @param int $account_type The account type.
+	 * @param int $page_flags The page flag.
+	 * 
+	 * @return int The page flag.
+	 */
+	public static function sanitizePageFlag($account_type = self::ACCOUNT_TYPE_PERSON, $page_flags = self::PAGE_FLAGS_NORMAL) {
+			if (
+				($account_type == self::ACCOUNT_TYPE_PERSON)
+				&& !in_array(
+					$page_flags,
+					[
+						self::PAGE_FLAGS_NORMAL,
+						self::PAGE_FLAGS_SOAPBOX,
+						self::PAGE_FLAGS_FREELOVE
+					]
+				)
+			) {
+				$page_flags = self::PAGE_FLAGS_NORMAL;
+			} elseif (
+				($account_type == self::ACCOUNT_TYPE_ORGANISATION)
+				&& !in_array($page_flags, [self::PAGE_FLAGS_SOAPBOX])
+			) {
+				$page_flags = self::PAGE_FLAGS_SOAPBOX;
+			} elseif (
+				($account_type == self::ACCOUNT_TYPE_NEWS)
+				&& !in_array($page_flags, [self::PAGE_FLAGS_SOAPBOX])
+			){
+				$page_flags = self::PAGE_FLAGS_SOAPBOX;
+			} elseif (
+				($account_type == self::ACCOUNT_TYPE_COMMUNITY)
+				&& !in_array(
+					$page_flags,
+					[self::PAGE_FLAGS_COMMUNITY, self::PAGE_FLAGS_PRVGROUP]
+				)
+			) {
+				$page_flags = self::PAGE_FLAGS_COMMUNITY;
+			}
+
+			return $page_flags;
 	}
 }

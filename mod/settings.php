@@ -473,16 +473,7 @@ function settings_post(App $a)
 		$notify += intval($_POST['notify8']);
 	}
 
-	// Adjust the page flag if the account type doesn't fit to the page flag.
-	if (($account_type == User::ACCOUNT_TYPE_PERSON) && !in_array($page_flags, [User::PAGE_FLAGS_NORMAL, User::PAGE_FLAGS_SOAPBOX, User::PAGE_FLAGS_FREELOVE])) {
-		$page_flags = User::PAGE_FLAGS_NORMAL;
-	} elseif (($account_type == User::ACCOUNT_TYPE_ORGANISATION) && !in_array($page_flags, [User::PAGE_FLAGS_SOAPBOX])) {
-		$page_flags = User::PAGE_FLAGS_SOAPBOX;
-	} elseif (($account_type == User::ACCOUNT_TYPE_NEWS) && !in_array($page_flags, [User::PAGE_FLAGS_SOAPBOX])) {
-		$page_flags = User::PAGE_FLAGS_SOAPBOX;
-	} elseif (($account_type == User::ACCOUNT_TYPE_COMMUNITY) && !in_array($page_flags, [User::PAGE_FLAGS_COMMUNITY, User::PAGE_FLAGS_PRVGROUP])) {
-		$page_flags = User::PAGE_FLAGS_COMMUNITY;
-	}
+	$page_flags = User::sanitizePageFlag($account_type, $page_flags);
 
 	$err = '';
 

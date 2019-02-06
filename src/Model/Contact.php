@@ -50,7 +50,7 @@ class Contact extends BaseObject
 	 * @deprecated since version 2019.03
 	 * @see User::PAGE_FLAGS_FREELOVE
 	 */
-	const PAGE_FREELOVE  = User::PAGE_FLAGS_FREELOVE;
+	const PAGE_FREELOVE   = User::PAGE_FLAGS_FREELOVE;
 	/**
 	 * @deprecated since version 2019.03
 	 * @see User::PAGE_FLAGS_BLOG
@@ -90,7 +90,7 @@ class Contact extends BaseObject
 	const TYPE_PERSON =       User::ACCOUNT_TYPE_PERSON;
 	const TYPE_ORGANISATION = User::ACCOUNT_TYPE_ORGANISATION;
 	const TYPE_NEWS =         User::ACCOUNT_TYPE_NEWS;
-	const TYPE_COMMUNITY =    User::ACCOUNT_TYPE_COMMUNITY;
+	const TYPE_COMMUNITY =   User::ACCOUNT_TYPE_COMMUNITY;
 	const TYPE_RELAY =        User::ACCOUNT_TYPE_RELAY;
 	/**
 	 * @}
@@ -446,7 +446,7 @@ class Contact extends BaseObject
 			return true;
 		}
 
-		$user = DBA::selectFirst('user', ['uid', 'username', 'nickname'], ['uid' => $uid]);
+		$user = DBA::selectFirst('user', ['uid', 'username', 'nickname', 'account-type', 'page-flags'], ['uid' => $uid]);
 		if (!DBA::isResult($user)) {
 			return false;
 		}
@@ -465,6 +465,8 @@ class Contact extends BaseObject
 			'url'         => System::baseUrl() . '/profile/' . $user['nickname'],
 			'nurl'        => Strings::normaliseLink(System::baseUrl() . '/profile/' . $user['nickname']),
 			'addr'        => $user['nickname'] . '@' . substr(System::baseUrl(), strpos(System::baseUrl(), '://') + 3),
+			'forum'       => $user['page-flags'] == User::PAGE_FLAGS_COMMUNITY,
+			'prv'         => $user['page-flags'] == User::PAGE_FLAGS_PRVGROUP,
 			'request'     => System::baseUrl() . '/dfrn_request/' . $user['nickname'],
 			'notify'      => System::baseUrl() . '/dfrn_notify/'  . $user['nickname'],
 			'poll'        => System::baseUrl() . '/dfrn_poll/'    . $user['nickname'],
