@@ -4,6 +4,7 @@ namespace Friendica\Module;
 
 use Friendica\BaseModule;
 use Friendica\Content\Text\BBCode;
+use Friendica\Content\Text\HTML;
 use Friendica\Core\Config;
 use Friendica\Core\Hook;
 use Friendica\Core\L10n;
@@ -16,6 +17,8 @@ use Friendica\Database\DBA;
 use Friendica\Model\Register;
 use Friendica\Model\User;
 use Friendica\Util\Strings;
+
+require_once 'mod/settings.php';
 
 abstract class Identities extends BaseModule
 {
@@ -38,13 +41,6 @@ abstract class Identities extends BaseModule
 		}
 		BaseModule::checkFormSecurityTokenRedirectOnError('/identities', 'identities');
 
-		$a = self::getApp();
-
-		if (!User::authenticate($a->user, trim($_POST['password']))) {
-			\notice(L10n::t('Wrong password. Permission denied.') . EOL);
-			return;
-		}
-
 		$arr = [];
 
 		$arr['username']     = Strings::escapeTags(trim(defaults($_POST, 'username',   '')));
@@ -57,6 +53,17 @@ abstract class Identities extends BaseModule
 
 		if (empty($arr['account-type']) && empty($arr['page-flags'])) {
 			\notice(L10n::t('Please select an account type.') . EOL);
+			return;
+		}
+
+		$a = self::getApp();
+
+		if (($a->argc > 1) && (in_array($a->argv[1],['name', 'publish', 'confirm']))) {
+			return;
+		}
+
+		if (!User::authenticate($a->user, trim($_POST['password']))) {
+			\notice(L10n::t('Wrong password. Permission denied.') . EOL);
 			return;
 		}
 
@@ -97,7 +104,9 @@ abstract class Identities extends BaseModule
 		$arr['language']   = L10n::detectLanguage();
 		$arr['parent-uid'] = local_user();
 		$arr['email']      = $a->user['email'];
-
+		Logger::log('The array for creating a new account: '.print_r($arr, true));
+//$a->internalRedirect('identities');
+//return;
 		try {
 			Logger::log("Creating the user");
 			$result = User::create($arr);
@@ -115,7 +124,7 @@ abstract class Identities extends BaseModule
 
 		if (intval(Config::get('config', 'register_policy')) === self::OPEN) {
 				\info(L10n::t('Registration successful.') . EOL);
-				$a->internalRedirect();
+				$a->internalRedirect('identities');
 		} elseif (intval(Config::get('config', 'register_policy')) === self::APPROVE) {
 			if (!strlen(Config::get('config', 'admin_email'))) {
 				\notice(L10n::t('Your registration can not be processed.') . EOL);
@@ -124,20 +133,14 @@ abstract class Identities extends BaseModule
 
 			Register::createForApproval($user['uid'], Config::get('system', 'language'), $_POST['permonlybox']);
 
-//			// invite system
-//			if ($using_invites && $invite_id) {
-//				Register::deleteByHash($invite_id);
-//				PConfig::set($user['uid'], 'system', 'invites_remaining', $num_invites);
-//			}
-
-			// send email to admins
+			// Send email to admins
 			$admins_stmt = DBA::select(
 				'user',
 				['uid', 'language', 'email'],
 				['email' => explode(',', str_replace(' ', '', Config::get('config', 'admin_email')))]
 			);
 
-			// send notification to admins
+			// Send notification to admins
 			while ($admin = DBA::fetch($admins_stmt)) {
 				\notification([
 					'type'         => NOTIFY_SYSTEM,
@@ -156,16 +159,16 @@ abstract class Identities extends BaseModule
 			}
 			DBA::close($admins_stmt);
 
-			// send notification to the user, that the registration is pending
-//			User::sendRegisterPendingEmail(
-//				$user,
-//				Config::get('config', 'sitename'),
-//				$a->getBaseURL(),
-//				$result['password']
-//			);
+			// Send notification to the user, that the registration is pending
+			User::sendRegisterPendingEmail(
+				$user,
+				Config::get('config', 'sitename'),
+				$a->getBaseURL(),
+				$result['password']
+			);
 
 			\info(L10n::t('Your registration is pending approval by the site owner.') . EOL);
-			$a->internalRedirect();
+			$a->internalRedirect('identities');
 		}
 
 		return;
@@ -182,7 +185,7 @@ abstract class Identities extends BaseModule
 	 */
 	public static function content()
 	{
-		// logged in users can register others (people/pages/groups)
+		// Logged in users can register others (people/pages/groups)
 		// even with closed registrations, unless specifically prohibited by site policy.
 		// 'block_extended_register' blocks all registrations, period.
 		$block = Config::get('system', 'block_extended_register');
@@ -192,8 +195,46 @@ abstract class Identities extends BaseModule
 			return '';
 		}
 
+		// Only parent identites should be able to create child identities.
+		$user = DBA::selectFirst('user', ['uid', 'nickname', 'username', 'parent-uid'], ['uid' => local_user(), 'parent-uid' => 0]);
+		if (!DBA::isResult($user)) {
+			return;
+		}
 
-		if (($a->argc > 1) && ($a->argv[1] == 'new')) {
+		$a = self::getApp();
+		$identities = [];
+		$micropro = [];
+		$mode = '';
+
+
+		$username   = defaults($_REQUEST, 'username'  , '');
+		$email      = defaults($_REQUEST, 'email'     , '');
+		$openid_url = defaults($_REQUEST, 'openid_url', '');
+		$nickname   = defaults($_REQUEST, 'nickname'  , '');
+		$photo      = defaults($_REQUEST, 'photo'     , '');
+		$account_type = intval(defaults($_REQUEST, 'account-type',        0));
+		$page_flags   = intval(defaults($_REQUEST, 'page-flags',          0));
+		$netpublish   = intval(defaults($_REQUEST, 'profile_publish_reg', 0));
+
+		settings_init($a);
+
+		if ($a->argc > 1) {
+			if (
+				$a->argv[1] == 'new'
+				|| (empty($account_type) && empty($page_flags))
+			) {
+				$mode = 'new';
+			} elseif (
+				$a->argv[1] == 'name'
+				|| (empty($username) || empty($nickname))
+			) {
+				$mode = 'name';
+			} elseif ($a->argv[1] == 'publish') {
+				$mode = 'publish';
+			} elseif ($a->argv[1] == 'confirm' || $a->argv[1] == 'submit') {
+				$mode = 'confirm';
+			}
+
 			$max_dailies = intval(Config::get('system', 'max_daily_registrations'));
 			if ($max_dailies) {
 				$count = DBA::count('user', ['`register_date` > UTC_TIMESTAMP - INTERVAL 1 day']);
@@ -203,30 +244,9 @@ abstract class Identities extends BaseModule
 					return '';
 				}
 			}
+		}
 
-			$username   = defaults($_REQUEST, 'username'  , '');
-			$email      = defaults($_REQUEST, 'email'     , '');
-			$openid_url = defaults($_REQUEST, 'openid_url', '');
-			$nickname   = defaults($_REQUEST, 'nickname'  , '');
-			$photo      = defaults($_REQUEST, 'photo'     , '');
-			$account_type = intval(defaults($_REQUEST, 'account-type', 0));
-			$page_flags = intval(defaults($_REQUEST,   'page-flags',   0));
-
-	//		$a = self::getApp(); Logger::log("$a->user: ".print_r($a->user, true));
-			if (Config::get('system', 'publish_all')) {
-				$profile_publish = '<input type="hidden" name="profile_publish_reg" value="1" />';
-			} else {
-				$publish_tpl = Renderer::getMarkupTemplate('profile_publish.tpl');
-				$profile_publish = Renderer::replaceMacros($publish_tpl, [
-					'$instance'     => 'reg',
-					'$pubdesc'      => L10n::t('Include your profile in member directory?'),
-					'$yes_selected' => '',
-					'$no_selected'  => ' checked="checked"',
-					'$str_yes'      => L10n::t('Yes'),
-					'$str_no'       => L10n::t('No'),
-				]);
-			}
-
+		if ($mode == 'new') {
 			$pageset_tpl = Renderer::getMarkupTemplate('settings/pagetypes.tpl');
 
 			$pagetype = Renderer::replaceMacros($pageset_tpl, [
@@ -260,39 +280,18 @@ abstract class Identities extends BaseModule
 
 			]);
 
-			$ask_password = ! DBA::count('contact');
-
-			$tpl = Renderer::getMarkupTemplate('identities.tpl');
-
-			$arr = ['template' => $tpl];
-
-			Hook::callAll('register_form', $arr);
-
-			$tpl = $arr['template'];
-
+			$tpl = Renderer::getMarkupTemplate('identities_new.tpl');
 
 			$o = Renderer::replaceMacros($tpl, [
 				'$permonly'     => intval(Config::get('config', 'register_policy')) === self::APPROVE,
 				'$permonlybox'  => ['permonlybox', L10n::t('Note for the admin'), '', L10n::t('Leave a message for the admin, why you need this identity')],
-				'$title'        => L10n::t('Identities'),
+				'$title'        => L10n::t('Create new Identity'),
 				'$registertext' => BBCode::convert(Config::get('config', 'register_text', '')),
-				'$namelabel'    => L10n::t('The Full Name of your new identity (e.g. Joe Smith, real or real-looking): '),
-				'$ask_password' => $ask_password,
-				'$password'    => ['password', L10n::t('Please enter your password for verification:'), '', ''],
-				'$nickdesc'     => L10n::t('Choose a profile nickname. This must begin with a text character. Your profile address of your new identity will then be "<strong>nickname@%s</strong>".', self::getApp()->getHostName()),
-				'$nicklabel'    => L10n::t('Choose a nickname: '),
 				'$photo'        => $photo,
-				'$publish'      => $profile_publish,
-				'$regbutt'      => L10n::t('Create new Identitiy'),
-				'$username'     => $username,
-				'$nickname'     => $nickname,
-				'$sitename'     => self::getApp()->getHostName(),
-				'$showtoslink'  => Config::get('system', 'tosdisplay'),
-				'$tostext'      => L10n::t('Terms of Service'),
-				'$baseurl'      => System::baseurl(),
-				'$h_descadvn'   => L10n::t('Select the account type of your new identity'),
+				'$submit'       => L10n::t('Next'),
+				'$desc'         => L10n::t('Select the account type of your new identity.'),
 				'$pagetype'     => $pagetype,
-				'$account_type' => $account_type,
+				'$form_action'  => '/name',
 				'$form_security_token'   => BaseModule::getFormSecurityToken('identities'),
 				'$explicit_content'      => Config::get('system', 'explicit_content', false),
 				'$explicit_content_note' => L10n::t('Note: This node explicitly contains adult content'),
@@ -300,5 +299,128 @@ abstract class Identities extends BaseModule
 
 			return $o;
 		}
+
+		if ($mode == 'name') {
+			$tpl = Renderer::getMarkupTemplate('identities_new.tpl');
+			$o = Renderer::replaceMacros($tpl, [
+				'$title'        => L10n::t('Create new Identity'),
+				'$desc'         => L10n::t('Chose your identity name'),
+				'$namelabel'    => L10n::t('The Full Name of your new identity (e.g. Joe Smith, real or real-looking): '),
+				'$nickdesc'     => L10n::t('Choose a profile nickname. This must begin with a text character. Your profile address of your new identity will then be "<strong>nickname@%s</strong>".', self::getApp()->getHostName()),
+				'$nicklabel'    => L10n::t('Choose a nickname: '),
+				'$username'     => $username,
+				'$nickname'     => $nickname,
+				'$sitename'     => self::getApp()->getHostName(),
+				'$baseurl'      => System::baseurl(),
+				'$submit'       => L10n::t('Next'),
+				'$account_type' => $account_type,
+				'$page_flags'   => $page_flags,
+				'$form_action'  => '/publish',
+				'$form_security_token' => BaseModule::getFormSecurityToken('identities'),
+			]);
+
+			return $o;
+		}
+
+		if ($mode == 'publish') {
+			if (Config::get('system', 'publish_all')) {
+				$profile_publish = '<input type="hidden" name="profile_publish_reg" value="1" />';
+			} else {
+				$publish_tpl = Renderer::getMarkupTemplate('profile_publish.tpl');
+				$profile_publish = Renderer::replaceMacros($publish_tpl, [
+					'$instance'     => 'reg',
+					'$pubdesc'      => L10n::t('Include your profile in member directory?'),
+					'$yes_selected' => '',
+					'$no_selected'  => ' checked="checked"',
+					'$str_yes'      => L10n::t('Yes'),
+					'$str_no'       => L10n::t('No'),
+				]);
+			}
+
+			$tpl = Renderer::getMarkupTemplate('identities_new.tpl');
+			$o = Renderer::replaceMacros($tpl, [
+				'$title'        => L10n::t('Create new Identity'),
+//				'desc'          => L10n::t('Do you want to publish your new identity?'),
+				'$username'     => $username,
+				'$nickname'     => $nickname,
+				'$sitename'     => self::getApp()->getHostName(),
+				'$baseurl'      => System::baseurl(),
+				'$submit'       => L10n::t('Next'),
+				'$account_type' => $account_type,
+				'$page_flags'   => $page_flags,
+				'$publish'      => $profile_publish,
+				'$form_action'  => '/confirm',
+				'$form_security_token'   => BaseModule::getFormSecurityToken('identities'),
+			]);
+
+			return $o;
+		}
+
+		if ($mode == 'confirm') {
+			$tpl = Renderer::getMarkupTemplate('identities_new.tpl');
+			$o = Renderer::replaceMacros($tpl, [
+				'$title'        => L10n::t('Create new Identity'),
+//				'$desc'        => L10n::t('Everything correct? Please confirm with your password.'),
+				'$username'     => $username,
+				'$nickname'     => $nickname,
+				'$sitename'     => self::getApp()->getHostName(),
+				'$baseurl'      => System::baseurl(),
+				'$submit'       => L10n::t('Create'),
+				'$account_type' => $account_type,
+				'$page_flags'   => $page_flags,
+				'$publish'      => $profile_publish,
+				'$netpublish'   => $netpublish,
+				'$showtoslink'  => Config::get('system', 'tosdisplay'),
+				'$tostext'      => L10n::t('Terms of Service'),
+				'$password'    => ['password', L10n::t('Please enter your password for verification:'), '', ''],
+				'$form_action'  => '/submit',
+				'$form_security_token'   => BaseModule::getFormSecurityToken('identities'),
+			]);
+
+			return $o;
+		}
+
+		foreach ($a->identities as $k) {
+			if ($k['parent-uid'] == local_user()) {
+				$identity = self::getContactDataForUser($k);
+				if (!empty($identity)) {
+					$identities[] = $identity;
+					$micropro[] = HTML::micropro($identity, true, 'identity-block');
+				}
+			}
+		}
+
+		$tpl = Renderer::getMarkupTemplate('identities.tpl');
+		$o = Renderer::replaceMacros($tpl, [
+			'$title'    => L10n::t('Your identities'),
+			'$micropro' => $micropro,
+			'$new_lnk'   => 'identities/new',
+			'$new_lbl'  => L10n::t('Create a new identity')
+		]);
+
+		return $o;
+	}
+
+	/**
+	 * Get contact self entry for a child user.
+	 * 
+	 * @param array $user Entry from the db user table.
+	 * @return array | void The contact data.
+	 */
+	private static function getContactDataForUser($user = [])
+	{
+		$condition = ['uid' => $user['uid'], 'self' => true];
+
+		if (!empty($user['parent-uid']) && $user['parent-uid'] == local_user()) {
+			$contact = DBA::selectFirst(
+				'contact',
+				['id', 'name', 'nick', 'addr', 'url', 'nurl', 'thumb'],
+				$condition
+			);
+			if (DBA::isResult($contact)) {
+				return $contact;
+			}
+		}
+		return;
 	}
 }
